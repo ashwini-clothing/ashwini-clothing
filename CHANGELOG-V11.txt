@@ -1,0 +1,4 @@
+Ashwini Clothing V11 Model/Photo Fix
+- Hero first slide now uses a full-body model image and keeps the complete dress visible.
+- Product card uses contain so the full product image is visible instead of being cropped.
+- Existing Ashwini logo and V10 categories/theme are preserved.

@@ -1,0 +1,7 @@
+V24 - Slide CTA + Wishlist section update
+- Removed the non-working Shop Now buttons from the hero slides.
+- Added a dedicated My Wishlist section below the cart contents.
+- Cart Wishlist button now saves the item without opening the product modal.
+- Wishlist items show product image, price, View Product, and Remove from Wishlist.
+- Wishlist is stored in localStorage and persists across reloads.
+- Existing cart, checkout, slider navigation, and product functions preserved.

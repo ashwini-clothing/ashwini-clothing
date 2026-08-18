@@ -1,0 +1,14 @@
+Ashwini Clothing V37 — FINAL ORDER FIX
+
+Fixed:
+- Order creation now always resolves the customer from the current database before the foreign-key insert.
+- Removed the stale neighbouring-database auto-selection that could make localhost:3000 use an older Vxx database.
+- My Orders reads orders by the authenticated customer id and verified customer mobile number.
+- Order details is loaded immediately after a COD order is created.
+- Fixed a JavaScript bug where currentUser was referenced before declaration.
+- Cart + / - quantity remains enabled.
+- OTP login remains enabled in development mode.
+
+Important:
+- Stop any older node server before testing this package.
+- Each extracted package uses its own ashwini.db unless ASHWINI_DB_PATH is explicitly set.

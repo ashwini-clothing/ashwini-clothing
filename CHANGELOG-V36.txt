@@ -1,0 +1,8 @@
+Ashwini Clothing V36 — REAL ORDER MATCHING FIX
+
+- Stores customer mobile number directly on every new order.
+- My Orders matches by signed-in account, order mobile number, or mobile number embedded in delivery address.
+- Existing local orders from older versions can be recovered by verified mobile number.
+- Order details and tracking use the same recovery rule.
+- Checkout now sends the mobile number explicitly and pre-fills the signed-in customer's number.
+- No catalog, slider, search, category, product or OTP functionality changed.

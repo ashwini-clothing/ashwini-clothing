@@ -1,0 +1,10 @@
+Ashwini Clothing V23 — Product UX + Gallery Fixes
+
+1. Size buttons now toggle: click selected size again to unselect it.
+2. Add to Cart now gives visible feedback: button changes to “✓ Added to Cart” and a toast shows the selected size.
+3. Product-detail Add to Cart gives the same visible feedback before closing the modal.
+4. Slider “Shop Now” buttons are now functional and take the customer to the related category.
+5. Product detail now supports a maximum of 5 gallery photos with thumbnails and main-photo switching.
+6. Gallery data is stored in the products table for future multi-photo product uploads.
+7. Existing bundled product assets are preserved; no fake “different-side” photos were invented where genuine alternate photos were not available.
+8. Existing cart, checkout, slider, category and modal functions are preserved.

@@ -1,0 +1,8 @@
+V37 ROOT ORDER/DATABASE FIX
+- Stable/reusable database discovery across version folders.
+- Automatic nearby legacy database reuse when V37 starts without a local DB.
+- Checkout enforces the signed-in mobile number.
+- Checkout stores mobile on the customer account when missing.
+- My Orders / tracking remain account + mobile based.
+- Existing search, category, OTP, product, slider and admin features retained.
+\n\nV37 ORDER REPAIR PATCH\n- Rehydrates the signed-in customer from the current SQLite database before checkout to prevent stale JWT user IDs from causing FOREIGN KEY constraint failed.\n- Checkout now uses the verified current users.id for order creation.\n- Fixed cart quantity control clipping so the + button is visible and increases quantity.\n- Mobile OTP remains enabled for local/demo testing; real SMS delivery still requires an SMS provider configuration.\n

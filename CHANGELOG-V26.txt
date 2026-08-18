@@ -1,0 +1,17 @@
+Ashwini Clothing V26
+
+1. Fixed slider Shop Now buttons: each button opens the matching category/product area.
+2. Added persistent product_history and size_chart fields to products.
+3. Added Admin > Inventory > Edit Product editor.
+4. Admin can update Product Details/History, Product Description and Size Chart JSON without editing code.
+5. Product detail page reads the saved Product Details/History and saved Size Chart.
+6. Existing cart, wishlist, checkout, Buy Now, gallery and slider behavior preserved.
+
+Admin workflow:
+- Sign in with the admin account.
+- Open Admin Dashboard.
+- Under Inventory click "Edit Product".
+- Enter Product Details/History and Description.
+- For Size Chart, enter JSON such as:
+  [{"size":"S","bust":34,"waist":28,"hip":36},{"size":"M","bust":36,"waist":30,"hip":38}]
+- Save. The product page will show the saved information.

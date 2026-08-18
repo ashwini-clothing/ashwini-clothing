@@ -1,0 +1,8 @@
+Ashwini Clothing V30
+Order Management + Customer Account stable package
+
+Based on the tested V29 Admin Dashboard build.
+Preserves the existing working Search, Category, Cart, Wishlist, Slider, Product Page,
+Size Chart, Buy Now, Checkout, Return Policy, Product Management and Admin functions.
+
+Order/customer API routes are included in server.js.

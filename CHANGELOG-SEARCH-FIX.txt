@@ -1,0 +1,9 @@
+Ashwini Clothing - Search & Navigation Fix
+
+Fixed:
+1. Search button now has a reliable click handler.
+2. Search works on Enter and while typing (debounced).
+3. Horizontal navigation categories use delegated click handling and data-category values.
+4. Category clicks scroll to the product section.
+5. Added visible hover/active feedback to horizontal navigation and search button.
+6. Existing working features were preserved.
