@@ -1,0 +1,10 @@
+Ashwini Clothing V31 — Orders, Tracking & Mobile OTP
+
+Fixes:
+- Customer My Orders now has a direct entry from My Account.
+- Each order has a working Track package action.
+- Tracking reads the saved order status and shows the delivery timeline.
+- Customer account stores mobile number.
+- New buyer registration now requires a 10-digit mobile number and OTP verification.
+- Local development mode returns the OTP on screen; production SMS requires an SMS provider.
+- Existing admin/product/search/cart/wishlist functions preserved.

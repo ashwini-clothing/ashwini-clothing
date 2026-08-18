@@ -1,0 +1,6 @@
+Ashwini Clothing V35 — Order Recovery Fix
+
+- My Orders now reconciles orders to the currently signed-in customer using the verified mobile number.
+- Order details/tracking can recover an order created under another local account record with the same mobile number.
+- COD checkout now opens My Orders after the order is created so the customer can immediately verify the order.
+- No product/catalog/slider functionality was changed.

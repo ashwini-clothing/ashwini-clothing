@@ -1,0 +1,7 @@
+Ashwini Clothing V18
+- Upgraded product catalog with fashion-model photos instead of emoji placeholders.
+- Added relevant categories: Western Dress, Co-ord Set, Skirt & Top, Kurta Set, Formal Ladies & Gents Pants, Sarara, Coat Set, Lehenga, Wedding Gown, Shirts, Party Wear.
+- Improved product cards with larger photos, ratings, stock, delivery, View Details button.
+- Improved product detail modal with fabric/fit/delivery information.
+- Improved cart thumbnails.
+- Kept V17 full-width hero slider unchanged.

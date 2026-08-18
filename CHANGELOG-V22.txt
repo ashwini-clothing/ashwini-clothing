@@ -1,0 +1,7 @@
+V22 — Cart + Product Modal Reliability Fix
+- Fixed product-detail Add to Cart with an explicit click handler.
+- Fixed modal X close button and backdrop/Escape closing.
+- Exposed key UI functions on window for reliable button actions.
+- Made cart counter update safe.
+- Fixed admin element lookup so a missing admin link cannot throw a startup error.
+- No changes to the working slider, product photos, categories, or other storefront functions.

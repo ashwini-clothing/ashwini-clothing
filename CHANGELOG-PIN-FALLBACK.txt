@@ -1,0 +1,5 @@
+Ashwini Clothing V37 - PIN lookup fallback
+- Keeps existing Deliver To and Address PIN lookup.
+- Tries India Post first.
+- Falls back to Zippopotam.us for valid PINs when India Post returns no office.
+- Preserves Wishlist -> Add to Cart, orders, OTP, cart and existing design.
