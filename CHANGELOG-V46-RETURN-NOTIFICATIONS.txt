@@ -1,0 +1,8 @@
+V46 - Professional Return & Order Notifications
+- Added return event history for every return status update.
+- Added customer-facing return timeline in Returns & Replacements.
+- Added customer-facing order update timeline in Your Orders.
+- Added email notification when admin changes an order delivery/status stage.
+- Existing return email notifications preserved for request and admin status updates.
+- Existing Customer Help, search, offers, slides, payments, products and other working features were not intentionally changed.
+- Existing return records are backfilled into the new return event history on startup.

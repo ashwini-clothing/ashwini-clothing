@@ -1,0 +1,15 @@
+ASHWINI CLOTHING V45 — EMAIL NOTIFICATION WIRING
+
+Kept the existing return/order/help functionality intact and added real provider wiring:
+- Return request email to ADMIN_EMAIL
+- Return status emails to customer + admin
+- Pickup schedule included in customer email
+- Customer Help / Callback email to admin
+- Customer Help status update email to customer
+- /api/admin/email-status for admin-side configuration checking
+- Resend support (default)
+- Gmail/SMTP support as an alternative using Nodemailer
+- Render environment variable placeholders added
+- .env excluded from Git so secrets are not committed
+
+IMPORTANT: a real provider API key or SMTP App Password is intentionally NOT included. It must be added as a secret in local .env or the hosting provider's environment settings.

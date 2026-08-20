@@ -1,0 +1,18 @@
+Ashwini Clothing — FINAL Stable Base
+
+This release is built from the last working V26 base and replaces the duplicated inline browser logic with one clean app.js.
+
+Verified statically:
+- app.js syntax check passed with Node.js.
+- server.js syntax check passed with Node.js.
+- Slider uses cleaned banner images so the baked duplicate Shop Now buttons are removed; each slide has one HTML Shop Now button.
+- Search/category controls are wired through one category function.
+- Whole product cards open the product page; inner buttons stop card navigation.
+- Size selection toggles/unselects.
+- Add to Cart gives visible button feedback.
+- Size Chart, Buy Now, wishlist, customer Q&A, PIN delivery display, return policy and secure transaction sections are present.
+- Product history/description/care/size chart remain editable from the admin product editor.
+- NEW2026 is validated server-side for a first order and applies a 30% discount.
+
+Runtime browser test note:
+The provided project environment did not have npm dependencies installed. An npm install attempt timed out, so a full localhost browser/e-commerce runtime test could not be completed in this environment. Do not treat this as a claim that payment/SMS services are live; those depend on the user's environment and credentials.

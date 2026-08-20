@@ -10,6 +10,14 @@ services:
         value: production
       - key: DB_PATH
         value: /var/data/ashwini.db
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: ADMIN_EMAIL
+        value: ashwiniweb88@gmail.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
     disk:
       name: ashwini-data
       mountPath: /var/data

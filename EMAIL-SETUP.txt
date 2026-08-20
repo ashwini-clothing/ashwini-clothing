@@ -1,0 +1,47 @@
+ASHWINI CLOTHING — REAL EMAIL NOTIFICATIONS
+
+This V45 package is wired for real email notifications for:
+- Customer return request -> store/admin email
+- Return approved/rejected/pickup scheduled/completed/cancelled -> customer email
+- Return status update -> store/admin email
+- Customer Help / Callback request -> store/admin email
+- Customer Help status update -> customer email
+
+IMPORTANT
+The actual mail provider requires a secret credential. I did NOT put a fake or invented password/API key into the project. Keep your secret out of chat and out of GitHub.
+
+OPTION A — RESEND (recommended)
+1. Create a Resend account.
+2. Verify the sender domain/address required by your Resend account.
+3. Copy the Resend API key into your hosting environment.
+4. Set:
+   EMAIL_PROVIDER=resend
+   ADMIN_EMAIL=ashwiniweb88@gmail.com
+   RESEND_API_KEY=your_real_resend_api_key
+   EMAIL_FROM=Ashwini Clothing <your_verified_sender@example.com>
+
+OPTION B — GMAIL SMTP
+Use a Google App Password, NOT your normal Gmail password.
+Set:
+   EMAIL_PROVIDER=smtp
+   ADMIN_EMAIL=ashwiniweb88@gmail.com
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=465
+   SMTP_SECURE=true
+   SMTP_USER=ashwiniweb88@gmail.com
+   SMTP_PASS=your_google_app_password
+   EMAIL_FROM=Ashwini Clothing <ashwiniweb88@gmail.com>
+
+LOCAL WINDOWS
+Create a .env file beside server.js using the values above, then restart:
+   npm install
+   npm start
+
+RENDER
+Add the same values under Render -> Environment. Do not commit .env to GitHub.
+
+EMAIL STATUS
+Admin can check the current provider configuration through:
+   GET /api/admin/email-status
+
+If email is temporarily not configured, website actions are still saved in the database; the server logs clearly say that the email was not sent.
