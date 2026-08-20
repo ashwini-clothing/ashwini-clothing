@@ -1,0 +1,16 @@
+ASHWINI CLOTHING V51 — FINAL FIXES
+
+Base: V50 account-list / return-pickup version.
+
+Fixed without removing the existing V50 functions:
+1. Customer account header now shows the customer's short first name after sign-in instead of "Hello, sign in".
+2. Manage Profile now loads the latest database values, saves name/email/mobile, refreshes the saved values on the same page, and refreshes the session token/header.
+3. Customer sign-in/register profile data remains tied to the same customer account.
+4. Admin Customer Questions answer box is now inline on the dashboard page; the browser prompt popup is removed.
+5. Only admin users can submit product-question answers; customers can still ask questions.
+6. Customer Orders now has a Return / Replace action for delivered orders and a Return / Replace Again action for rejected/cancelled requests.
+7. Order Details now also shows a Return / Replace action for delivered orders when no return request exists.
+8. Offer notifications can open their saved offer details even when the offer period is no longer active; the page now shows the offer state instead of incorrectly failing with "This offer is no longer active".
+9. Homepage slide title/offer text is separated from the image into a two-column layout instead of being drawn over the uploaded photo.
+10. Product image zoom now supports mouse/touch dragging to pan left/right/up/down while zoomed, plus wheel, pinch, +/- and reset controls.
+11. Existing return, order, search, category, cart, wishlist, checkout, coupon, Razorpay/COD, admin, slide, offer and other working V50 functions were preserved.
