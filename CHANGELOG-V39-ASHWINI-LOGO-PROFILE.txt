@@ -1,0 +1,19 @@
+Ashwini Clothing V39 – Clickable Logo + Editable Ashwini Information
+
+Added only the requested Ashwini logo/company information feature.
+
+Customer side:
+- Clicking the ASHWINI logo opens an Ashwini Information page/modal.
+- Logo is displayed larger.
+- Customers can read Ashwini history/about information.
+- Customers can read address and contact information.
+- Email and phone are clickable when configured.
+
+Admin side:
+- New Admin Dashboard button: “Ashwini Information”.
+- Admin can edit page heading, history/about text, address, city, state, PIN, email and phone.
+- Changes are saved to the existing SQLite database and appear immediately on the customer page.
+
+Safety:
+- Existing customer-help, offers, slides, categories, products, login/OTP, orders, payments, reviews, Q&A, product highlights and other working functions were left unchanged.
+- Existing logo image is reused; no replacement of the logo asset was made.

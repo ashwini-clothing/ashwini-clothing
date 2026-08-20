@@ -1,0 +1,10 @@
+Ashwini Clothing V37 — Customer Q&A Answers
+
+Changes only:
+- Customer questions are now stored in the website database instead of only local browser storage.
+- Logged-in customers can answer customer questions.
+- Admin can answer every customer question from the Admin Dashboard.
+- Multiple answers are supported for each question.
+- Answers show whether they came from Admin or Customer.
+- Existing question display and customer-facing product page remain in place.
+- No unrelated cart, wishlist, order, OTP, PIN, product, photo, size-chart, slider, or login features were intentionally changed.

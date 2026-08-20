@@ -1,0 +1,11 @@
+Ashwini Clothing V37 — Seasonal Offer + Customer Offer Notifications
+
+Added without changing existing core flows:
+- Admin Offer Management: create, edit, activate/deactivate, delete.
+- Seasonal offer popup with banner, title, description, coupon, dates and Shop Now action.
+- Customer Offers panel for logged-in and logged-out visitors.
+- In-app customer offer notifications for registered customer accounts.
+- Admin Send Offer action creates a notification for all registered customers.
+- Customer notifications can be marked as read.
+
+Note: Actual SMS/email delivery requires a configured SMS/email provider and credentials. This version safely stores and displays offer notifications inside the website; it does not pretend to send external SMS/email without a provider.

@@ -1,0 +1,4 @@
+V38 PRODUCT HIGHLIGHTS FIX
+- Product Highlights management is explicitly available from Admin Dashboard and Product Editor.
+- Fabric, Fit, Delivery are seeded individually if missing, even when other highlight rows already exist.
+- Existing product, offer, slide, cart, login, review, Q&A and checkout functions were not changed.

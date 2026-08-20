@@ -1,0 +1,33 @@
+Ashwini Clothing V45 — RETURN SYSTEM COMPLETE FIX
+
+Only return/order-payment notification behavior was changed.
+
+1. Customer Returns page
+- Removed browser prompt for return reason.
+- Return request form opens inline on the same Returns page.
+- Added return reason selection.
+- Added Exchange/Replace option.
+- Size/colour fields appear for size-related exchange requests.
+- Existing 4-day delivered-order rule remains unchanged.
+
+2. Admin Return Management
+- Admin can approve/reject/update return status.
+- Admin can schedule pickup date/time.
+- Admin can add an optional admin note.
+- Pickup schedule is visible to the customer.
+
+3. Returns & Orders
+- Return status now appears with the customer's orders.
+- Approved / pickup-scheduled / completed return information remains visible beside the order.
+
+4. Email notifications
+- New return request sends an admin email notification when RESEND_API_KEY is configured.
+- Admin status changes send customer and admin email notifications.
+- Add RESEND_API_KEY and EMAIL_FROM in .env before launch for real email delivery.
+- Without email configuration, notifications are logged by the server and the customer still sees status/pickup updates inside the website.
+
+5. Payment status
+- When an order is marked DELIVERED, payment_status is automatically set to PAID.
+- Track Order and Order Details also display PAID for delivered orders.
+
+No unrelated website functions were intentionally changed.

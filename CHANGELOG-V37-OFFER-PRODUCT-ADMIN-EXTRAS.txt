@@ -1,0 +1,9 @@
+Ashwini Clothing V37 — Offer, Slide and Product Admin Extras
+
+Added without changing existing core flows:
+- Active offers now create in-app customer notifications when created.
+- Customer Offers panel clearly lists active offers with banner, coupon and Shop Now.
+- Homepage slides support admin-entered Offer Text in addition to Slide Title and Button Text.
+- Product admin supports removable/editable badge/sticker text (blank removes it).
+- Product admin supports per-product extra offer text and optional offer discount display.
+- Existing product, cart, wishlist, Q&A, reviews, size chart, photo upload, zoom, category and slide functions preserved.

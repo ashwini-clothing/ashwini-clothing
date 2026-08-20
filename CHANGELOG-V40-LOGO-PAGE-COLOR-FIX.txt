@@ -1,0 +1,3 @@
+Ashwini Clothing V40 - Logo/About page color and readability fix
+
+Only the clickable logo profile page styling was changed. The page now uses a dark Ashwini-maroon background, a dark logo frame so the white logo artwork is clearly visible, and light/pale text for strong contrast. Existing functionality was not intentionally changed.

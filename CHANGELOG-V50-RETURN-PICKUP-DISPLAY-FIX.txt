@@ -1,0 +1,6 @@
+Ashwini Clothing V50 — Return Pickup Display Fix
+
+- Fixed Returns & Replacements customer panel showing an older cancelled return when the same order had a newer return request.
+- The customer panel now always displays the latest return request for each order, so admin-approved pickup schedules appear correctly.
+- Existing My Orders and View Details latest-return behavior preserved.
+- No unrelated functions changed.
