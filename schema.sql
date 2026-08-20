@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS orders (
  address TEXT NOT NULL,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ replacement_for_order_id INTEGER DEFAULT NULL,
+ replacement_for_return_id INTEGER DEFAULT NULL,
  FOREIGN KEY(user_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS order_items (
@@ -68,6 +70,7 @@ CREATE TABLE IF NOT EXISTS returns (
  replacement_color TEXT DEFAULT '',
  pickup_at TEXT DEFAULT '',
  admin_note TEXT DEFAULT '',
+ replacement_order_id INTEGER DEFAULT NULL,
  status TEXT NOT NULL DEFAULT 'REQUESTED',
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -44,6 +44,8 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_order_id INTEGER DEFAULT NULL")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_return_id INTEGER DEFAULT NULL")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER, question TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER NOT NULL, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5), feedback TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS offers (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT DEFAULT '', coupon_code TEXT DEFAULT '', discount_percent REAL DEFAULT 0, banner_url TEXT DEFAULT '', button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', start_at TEXT DEFAULT '', end_at TEXT DEFAULT '', active INTEGER DEFAULT 1, show_popup INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
@@ -68,10 +70,10 @@ try{
 }catch{}
 
 try{db.exec(`CREATE TABLE IF NOT EXISTS offer_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, offer_id INTEGER, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TEXT DEFAULT '', FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(offer_id) REFERENCES offers(id) ON DELETE SET NULL)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, reason TEXT NOT NULL, request_type TEXT NOT NULL DEFAULT 'REPLACEMENT', replacement_size TEXT DEFAULT '', replacement_color TEXT DEFAULT '', pickup_at TEXT DEFAULT '', admin_note TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'REQUESTED', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, reason TEXT NOT NULL, request_type TEXT NOT NULL DEFAULT 'REPLACEMENT', replacement_size TEXT DEFAULT '', replacement_color TEXT DEFAULT '', pickup_at TEXT DEFAULT '', admin_note TEXT DEFAULT '', replacement_order_id INTEGER DEFAULT NULL, status TEXT NOT NULL DEFAULT 'REQUESTED', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(return_id) REFERENCES returns(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
-for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''"]){try{db.exec(q)}catch{}}
+for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS customer_help_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, subject TEXT NOT NULL, message TEXT NOT NULL, contact_method TEXT NOT NULL DEFAULT 'EMAIL', status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS store_profile (id INTEGER PRIMARY KEY CHECK(id=1), about_title TEXT NOT NULL DEFAULT 'About Ashwini Clothing', history TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '', pincode TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT 'ashwiniweb88@gmail.com', phone TEXT NOT NULL DEFAULT '', logo_data TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE store_profile ADD COLUMN logo_data TEXT NOT NULL DEFAULT ''")}catch{}
@@ -213,8 +215,8 @@ app.get("/api/offers/active",(req,res)=>{
 });
 app.get("/api/offers/:id",(req,res)=>{
  const o=db.prepare("SELECT * FROM offers WHERE id=?").get(req.params.id);
- if(!o || !offerIsCurrentlyActive(o)) return res.status(404).json({error:'This offer is no longer active'});
- res.json(o);
+ if(!o) return res.status(404).json({error:'Offer not found'});
+ res.json({...o,current_active:offerIsCurrentlyActive(o)});
 });
 app.get("/api/notifications",auth,(req,res)=>{
  if(req.user.role!=='customer') return res.json([]);
@@ -355,7 +357,13 @@ app.post("/api/auth/login",async(req,res)=>{
  if(!u||!(await bcrypt.compare(req.body.password||"",u.password_hash)))return res.status(401).json({error:"Invalid email or password"});
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};res.json({token:token(safe),user:safe});
 });
-app.get("/api/me",auth,(req,res)=>res.json({user:req.user}));
+app.get("/api/me",auth,(req,res)=>{
+ try{
+  const u=db.prepare("SELECT id,name,email,phone,role,created_at FROM users WHERE id=?").get(req.user.id);
+  if(!u)return res.status(404).json({error:"Account not found"});
+  res.json({user:u});
+ }catch(e){res.status(400).json({error:e.message||"Could not load account"})}
+});
 
 app.get("/api/products/:id/questions",(req,res)=>{
  const productId=Number(req.params.id);
@@ -375,7 +383,7 @@ app.post("/api/products/:id/questions",auth,(req,res)=>{
  const r=db.prepare("INSERT INTO product_questions(product_id,user_id,question) VALUES(?,?,?)").run(productId,req.user.id,question);
  res.json({ok:true,id:r.lastInsertRowid});
 });
-app.post("/api/questions/:id/answers",auth,(req,res)=>{
+app.post("/api/questions/:id/answers",auth,admin,(req,res)=>{
  const questionId=Number(req.params.id), answer=String(req.body?.answer||'').trim();
  if(!answer)return res.status(400).json({error:"Please write an answer"});
  if(answer.length>1000)return res.status(400).json({error:"Answer is too long"});
@@ -488,10 +496,58 @@ app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phon
 app.patch('/api/me',auth,(req,res)=>{try{const name=String(req.body?.name||'').trim(),email=String(req.body?.email||'').trim(),phone=String(req.body?.phone||'').replace(/\D/g,'');if(!name||!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||!/^[0-9]{10}$/.test(phone))return res.status(400).json({error:'Enter a valid name, email and 10-digit mobile number'});const exists=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?").get(email,req.user.id);if(exists)return res.status(409).json({error:'Email is already in use'});db.prepare('UPDATE users SET name=?,email=?,phone=? WHERE id=?').run(name,email,phone,req.user.id);const u=db.prepare("SELECT id,name,email,phone,role FROM users WHERE id=?").get(req.user.id);res.json({ok:true,user:u,token:token(u)});}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/return-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM return_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/order-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM order_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
-app.get('/api/returns',auth,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.status AS order_status,o.created_at AS order_date FROM returns r JOIN orders o ON o.id=r.order_id WHERE r.user_id=? ORDER BY r.id DESC`).all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
+app.get('/api/returns',auth,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.status AS order_status,o.created_at AS order_date,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id WHERE r.user_id=? ORDER BY r.id DESC`).all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.patch('/api/returns/:id/cancel',auth,async(req,res)=>{try{const r=db.prepare(`SELECT r.*,u.name AS customer_name,u.email AS customer_email,o.id AS order_id FROM returns r JOIN users u ON u.id=r.user_id JOIN orders o ON o.id=r.order_id WHERE r.id=? AND r.user_id=?`).get(req.params.id,req.user.id);if(!r)return res.status(404).json({error:'Return request not found'});const cancellable=['REQUESTED','APPROVED','PICKUP_SCHEDULED'];if(!cancellable.includes(String(r.status)))return res.status(400).json({error:'This return can no longer be cancelled because the pickup/inspection process has started'});db.prepare(`UPDATE returns SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.id);addReturnEvent(r.id,r.user_id,'CANCELLED','Return request cancelled','Your return request #'+r.id+' for Order #'+r.order_id+' was cancelled by you.');const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';await Promise.all([sendReturnEmail(adminEmail,`Ashwini Return #${r.id} Cancelled`,`Customer: ${r.customer_name} (${r.customer_email})\nOrder: #${r.order_id}\nThe customer cancelled the return request.`),sendReturnEmail(r.customer_email,`Ashwini Clothing Return Cancelled - Order #${r.order_id}`,`Your return request #${r.id} has been cancelled successfully. Your order remains delivered.`)]);res.json({ok:true,return:db.prepare('SELECT * FROM returns WHERE id=?').get(r.id)})}catch(e){console.error('[Ashwini return cancel]',e);res.status(400).json({error:e.message})}});
-app.get('/api/admin/returns',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.created_at AS order_date,o.status AS order_status,u.name AS customer_name,u.email AS customer_email,u.phone AS customer_phone FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 WHEN 'PICKUP_SCHEDULED' THEN 2 WHEN 'COMPLETED' THEN 3 ELSE 4 END, r.id DESC`).all())}catch(e){res.status(400).json({error:e.message})}});
-app.patch('/api/admin/returns/:id',auth,admin,async(req,res)=>{try{const status=String(req.body?.status||'').trim().toUpperCase();const allowed=['REQUESTED','APPROVED','REJECTED','PICKUP_SCHEDULED','PICKUP_ATTEMPTED','PICKED_UP','IN_TRANSIT','RECEIVED','INSPECTION_PASSED','INSPECTION_FAILED','COMPLETED','CANCELLED'];if(!allowed.includes(status))return res.status(400).json({error:'Invalid return status'});const pickupAt=String(req.body?.pickup_at||'').trim();const adminNote=String(req.body?.admin_note||'').trim().slice(0,1000);const r=db.prepare(`SELECT r.*,u.name AS customer_name,u.email AS customer_email,o.id AS order_id,o.total FROM returns r JOIN users u ON u.id=r.user_id JOIN orders o ON o.id=r.order_id WHERE r.id=?`).get(req.params.id);if(!r)return res.status(404).json({error:'Return request not found'});db.prepare('UPDATE returns SET status=?,pickup_at=?,admin_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(status,pickupAt,adminNote,req.params.id);addReturnEvent(r.id,r.user_id,status,`Return ${status.replaceAll('_',' ')}`,`Return request #${r.id} for Order #${r.order_id} is now ${status.replaceAll('_',' ')}.${pickupAt?` Pickup scheduled for ${pickupAt}.`:''}${adminNote?` Admin note: ${adminNote}.`:''}`);const customerDetails=`Return request #${r.id} for Order #${r.order_id} is now ${status.replaceAll('_',' ')}.${pickupAt?` Pickup scheduled for ${pickupAt}.`:''}${adminNote?` Admin note: ${adminNote}`:''}`;const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';await Promise.all([sendReturnEmail(r.customer_email,`Ashwini Clothing Return Update - Order #${r.order_id}`,customerDetails),sendReturnEmail(adminEmail,`Ashwini Clothing Return #${r.id} - ${status}`,`Customer: ${r.customer_name} (${r.customer_email})\nOrder: #${r.order_id}\nReturn status: ${status.replaceAll('_',' ')}${pickupAt?`\nPickup: ${pickupAt}`:''}`)]);res.json({ok:true,return:db.prepare('SELECT * FROM returns WHERE id=?').get(req.params.id)})}catch(e){console.error('[Ashwini return update]',e);res.status(400).json({error:e.message})}});
+app.get('/api/admin/returns',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.created_at AS order_date,o.status AS order_status,u.name AS customer_name,u.email AS customer_email,u.phone AS customer_phone,ro.id AS replacement_order_id,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 WHEN 'PICKUP_SCHEDULED' THEN 2 WHEN 'COMPLETED' THEN 3 ELSE 4 END, r.id DESC`).all())}catch(e){res.status(400).json({error:e.message})}});
+function createReplacementOrderForReturn(returnRow){
+ const existing=db.prepare('SELECT id FROM orders WHERE replacement_for_return_id=? ORDER BY id DESC LIMIT 1').get(returnRow.id);
+ if(existing?.id)return existing.id;
+ const original=db.prepare('SELECT * FROM orders WHERE id=? AND user_id=?').get(returnRow.order_id,returnRow.user_id);
+ if(!original)throw Error('Original order not found for replacement');
+ const originalItems=db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').all(original.id);
+ if(!originalItems.length)throw Error('Original order has no items for replacement');
+ const tx=db.transaction(()=>{
+   const total=0;
+   const ins=db.prepare(`INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,created_at,updated_at,replacement_for_order_id,replacement_for_return_id) VALUES(?,?,?,?,?,?,?,?,?,?)`);
+   const result=ins.run(original.user_id,total,'PLACED','PAID','REPLACEMENT',original.address,new Date().toISOString(),new Date().toISOString(),original.id,returnRow.id);
+   const newOrderId=Number(result.lastInsertRowid);
+   const add=db.prepare('INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)');
+   for(const item of originalItems){
+     const requestedSize=String(returnRow.replacement_size||'').trim();
+     const size=requestedSize||item.size;
+     add.run(newOrderId,item.product_id,size,item.quantity,item.unit_price);
+   }
+   return newOrderId;
+ });
+ return tx();
+}
+
+app.patch('/api/admin/returns/:id',auth,admin,async(req,res)=>{try{
+ const status=String(req.body?.status||'').trim().toUpperCase();
+ const allowed=['REQUESTED','APPROVED','REJECTED','PICKUP_SCHEDULED','PICKUP_ATTEMPTED','PICKED_UP','IN_TRANSIT','RECEIVED','INSPECTION_PASSED','INSPECTION_FAILED','COMPLETED','CANCELLED'];
+ if(!allowed.includes(status))return res.status(400).json({error:'Invalid return status'});
+ const pickupAt=String(req.body?.pickup_at||'').trim();
+ const adminNote=String(req.body?.admin_note||'').trim().slice(0,1000);
+ const r=db.prepare(`SELECT r.*,u.name AS customer_name,u.email AS customer_email,o.id AS order_id,o.total,o.address FROM returns r JOIN users u ON u.id=r.user_id JOIN orders o ON o.id=r.order_id WHERE r.id=?`).get(req.params.id);
+ if(!r)return res.status(404).json({error:'Return request not found'});
+ let replacementOrderId=r.replacement_order_id||null;
+ db.prepare('UPDATE returns SET status=?,pickup_at=?,admin_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(status,pickupAt,adminNote,req.params.id);
+ if(status==='COMPLETED' && ['REPLACEMENT','EXCHANGE'].includes(String(r.request_type||'REPLACEMENT').toUpperCase())){
+   replacementOrderId=createReplacementOrderForReturn({...r,replacement_order_id:replacementOrderId});
+   db.prepare('UPDATE returns SET replacement_order_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(replacementOrderId,req.params.id);
+ }
+ const replacementText=replacementOrderId?` Replacement order #${replacementOrderId} has been created for the same customer and will be delivered to the original order address (${r.address}).`:'';
+ addReturnEvent(r.id,r.user_id,status,`Return ${status.replaceAll('_',' ')}`,`Return request #${r.id} for Order #${r.order_id} is now ${status.replaceAll('_',' ')}.${pickupAt?` Pickup scheduled for ${pickupAt}.`:''}${adminNote?` Admin note: ${adminNote}.`:''}${replacementText}`);
+ if(replacementOrderId){
+   addOrderEvent(replacementOrderId,r.user_id,'PLACED','Replacement order created',`Replacement order #${replacementOrderId} was created after Return #${r.id} was completed. It will be sent to the same delivery address as Order #${r.order_id}.`);
+ }
+ const customerDetails=`Return request #${r.id} for Order #${r.order_id} is now ${status.replaceAll('_',' ')}.${pickupAt?` Pickup scheduled for ${pickupAt}.`:''}${adminNote?` Admin note: ${adminNote}`:''}${replacementText}`;
+ const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';
+ const mailTasks=[sendReturnEmail(r.customer_email,`Ashwini Clothing Return Update - Order #${r.order_id}`,customerDetails),sendReturnEmail(adminEmail,`Ashwini Clothing Return #${r.id} - ${status}`,`Customer: ${r.customer_name} (${r.customer_email})\nOrder: #${r.order_id}\nReturn status: ${status.replaceAll('_',' ')}${pickupAt?`\nPickup: ${pickupAt}`:''}${replacementOrderId?`\nReplacement Order: #${replacementOrderId}\nReplacement delivery address: ${r.address}`:''}`)];
+ if(replacementOrderId)mailTasks.push(sendReturnEmail(r.customer_email,`Ashwini Clothing Replacement Order #${replacementOrderId}`,`Your replacement order #${replacementOrderId} has been created after Return #${r.id} was completed.\n\nIt will be sent to the same delivery address used for your original Order #${r.order_id}:\n${r.address}\n\nYou can track its status from Your Orders.`));
+ await Promise.all(mailTasks);
+ res.json({ok:true,return:db.prepare('SELECT * FROM returns WHERE id=?').get(req.params.id),replacement_order_id:replacementOrderId});
+}catch(e){console.error('[Ashwini return update]',e);res.status(400).json({error:e.message})}});
 
 app.post('/api/returns',auth,async(req,res)=>{try{const orderId=Number(req.body?.order_id),reason=String(req.body?.reason||'').trim(),requestType=String(req.body?.request_type||'REPLACEMENT').trim().toUpperCase(),replacementSize=String(req.body?.replacement_size||'').trim().slice(0,20),replacementColor=String(req.body?.replacement_color||'').trim().slice(0,40);if(!Number.isInteger(orderId)||!reason)return res.status(400).json({error:'Order and return reason are required'});if(!['REPLACEMENT','EXCHANGE'].includes(requestType))return res.status(400).json({error:'Invalid return option'});const o=db.prepare('SELECT id,status,total FROM orders WHERE id=? AND user_id=?').get(orderId,req.user.id);if(!o)return res.status(404).json({error:'Order not found'});if(o.status!=='DELIVERED')return res.status(400).json({error:'Return can be requested after delivery'});const deliveredAt=Date.parse(String(o.updated_at||o.created_at||''));if(Number.isFinite(deliveredAt)&&Date.now()-deliveredAt>4*24*60*60*1000)return res.status(400).json({error:'The 4-day return period has expired'});const existing=db.prepare("SELECT id FROM returns WHERE order_id=? AND user_id=? AND status NOT IN ('REJECTED','CANCELLED')").get(orderId,req.user.id);if(existing)return res.status(400).json({error:'A return request already exists for this order'});const r=db.prepare('INSERT INTO returns(order_id,user_id,reason,request_type,replacement_size,replacement_color) VALUES(?,?,?,?,?,?)').run(orderId,req.user.id,reason,requestType,replacementSize,replacementColor);addReturnEvent(r.lastInsertRowid,req.user.id,'REQUESTED','Return request submitted',`Your return request #${r.lastInsertRowid} for Order #${orderId} was submitted and is awaiting admin review.`);const u=db.prepare('SELECT name,email FROM users WHERE id=?').get(req.user.id);const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';await sendReturnEmail(adminEmail,`New Ashwini Return Request #${r.lastInsertRowid}`,`Customer: ${u?.name||'Customer'} (${u?.email||''})\nOrder: #${orderId}\nReason: ${reason}\nOption: ${requestType}${replacementSize?`\nRequested size: ${replacementSize}`:''}${replacementColor?`\nRequested colour: ${replacementColor}`:''}`);res.json({ok:true,id:r.lastInsertRowid});}catch(e){console.error('[Ashwini return request]',e);res.status(400).json({error:e.message})}});
 app.get("/api/orders",auth,(req,res)=>{
@@ -503,7 +559,7 @@ app.get("/api/orders",auth,(req,res)=>{
    ? db.prepare(`SELECT o.*,u.name AS customer_name,COALESCE(NULLIF(o.customer_phone,''),u.phone) AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.user_id=? OR o.customer_phone=? ORDER BY o.id DESC`).all(me.id,phone)
    : db.prepare("SELECT o.*,u.name AS customer_name,u.phone AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.user_id=? ORDER BY o.id DESC").all(me.id);
   const items=db.prepare("SELECT oi.*,p.name,p.emoji FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?");
-  const returns=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC');res.json(os.map(o=>({...o,items:items.all(o.id),return_request:returns.get(o.id)||null,tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}})));
+  const returns=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC');res.json(os.map(o=>({...o,items:items.all(o.id),return_request:(()=>{const rr=returns.get(o.id); if(!rr)return null; const ro=rr.replacement_order_id?db.prepare('SELECT id,status,address FROM orders WHERE id=?').get(rr.replacement_order_id):null; return {...rr,replacement_order:ro||null};})(),tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}})));
  }catch(e){console.error('[Ashwini my orders]',e);res.status(500).json({error:e.message||'Could not load orders'})}
 });
 app.get("/api/orders/:id",auth,(req,res)=>{
@@ -516,7 +572,7 @@ app.get("/api/orders/:id",auth,(req,res)=>{
    : db.prepare("SELECT o.*,u.name AS customer_name,u.phone AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=? AND o.user_id=?").get(req.params.id,me.id);
   if(!o)return res.status(404).json({error:"Order not found for this account"});
   const items=db.prepare("SELECT oi.*,p.name,p.emoji FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?").all(o.id);
-  const return_request=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC LIMIT 1').get(o.id)||null;
+  const return_request0=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC LIMIT 1').get(o.id)||null; const return_request=return_request0?( {...return_request0,replacement_order:return_request0.replacement_order_id?db.prepare('SELECT id,status,address FROM orders WHERE id=?').get(return_request0.replacement_order_id):null} ):null;
   res.json({...o,items,return_request,tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}});
  }catch(e){res.status(500).json({error:e.message||'Could not load order'})}
 });

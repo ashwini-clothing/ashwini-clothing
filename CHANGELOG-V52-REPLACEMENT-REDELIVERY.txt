@@ -1,0 +1,11 @@
+Ashwini Clothing V52 - Replacement Re-Delivery
+
+- After a replacement/exchange return reaches COMPLETED, the system creates a new zero-charge replacement order automatically.
+- Replacement order is linked to the completed return and original order.
+- Replacement uses the same customer account and the exact original delivery address.
+- Original item quantity is copied; requested replacement size is used when provided.
+- Replacement order starts at PLACED and follows the normal admin shipping statuses: CONFIRMED, PACKED, SHIPPED, OUT_FOR_DELIVERY, DELIVERED.
+- Customer can see replacement order number, delivery address, and current status in Returns & Replacements and Your Orders.
+- Admin Return Management shows replacement order number/status/address.
+- Duplicate replacement creation is prevented if the return is saved as COMPLETED more than once.
+- Existing working return, order, payment, cart, search, category, profile, slider, wishlist and zoom/pan functions are preserved.
