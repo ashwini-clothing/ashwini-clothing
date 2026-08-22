@@ -63,7 +63,7 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0
 // it does not reset customers, products, orders, or other data.
 try{
  const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'parishdevi5@gmail.com').trim().toLowerCase();
- if(/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(bootstrapAdminEmail)){
+ if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail)){
   const existingAdmin=db.prepare("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
   if(existingAdmin && existingAdmin.role!=='admin'){
    db.prepare("UPDATE users SET role='admin' WHERE id=?").run(existingAdmin.id);
