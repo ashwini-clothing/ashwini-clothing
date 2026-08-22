@@ -1,0 +1,26 @@
+Ashwini V54 MASTER WORKING — WhatsApp Help Desk + 4-Day Return Fix
+
+1. WhatsApp Help Desk
+- Added admin-controlled WhatsApp Help Desk settings.
+- Admin can Enable/Disable the floating help button.
+- Admin can set WhatsApp display name, WhatsApp number and welcome message.
+- Customer-facing button is a round AI-style female avatar with floating and twinkle animation.
+- Clicking the button opens WhatsApp chat using the configured number/message.
+- No external avatar image dependency was added.
+
+2. Return / Replace — 4-Day Policy
+- Return eligibility is now calculated from the server-side delivered timestamp.
+- Customer can request Return / Replace only within 4 days after delivery.
+- After 4 days the Return / Replace button is automatically hidden/closed.
+- My Orders, Order Details and Returns & Replacements all use the same 4-day rule.
+- Refreshing the page or closing/reopening the browser cannot reactivate an expired return window.
+- Server API also rejects requests after the 4-day deadline, so the rule is enforced even if a customer bypasses the UI.
+- Existing return status/cancel/replacement workflow remains intact.
+
+3. Existing working functions were left unchanged as far as possible.
+
+9. WhatsApp privacy/UX refinement
+- Customer-facing website no longer receives/displays the configured admin WhatsApp number through the public store-profile API.
+- Floating WhatsApp Help Desk opens a server-side WhatsApp chat redirect with the admin number kept out of the visible website UI.
+- The configured welcome message is pre-filled in WhatsApp so the customer can simply send the message.
+- The admin WhatsApp number remains editable only from the admin settings.

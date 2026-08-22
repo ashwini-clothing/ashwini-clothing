@@ -1,0 +1,4 @@
+V54 Help Desk UI Update
+- Reduced only the floating "Hi" bubble size.
+- Kept the floating AI lady size and chat box unchanged.
+- No other website functionality was intentionally changed.

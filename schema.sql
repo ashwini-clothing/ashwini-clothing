@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
  email TEXT UNIQUE NOT NULL,
  password_hash TEXT NOT NULL,
  role TEXT NOT NULL DEFAULT 'customer',
+ two_step_enabled INTEGER NOT NULL DEFAULT 0,
+ two_step_channel TEXT NOT NULL DEFAULT 'AUTO',
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS products (

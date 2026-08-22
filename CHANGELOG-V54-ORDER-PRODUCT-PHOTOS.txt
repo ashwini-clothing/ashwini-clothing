@@ -1,0 +1,10 @@
+V54 Order Product Photo + Original Product Page Fix
+
+Changes made only for the requested order-history/product display:
+1. My Orders now shows small thumbnails for every purchased product.
+2. Clicking a purchased product thumbnail opens that product's original product-detail page.
+3. Order Details now shows the purchased product photo for each order item.
+4. Clicking the product photo or product name in Order Details opens the original product-detail page.
+5. Added a small "Previously purchased · for customer reference" note below purchased products.
+6. Server order-item API now returns the saved product image along with product name/emoji.
+7. Existing order, return/replace, tracking, payment, help desk, login/security and other working functions were not intentionally changed.
