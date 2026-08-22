@@ -12,6 +12,21 @@ import { fileURLToPath } from "url";
 
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const app=express(), PORT=process.env.PORT||3000;
+
+// Live Help Desk events: Server-Sent Events (SSE) for instant customer/admin updates.
+const helpChatStreams=new Map();
+function addHelpChatStream(key,res){
+  if(!helpChatStreams.has(key)) helpChatStreams.set(key,new Set());
+  helpChatStreams.get(key).add(res);
+  const cleanup=()=>{const set=helpChatStreams.get(key);if(!set)return;set.delete(res);if(!set.size)helpChatStreams.delete(key)};
+  res.on('close',cleanup);
+  return cleanup;
+}
+function publishHelpChat(threadId,payload){
+  const keys=[`thread:${threadId}`,'admin:all'];
+  const data=`data: ${JSON.stringify(payload)}\n\n`;
+  for(const key of keys){const set=helpChatStreams.get(key);if(!set)continue;for(const res of [...set]){try{res.write(data)}catch{try{res.end()}catch{}set.delete(res)}}}
+}
 const SECRET=process.env.JWT_SECRET||"CHANGE_ME";
 
 // Keep customer/order data independent of version folders. If an older version
@@ -40,10 +55,15 @@ try{db.exec("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
+try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN delivered_at TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN cancelled_at TEXT DEFAULT ''")}catch{}
+try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_order_id INTEGER DEFAULT NULL")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_return_id INTEGER DEFAULT NULL")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER, question TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
@@ -74,9 +94,21 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCR
 try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(return_id) REFERENCES returns(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL"]){try{db.exec(q)}catch{}}
+try{db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_help_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL DEFAULT '', customer_email TEXT NOT NULL DEFAULT '', message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_threads (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guest_token TEXT NOT NULL DEFAULT '', customer_name TEXT NOT NULL DEFAULT 'Guest customer', customer_email TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'OPEN', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER NOT NULL, sender_role TEXT NOT NULL CHECK(sender_role IN ('CUSTOMER','ADMIN')), message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT, FOREIGN KEY(thread_id) REFERENCES help_chat_threads(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS customer_help_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, subject TEXT NOT NULL, message TEXT NOT NULL, contact_method TEXT NOT NULL DEFAULT 'EMAIL', status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS store_profile (id INTEGER PRIMARY KEY CHECK(id=1), about_title TEXT NOT NULL DEFAULT 'About Ashwini Clothing', history TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '', pincode TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT 'ashwiniweb88@gmail.com', phone TEXT NOT NULL DEFAULT '', logo_data TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS store_profile (id INTEGER PRIMARY KEY CHECK(id=1), about_title TEXT NOT NULL DEFAULT 'About Ashwini Clothing', history TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '', pincode TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT 'ashwiniweb88@gmail.com', phone TEXT NOT NULL DEFAULT '', logo_data TEXT NOT NULL DEFAULT '', whatsapp_enabled INTEGER NOT NULL DEFAULT 0, whatsapp_number TEXT NOT NULL DEFAULT '', whatsapp_name TEXT NOT NULL DEFAULT 'Ashwini AI Help Desk', whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE store_profile ADD COLUMN logo_data TEXT NOT NULL DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
+try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_number TEXT NOT NULL DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_name TEXT NOT NULL DEFAULT 'Ashwini AI Help Desk'")}catch{}
+try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!'")}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS cod_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS cod_state_settings (state TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.prepare("INSERT OR IGNORE INTO cod_settings(id,enabled) VALUES(1,1)").run()}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO store_profile(id,about_title,history,address,city,state,pincode,email,phone,logo_data) VALUES(1,?,?,?,?,?,?,?,?,?)`).run('About Ashwini Clothing','Welcome to Ashwini Clothing. Our story and company information can be updated by the store admin.','','','','','ashwiniweb88@gmail.com','', '')}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, user_id INTEGER, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(question_id) REFERENCES product_questions(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 db.exec(fs.readFileSync(path.join(__dirname,"seed.sql"),"utf8"));
@@ -88,21 +120,56 @@ const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET
 app.use(cors());
 app.use(express.json({limit:'25mb'}));
 app.use(express.static(__dirname));
-function token(u){return jwt.sign({id:u.id,name:u.name,email:u.email,phone:u.phone||"",role:u.role},SECRET,{expiresIn:"7d"})}
+
+// Login/OTP security hardening: short-lived in-memory rate limits protect the
+// authentication endpoints without changing the existing customer/order APIs.
+const otpLimits=new Map();
+function clientIp(req){return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"unknown").split(",")[0].trim();}
+function otpKey(req,identifier){return clientIp(req)+"|"+String(identifier||"").trim().toLowerCase();}
+function otpGuard(req,res,identifier,kind="request") {
+ const key=otpKey(req,identifier), now=Date.now(), windowMs=15*60*1000, cooldown=45*1000, max=5;
+ let x=otpLimits.get(key);
+ if(!x || now-x.windowStart>windowMs) x={windowStart:now,count:0,last:0,verifyFails:0};
+ if(kind==="request" && now-x.last<cooldown) return res.status(429).json({error:`Please wait ${Math.ceil((cooldown-(now-x.last))/1000)} seconds before requesting another OTP.`});
+ if(kind==="request" && x.count>=max) return res.status(429).json({error:"Too many OTP requests. Please try again later."});
+ if(kind==="request"){x.count++;x.last=now;}
+ otpLimits.set(key,x);
+ return x;
+}
+function otpVerifyGuard(req,res,identifier){
+ const key=otpKey(req,identifier), x=otpLimits.get(key)||{windowStart:Date.now(),count:0,last:0,verifyFails:0};
+ if(x.verifyFails>=5)return res.status(429).json({error:"Too many incorrect OTP attempts. Please request a new OTP."});
+ return x;
+}
+function recordOtpFailure(req,identifier){const key=otpKey(req,identifier),x=otpLimits.get(key)||{windowStart:Date.now(),count:0,last:0,verifyFails:0};x.verifyFails++;otpLimits.set(key,x);}
+function clearOtpFailures(req,identifier){const key=otpKey(req,identifier),x=otpLimits.get(key);if(x){x.verifyFails=0;otpLimits.set(key,x);}}
+function publicOtpResponse(otp,channel,message){const dev=process.env.NODE_ENV!=="production" || String(process.env.SHOW_DEV_OTP||"").toLowerCase()==="true";return {ok:true,channel,message,...(dev?{devOtp:otp}:{})};}
+async function sendSmsOtp(to,otp){
+ const provider=String(process.env.SMS_PROVIDER||"").trim().toLowerCase();
+ if(!provider)return {sent:false,configured:false,error:"SMS provider is not configured"};
+ if(provider==="twilio"){
+  const sid=process.env.TWILIO_ACCOUNT_SID, auth=process.env.TWILIO_AUTH_TOKEN, from=process.env.TWILIO_FROM;
+  if(!sid||!auth||!from)return {sent:false,configured:false,error:"Twilio SMS is not configured"};
+  const body=new URLSearchParams({To:`+91${String(to).replace(/\D/g,"")}`,From:from,Body:`Ashwini Clothing OTP: ${otp}. It expires in 5 minutes. Do not share this OTP.`});
+  const basic=Buffer.from(`${sid}:${auth}`).toString("base64");
+  const r=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:"POST",headers:{Authorization:`Basic ${basic}`,"Content-Type":"application/x-www-form-urlencoded"},body});
+  if(!r.ok)throw new Error(await r.text());
+  return {sent:true,configured:true,provider:"twilio"};
+ }
+ return {sent:false,configured:false,error:`Unsupported SMS provider: ${provider}`};
+}
+function token(u){return jwt.sign({id:u.id,name:u.name,email:u.email,phone:u.phone||"",role:u.role},SECRET,{expiresIn:"15m"})}
+function sessionHash(value){return crypto.createHash("sha256").update(String(value)).digest("hex")}
+function setSessionCookie(res,raw){res.setHeader("Set-Cookie",`ashwini_session=${raw}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${process.env.NODE_ENV==='production'?'; Secure':''}`)}
+function clearSessionCookie(res){res.setHeader("Set-Cookie","ashwini_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")}
+function createSession(res,userId){const raw=crypto.randomBytes(32).toString("base64url"),hash=sessionHash(raw),now=Date.now(),exp=now+30*24*60*60*1000;db.prepare("DELETE FROM auth_sessions WHERE expires_at<?").run(now);db.prepare("INSERT INTO auth_sessions(session_hash,user_id,expires_at,last_seen_at) VALUES(?,?,?,?)").run(hash,userId,exp,now);setSessionCookie(res,raw);return raw}
+function readCookie(req,name){const raw=String(req.headers.cookie||"");for(const part of raw.split(";")){const [k,...v]=part.trim().split("=");if(k===name)return decodeURIComponent(v.join("="));}return ""}
 function auth(req,res,next){
  try{
-  const h=req.headers.authorization||"";
-  if(!h.startsWith("Bearer "))throw 0;
-  const claims=jwt.verify(h.slice(7),SECRET);
-  // Never trust a stale JWT user id after an old/local database has been
-  // reused. Re-hydrate the account from the current database so foreign-key
-  // inserts always reference a real users.id.
-  let u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(claims.id);
-  if(!u && claims.email) u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE email=?").get(String(claims.email).toLowerCase());
-  if(!u && claims.phone) u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE phone=?").get(String(claims.phone).replace(/\\D/g,""));
-  if(!u) return res.status(401).json({error:"Login required. Please sign in again."});
-  req.user=u;
-  next();
+  const raw=readCookie(req,"ashwini_session");let u=null;
+  if(raw){const s=db.prepare("SELECT user_id,expires_at FROM auth_sessions WHERE session_hash=?").get(sessionHash(raw));if(s&&Number(s.expires_at)>Date.now()){u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(s.user_id);if(u){const now=Date.now();const newExp=now+30*24*60*60*1000;db.prepare("UPDATE auth_sessions SET last_seen_at=?,expires_at=? WHERE session_hash=?").run(now,newExp,sessionHash(raw));setSessionCookie(res,raw);}else db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));}}
+  if(!u){const h=req.headers.authorization||"";if(h.startsWith("Bearer ")){const claims=jwt.verify(h.slice(7),SECRET);u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(claims.id);}}
+  if(!u)return res.status(401).json({error:"Login required. Please sign in again."});req.user=u;next();
  }catch{res.status(401).json({error:"Login required. Please sign in again."})}
 }
 function admin(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin only"});next()}
@@ -146,8 +213,49 @@ app.get('/api/admin/email-status',auth,admin,(req,res)=>{
  const configured=provider==='smtp' ? !!(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS) : !!process.env.RESEND_API_KEY;
  res.json({provider,configured,admin_email:adminEmail(),from:process.env.EMAIL_FROM||'Ashwini Clothing <onboarding@resend.dev>'});
 });
-app.get("/api/store-profile",(req,res)=>{res.json(db.prepare("SELECT * FROM store_profile WHERE id=1").get()||{})});
-app.patch("/api/admin/store-profile",auth,admin,(req,res)=>{try{const b=req.body||{};const logo=String(b.logo_data||"");if(logo && !/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/.test(logo))return res.status(400).json({error:"Invalid logo image"});if(logo.length>15*1024*1024)return res.status(400).json({error:"Logo image is too large"});db.prepare(`UPDATE store_profile SET about_title=?,history=?,address=?,city=?,state=?,pincode=?,email=?,phone=?,logo_data=CASE WHEN ?='' THEN logo_data ELSE ? END,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.about_title||"About Ashwini Clothing").trim(),String(b.history||"").trim(),String(b.address||"").trim(),String(b.city||"").trim(),String(b.state||"").trim(),String(b.pincode||"").trim(),String(b.email||"ashwiniweb88@gmail.com").trim(),String(b.phone||"").trim(),logo,logo);res.json(db.prepare("SELECT * FROM store_profile WHERE id=1").get())}catch(e){res.status(400).json({error:e.message})}});
+app.get("/api/store-profile",(req,res)=>{const x=db.prepare("SELECT * FROM store_profile WHERE id=1").get()||{};const {whatsapp_number,...safe}=x;res.json(safe)});
+app.get("/api/whatsapp-help",(req,res)=>{res.redirect(302,"/");});
+
+function currentHelpCustomer(req){
+ let u=null;
+ try{const raw=readCookie(req,"ashwini_session");if(raw){const ss=db.prepare("SELECT user_id,expires_at FROM auth_sessions WHERE session_hash=?").get(sessionHash(raw));if(ss&&Number(ss.expires_at)>Date.now())u=db.prepare("SELECT id,name,email FROM users WHERE id=? AND role='customer'").get(ss.user_id)}}catch{}
+ return u;
+}
+function helpGuestToken(req){return String(readCookie(req,"ashwini_help_chat")||"").trim();}
+function setHelpGuestCookie(res,token){res.setHeader("Set-Cookie",`ashwini_help_chat=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${process.env.NODE_ENV==='production'?'; Secure':''}`)}
+function getHelpThread(req){const u=currentHelpCustomer(req),guest=helpGuestToken(req);if(u){return db.prepare("SELECT * FROM help_chat_threads WHERE user_id=? ORDER BY id DESC LIMIT 1").get(u.id)||null}if(guest){return db.prepare("SELECT * FROM help_chat_threads WHERE guest_token=? ORDER BY id DESC LIMIT 1").get(guest)||null}return null}
+app.get('/api/help-chat',(req,res)=>{try{const sp=db.prepare("SELECT whatsapp_enabled,whatsapp_name,whatsapp_message FROM store_profile WHERE id=1").get()||{};if(Number(sp.whatsapp_enabled)!==1)return res.status(404).json({error:'Ashwini Help Desk is currently unavailable.'});let thread=getHelpThread(req);const u=currentHelpCustomer(req);if(!thread){const guest=u?'':crypto.randomBytes(18).toString('hex');if(!u)setHelpGuestCookie(res,guest);const welcome=String(sp.whatsapp_message||'Hello! 👋 How can we help you today?').trim().slice(0,500);const info=u?{user_id:u.id,guest_token:'',customer_name:u.name||'Customer',customer_email:u.email||''}:{user_id:null,guest_token:guest,customer_name:'Guest customer',customer_email:''};const r=db.prepare("INSERT INTO help_chat_threads(user_id,guest_token,customer_name,customer_email) VALUES(?,?,?,?)").run(info.user_id,info.guest_token,info.customer_name,info.customer_email);thread=db.prepare("SELECT * FROM help_chat_threads WHERE id=?").get(r.lastInsertRowid);db.prepare("INSERT INTO help_chat_messages(thread_id,sender_role,message) VALUES(?,?,?)").run(thread.id,'ADMIN',welcome)}db.prepare("UPDATE help_chat_messages SET seen_at=COALESCE(seen_at,CURRENT_TIMESTAMP) WHERE thread_id=? AND sender_role='ADMIN'").run(thread.id);res.json({thread:{id:thread.id,status:thread.status,customer_name:thread.customer_name},messages:db.prepare("SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE thread_id=? ORDER BY id ASC").all(thread.id),name:sp.whatsapp_name||'Ashwini AI Help Desk'})}catch(e){res.status(500).json({error:e.message||'Help Desk unavailable'})}});
+app.get('/api/help-chat/unread',(req,res)=>{try{const thread=getHelpThread(req);if(!thread)return res.json({count:0});const row=db.prepare("SELECT COUNT(*) AS count FROM help_chat_messages WHERE thread_id=? AND sender_role='ADMIN' AND seen_at IS NULL").get(thread.id);res.json({count:Number(row?.count||0)})}catch(e){res.status(500).json({error:e.message||'Could not load Help Desk notifications'})}});
+app.patch('/api/help-chat/read',(req,res)=>{try{const thread=getHelpThread(req);if(!thread)return res.json({ok:true,count:0});db.prepare("UPDATE help_chat_messages SET seen_at=COALESCE(seen_at,CURRENT_TIMESTAMP) WHERE thread_id=? AND sender_role='ADMIN' AND seen_at IS NULL").run(thread.id);res.json({ok:true,count:0})}catch(e){res.status(500).json({error:e.message||'Could not mark Help Desk notifications read'})}});
+app.get('/api/help-chat/stream',(req,res)=>{
+ try{
+  const thread=getHelpThread(req);
+  if(!thread)return res.status(404).end();
+  res.setHeader('Content-Type','text/event-stream; charset=utf-8');res.setHeader('Cache-Control','no-cache, no-transform');res.setHeader('Connection','keep-alive');res.flushHeaders?.();
+  res.write(`data: ${JSON.stringify({type:'connected',thread_id:thread.id})}\n\n`);
+  addHelpChatStream(`thread:${thread.id}`,res);
+  const keep=setInterval(()=>{try{res.write(': keep-alive\n\n')}catch{}},20000);
+  res.on('close',()=>clearInterval(keep));
+ }catch{res.status(500).end()}
+});
+app.get('/api/admin/help-chat/stream/:id',auth,admin,(req,res)=>{
+ try{
+  const id=Number(req.params.id);const thread=db.prepare('SELECT id FROM help_chat_threads WHERE id=?').get(id);if(!thread)return res.status(404).end();
+  res.setHeader('Content-Type','text/event-stream; charset=utf-8');res.setHeader('Cache-Control','no-cache, no-transform');res.setHeader('Connection','keep-alive');res.flushHeaders?.();
+  res.write(`data: ${JSON.stringify({type:'connected',thread_id:id})}\n\n`);
+  addHelpChatStream(`thread:${id}`,res);
+  const keep=setInterval(()=>{try{res.write(': keep-alive\n\n')}catch{}},20000);
+  res.on('close',()=>clearInterval(keep));
+ }catch{res.status(500).end()}
+});
+app.get('/api/admin/help-chat/stream',auth,admin,(req,res)=>{
+ try{res.setHeader('Content-Type','text/event-stream; charset=utf-8');res.setHeader('Cache-Control','no-cache, no-transform');res.setHeader('Connection','keep-alive');res.flushHeaders?.();res.write(`data: ${JSON.stringify({type:'connected'})}\n\n`);addHelpChatStream('admin:all',res);const keep=setInterval(()=>{try{res.write(': keep-alive\n\n')}catch{}},20000);res.on('close',()=>clearInterval(keep));}catch{res.status(500).end()}
+});
+
+app.post('/api/help-chat/messages',(req,res)=>{try{const text=String(req.body?.message||'').trim().slice(0,1000);if(!text)return res.status(400).json({error:'Please enter a message.'});let thread=getHelpThread(req);if(!thread){return res.status(404).json({error:'Help chat session not found. Please open Help Desk again.'});}const r=db.prepare("INSERT INTO help_chat_messages(thread_id,sender_role,message) VALUES(?,?,?)").run(thread.id,'CUSTOMER',text);db.prepare("UPDATE help_chat_threads SET status='OPEN',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(thread.id);const msg=db.prepare("SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE id=?").get(r.lastInsertRowid);publishHelpChat(thread.id,{type:'message',message:msg});res.json({ok:true,message:msg})}catch(e){res.status(500).json({error:e.message||'Message could not be sent'})}});
+app.get('/api/help-chat/messages',(req,res)=>{try{const thread=getHelpThread(req);if(!thread)return res.json({thread:null,messages:[]});res.json({thread:{id:thread.id,status:thread.status},messages:db.prepare("SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE thread_id=? ORDER BY id ASC").all(thread.id)})}catch(e){res.status(500).json({error:e.message||'Could not load messages'})}});
+
+app.patch("/api/admin/store-profile",auth,admin,(req,res)=>{try{const b=req.body||{};const logo=String(b.logo_data||"");if(logo && !/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/.test(logo))return res.status(400).json({error:"Invalid logo image"});if(logo.length>15*1024*1024)return res.status(400).json({error:"Logo image is too large"});const waEnabled=b.whatsapp_enabled===true||b.whatsapp_enabled===1||String(b.whatsapp_enabled).toLowerCase()==='true';const waNumber=String(b.whatsapp_number??'').replace(/\D/g,'');if(waNumber && waNumber.length<10)return res.status(400).json({error:"Enter a valid WhatsApp number"});db.prepare(`UPDATE store_profile SET about_title=?,history=?,address=?,city=?,state=?,pincode=?,email=?,phone=?,logo_data=CASE WHEN ?='' THEN logo_data ELSE ? END,whatsapp_enabled=?,whatsapp_number=?,whatsapp_name=?,whatsapp_message=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.about_title||"About Ashwini Clothing").trim(),String(b.history||"").trim(),String(b.address||"").trim(),String(b.city||"").trim(),String(b.state||"").trim(),String(b.pincode||"").trim(),String(b.email||"ashwiniweb88@gmail.com").trim(),String(b.phone||"").trim(),logo,logo,waEnabled?1:0,waNumber,String(b.whatsapp_name||"Ashwini AI Help Desk").trim().slice(0,80),String(b.whatsapp_message||"Hello! 👋 Need help? Chat with us on WhatsApp!").trim().slice(0,500));res.json(db.prepare("SELECT * FROM store_profile WHERE id=1").get())}catch(e){res.status(400).json({error:e.message})}});
 
 app.get("/api/pincode/:pin",async(req,res)=>{
  const pin=String(req.params.pin||'').trim();
@@ -257,14 +365,15 @@ app.get("/api/products",(req,res)=>{
  const {q="",category="All",sort="featured"}=req.query;
  let rows=db.prepare(`SELECT * FROM products
  WHERE (?='' OR name LIKE ? OR category LIKE ?)
- AND (?='All' OR category=?)`).all(q,`%${q}%`,`%${q}%`,category,category);
+ AND (?='All' OR lower(trim(category))=lower(trim(?)))`).all(q,`%${q}%`,`%${q}%`,category,category);
  if(sort==="low")rows.sort((a,b)=>a.price-b.price);
  if(sort==="high")rows.sort((a,b)=>b.price-a.price);
  if(sort==="rating")rows.sort((a,b)=>b.rating-a.rating);
  res.json(rows);
 });
-function makeOtp(){return String(Math.floor(100000+Math.random()*900000))}
+function makeOtp(){return String(crypto.randomInt(100000,1000000))}
 function hashOtp(otp){return crypto.createHash("sha256").update(String(otp)).digest("hex")}
+function otpMatches(input,stored){try{return Boolean(stored)&&crypto.timingSafeEqual(Buffer.from(hashOtp(input),"hex"),Buffer.from(stored,"hex"))}catch{return false}}
 function normalizePhone(v){return String(v||"").replace(/\D/g,"")}
 function findCustomerByIdentifier(identifier){
  const raw=String(identifier||"").trim();
@@ -289,38 +398,55 @@ app.post("/api/auth/request-otp",(req,res)=>{
  const otp=issueOtp(u,'login');
  res.json({ok:true,devOtp:otp,channel:'mobile',message:"OTP generated. In live mode connect an SMS provider to deliver it."});
 });
-app.post("/api/auth/request-login-otp",(req,res)=>{
+app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
  if(!identifier)return res.status(400).json({error:"Enter your email or mobile number"});
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
+ if(!otpGuard(req,res,identifier))return;
  const otp=issueOtp(u,'login');
- const channel=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
- res.json({ok:true,devOtp:otp,channel,message:`${channel==='mobile'?'Mobile':'Email'} OTP generated. Connect the real SMS/email provider before launch.`});
+ const configured=String(u.two_step_channel||'AUTO').toUpperCase();
+ const requested=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
+ const channel=Number(u.two_step_enabled)!==0 ? (configured==='EMAIL'?'email':configured==='MOBILE'?'mobile':requested) : requested;
+ const destination=channel==='email'?u.email:u.phone;
+ try{
+  if(channel==='mobile' && !/^\d{10}$/.test(normalizePhone(destination)))throw new Error('A valid registered mobile number is required for Mobile OTP.');
+  if(channel==='email' && !destination)throw new Error('A registered email address is required for E-mail OTP.');
+  const delivery=channel==='email' ? await sendEmail(destination,'Ashwini Clothing login OTP',`Your Ashwini Clothing login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`) : await sendSmsOtp(destination,otp);  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:`${channel==='email'?'Email':'SMS'} OTP service is not configured.`});
+  clearOtpFailures(req,identifier);
+  res.json(publicOtpResponse(otp,channel,`${channel==='mobile'?'Mobile':'Email'} OTP sent. It expires in 5 minutes.`));
+ }catch(e){console.error('[Ashwini OTP delivery]',e.message);res.status(503).json({error:"OTP could not be delivered. Please try again later."});}
 });
 app.post("/api/auth/verify-login-otp",(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim();
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"Customer account not found"});
- if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||u.login_otp_expires_at<Date.now()||hashOtp(otp)!==u.login_otp_hash)return res.status(400).json({error:"Invalid or expired OTP"});
+ if(!otpVerifyGuard(req,res,identifier))return;
+ if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||u.login_otp_expires_at<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"});}
  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
+ clearOtpFailures(req,identifier);
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
- res.json({token:token(safe),user:safe});
+ createSession(res,u.id);res.json({user:safe});
 });
-app.post("/api/auth/request-recovery-otp",(req,res)=>{
+app.post("/api/auth/request-recovery-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
  if(!identifier)return res.status(400).json({error:"Enter your registered email or mobile number"});
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"No customer account found with this email or mobile number"});
+ if(!otpGuard(req,res,identifier))return;
  const otp=issueOtp(u,'recovery');
  const channel=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
- res.json({ok:true,devOtp:otp,channel,message:`Recovery OTP generated for ${channel}.`});
+ try{
+  const delivery=channel==='email' ? await sendEmail(u.email,'Ashwini Clothing account recovery OTP',`Your account recovery OTP is ${otp}. It expires in 5 minutes. Do not share it.`) : await sendSmsOtp(u.phone,otp);
+  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:`${channel==='email'?'Email':'SMS'} OTP service is not configured.`});
+  res.json(publicOtpResponse(otp,channel,`Recovery OTP sent. It expires in 5 minutes.`));
+ }catch(e){res.status(503).json({error:"OTP could not be delivered. Please try again later."});}
 });
 app.post("/api/auth/forgot-login-id",(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim();
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"Customer account not found"});
- if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||hashOtp(otp)!==u.recovery_otp_hash)return res.status(400).json({error:"Invalid or expired OTP"});
+ if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash))return res.status(400).json({error:"Invalid or expired OTP"});
  db.prepare("UPDATE users SET recovery_otp_hash='',recovery_otp_expires_at=0 WHERE id=?").run(u.id);
  res.json({ok:true,loginId:u.email,message:"Your login ID is your registered email address."});
 });
@@ -329,7 +455,7 @@ app.post("/api/auth/reset-password",async(req,res)=>{
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"Customer account not found"});
  if(password.length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
- if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||hashOtp(otp)!==u.recovery_otp_hash)return res.status(400).json({error:"Invalid or expired OTP"});
+ if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash))return res.status(400).json({error:"Invalid or expired OTP"});
  const hash=await bcrypt.hash(password,12);
  db.prepare("UPDATE users SET password_hash=?,recovery_otp_hash='',recovery_otp_expires_at=0 WHERE id=?").run(hash,u.id);
  res.json({ok:true,message:"Password reset successfully. You can now sign in."});
@@ -340,8 +466,8 @@ app.post("/api/auth/register",async(req,res)=>{
  const u0=db.prepare("SELECT * FROM users WHERE phone=?").get(String(phone));
  if(!u0||!u0.login_otp_hash && !u0.otp_hash)return res.status(400).json({error:"Please request a fresh OTP"});
  const expected=u0.login_otp_hash||u0.otp_hash, expires=u0.login_otp_expires_at||u0.otp_expires_at;
- if(expires<Date.now()||hashOtp(otp)!==expected)return res.status(400).json({error:"Invalid or expired OTP"});
- try{const hash=await bcrypt.hash(password,12);db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(name,email.toLowerCase(),hash,u0.id);const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);res.json({token:token(u),user:u})}
+ if(expires<Date.now()||!otpMatches(otp,expected))return res.status(400).json({error:"Invalid or expired OTP"});
+ try{const hash=await bcrypt.hash(password,12);db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(name,email.toLowerCase(),hash,u0.id);const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);createSession(res,u.id);res.json({user:u})}
  catch{res.status(409).json({error:"Email or mobile already registered"})}
 });
 app.post("/api/auth/setup-admin",async(req,res)=>{
@@ -349,17 +475,40 @@ app.post("/api/auth/setup-admin",async(req,res)=>{
  if(admins>0)return res.status(403).json({error:"Store admin is already configured"});
  const {name,email,password}=req.body||{};
  if(!name||!email||!password||String(password).length<8)return res.status(400).json({error:"Name, email and an 8+ character password are required"});
- try{const hash=await bcrypt.hash(password,12);const r=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)").run(name,email.toLowerCase(),hash,'admin');const u=db.prepare("SELECT id,name,email,role FROM users WHERE id=?").get(r.lastInsertRowid);res.json({token:token(u),user:u})}
+ try{const hash=await bcrypt.hash(password,12);const r=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)").run(name,email.toLowerCase(),hash,'admin');const u=db.prepare("SELECT id,name,email,role FROM users WHERE id=?").get(r.lastInsertRowid);createSession(res,u.id);res.json({user:u})}
  catch{res.status(409).json({error:"Email already registered"})}
 });
 app.post("/api/auth/login",async(req,res)=>{
  const u=db.prepare("SELECT * FROM users WHERE email=?").get((req.body.email||"").toLowerCase());
  if(!u||!(await bcrypt.compare(req.body.password||"",u.password_hash)))return res.status(401).json({error:"Invalid email or password"});
- const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};res.json({token:token(safe),user:safe});
+ const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};createSession(res,u.id);res.json({user:safe});
 });
+function profileOtpTarget(value){return /^\d{10}$/.test(normalizePhone(value))?"mobile":"email"}
+async function deliverProfileOtp(value,otp){const channel=profileOtpTarget(value);return channel==='mobile'?sendSmsOtp(value,otp):sendEmail(value,'Ashwini Clothing profile verification OTP',`Your profile change verification OTP is ${otp}. It expires in 5 minutes. Do not share it.`)}
+app.patch('/api/me/name',auth,(req,res)=>{try{const name=String(req.body?.name||'').trim();if(!name)return res.status(400).json({error:'Please enter a valid name'});if(name.length>80)return res.status(400).json({error:'Name is too long'});db.prepare('UPDATE users SET name=? WHERE id=?').run(name,req.user.id);const u=db.prepare('SELECT id,name,email,phone,role,two_step_enabled,two_step_channel FROM users WHERE id=?').get(req.user.id);res.json({ok:true,user:u});}catch(e){res.status(400).json({error:e.message||'Could not save name'})}});
+app.post("/api/me/change-password",auth,async(req,res)=>{try{
+ const current=String(req.body?.currentPassword||""), next=String(req.body?.newPassword||""), confirm=String(req.body?.confirmPassword||"");
+ if(next.length<8)return res.status(400).json({error:"New password must be at least 8 characters"});
+ if(next!==confirm)return res.status(400).json({error:"New passwords do not match"});
+ const u=db.prepare("SELECT id,password_hash FROM users WHERE id=?").get(req.user.id);
+ if(!u||!(await bcrypt.compare(current,u.password_hash)))return res.status(401).json({error:"Current password is incorrect"});
+ const hash=await bcrypt.hash(next,12); db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash,u.id);
+ db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(u.id);
+ clearSessionCookie(res); res.json({ok:true,message:"Password changed successfully. Please sign in again."});
+}catch(e){res.status(400).json({error:e.message||"Could not change password"})}});
+app.patch("/api/me/security",auth,(req,res)=>{try{
+ const channel=String(req.body?.two_step_channel||"AUTO").toUpperCase();
+ if(!["AUTO","EMAIL","MOBILE"].includes(channel))return res.status(400).json({error:"Invalid OTP channel"});
+ db.prepare("UPDATE users SET two_step_enabled=?,two_step_channel=? WHERE id=?").run(req.body?.two_step_enabled===false?0:1,channel,req.user.id);
+ const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel FROM users WHERE id=?").get(req.user.id);
+ res.json({ok:true,user:u});
+}catch(e){res.status(400).json({error:e.message||"Could not update security settings"})}});
+app.post("/api/me/profile-change/request",auth,async(req,res)=>{try{const u=db.prepare("SELECT * FROM users WHERE id=?").get(req.user.id);const name=String(req.body?.name||u.name).trim(),newEmail=String(req.body?.email||u.email).trim().toLowerCase(),newPhone=normalizePhone(req.body?.phone||u.phone);if(!name||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)||!/^[0-9]{10}$/.test(newPhone))return res.status(400).json({error:"Enter a valid name, email and 10-digit mobile number"});if(db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?").get(newEmail,u.id))return res.status(409).json({error:"Email is already in use"});if(db.prepare("SELECT id FROM users WHERE phone=? AND id<>?").get(newPhone,u.id))return res.status(409).json({error:"Mobile number is already in use"});if(newEmail===String(u.email).toLowerCase()&&newPhone===String(u.phone||"")){db.prepare("UPDATE users SET name=? WHERE id=?").run(name,u.id);return res.json({ok:true,unchanged:true,user:db.prepare("SELECT id,name,email,phone,role FROM users WHERE id=?").get(u.id)});}db.prepare("DELETE FROM profile_change_requests WHERE user_id=?").run(u.id);const r=db.prepare(`INSERT INTO profile_change_requests(user_id,old_email,old_phone,new_email,new_phone,created_at) VALUES(?,?,?,?,?,?)`).run(u.id,u.email,u.phone||"",newEmail,newPhone,Date.now());const targets=[];const changedEmail=newEmail!==String(u.email).toLowerCase(),changedPhone=newPhone!==String(u.phone||"");for(const [key,value,changed] of [["old_email",u.email,changedEmail],["new_email",newEmail,changedEmail],["old_phone",u.phone||"",changedPhone],["new_phone",newPhone,changedPhone]]){if(!changed||!value)continue;const otp=makeOtp(),hash=hashOtp(otp),exp=Date.now()+5*60*1000;db.prepare(`UPDATE profile_change_requests SET ${key}_hash=?,${key}_expires=? WHERE id=?`).run(hash,exp,r.lastInsertRowid);try{const d=await deliverProfileOtp(value,otp);if(!d.sent&&process.env.NODE_ENV==='production'&&String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:`${profileOtpTarget(value)==='mobile'?'SMS':'Email'} verification is not configured.`});targets.push({key,channel:profileOtpTarget(value),devOtp:(process.env.NODE_ENV!=='production'||String(process.env.SHOW_DEV_OTP||'').toLowerCase()==='true')?otp:undefined});}catch{return res.status(503).json({error:"Verification OTP could not be delivered. Please try again later."})}}res.json({ok:true,requiresVerification:true,targets});}catch(e){res.status(400).json({error:e.message})}});
+app.post("/api/me/profile-change/confirm",auth,async(req,res)=>{try{const r=db.prepare("SELECT * FROM profile_change_requests WHERE user_id=? ORDER BY id DESC LIMIT 1").get(req.user.id);if(!r)return res.status(400).json({error:"No pending profile change"});if(Number(r.attempts)>=5){db.prepare("DELETE FROM profile_change_requests WHERE id=?").run(r.id);return res.status(429).json({error:"Too many verification attempts. Please start again."});}const now=Date.now(),b=req.body||{},checks=[];if(r.new_email!==r.old_email)checks.push(["old_email",b.oldEmailOtp],["new_email",b.newEmailOtp]);if(r.new_phone!==r.old_phone)checks.push(["old_phone",b.oldPhoneOtp],["new_phone",b.newPhoneOtp]);for(const [key,otp] of checks){if(!/^\d{6}$/.test(String(otp||""))||Number(r[`${key}_expires`])<now||!otpMatches(otp,r[`${key}_hash`])){db.prepare("UPDATE profile_change_requests SET attempts=attempts+1 WHERE id=?").run(r.id);return res.status(400).json({error:"Invalid or expired verification OTP"});}}db.prepare("UPDATE users SET name=?,email=?,phone=? WHERE id=?").run(String(b.name||req.user.name).trim(),r.new_email,r.new_phone,req.user.id);db.prepare("DELETE FROM profile_change_requests WHERE id=?").run(r.id);const u=db.prepare("SELECT id,name,email,phone,role FROM users WHERE id=?").get(req.user.id);res.json({ok:true,user:u});}catch(e){res.status(400).json({error:e.message})}});
+app.post("/api/auth/logout",auth,(req,res)=>{try{const raw=readCookie(req,"ashwini_session");if(raw)db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));clearSessionCookie(res);res.json({ok:true});}catch(e){clearSessionCookie(res);res.json({ok:true});}});
 app.get("/api/me",auth,(req,res)=>{
  try{
-  const u=db.prepare("SELECT id,name,email,phone,role,created_at FROM users WHERE id=?").get(req.user.id);
+  const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,created_at FROM users WHERE id=?").get(req.user.id);
   if(!u)return res.status(404).json({error:"Account not found"});
   res.json({user:u});
  }catch(e){res.status(400).json({error:e.message||"Could not load account"})}
@@ -432,10 +581,22 @@ function resolveItems(items){
  }
  return {total,out};
 }
+app.get('/api/cod/availability',(req,res)=>{
+ try{const global=db.prepare('SELECT enabled FROM cod_settings WHERE id=1').get()?.enabled;const state=String(req.query?.state||'').trim();const row=state?db.prepare('SELECT enabled FROM cod_state_settings WHERE lower(state)=lower(?)').get(state):null;const enabled=Number(global??1)===1 && (!row || Number(row.enabled)===1);res.json({enabled,state,global_enabled:Number(global??1)===1,state_override:row?Number(row.enabled)===1:null});}catch(e){res.status(500).json({error:e.message||'Could not check COD availability'})}
+});
+app.get('/api/admin/cod-settings',auth,admin,(req,res)=>{try{const global=db.prepare('SELECT enabled,updated_at FROM cod_settings WHERE id=1').get()||{enabled:1};const states=db.prepare('SELECT state,enabled,updated_at FROM cod_state_settings ORDER BY state').all();res.json({enabled:Number(global.enabled)!==0,updated_at:global.updated_at||'',states});}catch(e){res.status(500).json({error:e.message||'Could not load COD settings'})}});
+app.patch('/api/admin/cod-settings',auth,admin,(req,res)=>{try{const enabled=req.body?.enabled===false||String(req.body?.enabled).toLowerCase()==='false'?0:1;const states=Array.isArray(req.body?.states)?req.body.states:[];const tx=db.transaction(()=>{db.prepare('UPDATE cod_settings SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(enabled);const up=db.prepare('INSERT INTO cod_state_settings(state,enabled,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(state) DO UPDATE SET enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP');const del=db.prepare('DELETE FROM cod_state_settings WHERE state=?');for(const x of states){const state=String(x?.state||'').trim().slice(0,80);if(!state)continue;if(x?.enabled===null||x?.enabled===undefined)del.run(state);else up.run(state,x.enabled?1:0);}});tx();const global=db.prepare('SELECT enabled,updated_at FROM cod_settings WHERE id=1').get();res.json({ok:true,enabled:Number(global.enabled)!==0,updated_at:global.updated_at,states:db.prepare('SELECT state,enabled,updated_at FROM cod_state_settings ORDER BY state').all()});}catch(e){res.status(400).json({error:e.message||'Could not save COD settings'})}});
 app.post("/api/checkout/create",auth,async(req,res)=>{
  try{
-  const {items,address,payment_method="RAZORPAY",coupon=""}=req.body||{};
+  const {items,address,payment_method="RAZORPAY",coupon="",delivery_state=""}=req.body||{};
   if(!address?.trim())throw Error("Delivery address required");
+  if(!['RAZORPAY','COD'].includes(String(payment_method).toUpperCase()))throw Error("Invalid payment method");
+  if(String(payment_method).toUpperCase()==='COD'){
+   const global=db.prepare('SELECT enabled FROM cod_settings WHERE id=1').get()?.enabled;
+   const state=String(delivery_state||'').trim();
+   const override=state?db.prepare('SELECT enabled FROM cod_state_settings WHERE lower(state)=lower(?)').get(state):null;
+   if(Number(global??1)!==1 || (override && Number(override.enabled)!==1))throw Error(state?`Cash on Delivery is currently unavailable in ${state}. Please choose another payment method.`:'Cash on Delivery is currently unavailable. Please choose another payment method.');
+  }
   const enteredPhone=String(req.body?.mobile||'').replace(/\D/g,'');
   if(!/^\d{10}$/.test(enteredPhone))throw Error("Please enter a valid 10-digit mobile number");
 
@@ -492,13 +653,13 @@ app.post("/api/checkout/verify",auth,(req,res)=>{
  res.json({ok:true});
 });
 
-app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
+app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
 app.patch('/api/me',auth,(req,res)=>{try{const name=String(req.body?.name||'').trim(),email=String(req.body?.email||'').trim(),phone=String(req.body?.phone||'').replace(/\D/g,'');if(!name||!email||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||!/^[0-9]{10}$/.test(phone))return res.status(400).json({error:'Enter a valid name, email and 10-digit mobile number'});const exists=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?").get(email,req.user.id);if(exists)return res.status(409).json({error:'Email is already in use'});db.prepare('UPDATE users SET name=?,email=?,phone=? WHERE id=?').run(name,email,phone,req.user.id);const u=db.prepare("SELECT id,name,email,phone,role FROM users WHERE id=?").get(req.user.id);res.json({ok:true,user:u,token:token(u)});}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/return-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM return_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/order-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM order_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/returns',auth,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.status AS order_status,o.created_at AS order_date,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id WHERE r.user_id=? ORDER BY r.id DESC`).all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.patch('/api/returns/:id/cancel',auth,async(req,res)=>{try{const r=db.prepare(`SELECT r.*,u.name AS customer_name,u.email AS customer_email,o.id AS order_id FROM returns r JOIN users u ON u.id=r.user_id JOIN orders o ON o.id=r.order_id WHERE r.id=? AND r.user_id=?`).get(req.params.id,req.user.id);if(!r)return res.status(404).json({error:'Return request not found'});const cancellable=['REQUESTED','APPROVED','PICKUP_SCHEDULED'];if(!cancellable.includes(String(r.status)))return res.status(400).json({error:'This return can no longer be cancelled because the pickup/inspection process has started'});db.prepare(`UPDATE returns SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.id);addReturnEvent(r.id,r.user_id,'CANCELLED','Return request cancelled','Your return request #'+r.id+' for Order #'+r.order_id+' was cancelled by you.');const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';await Promise.all([sendReturnEmail(adminEmail,`Ashwini Return #${r.id} Cancelled`,`Customer: ${r.customer_name} (${r.customer_email})\nOrder: #${r.order_id}\nThe customer cancelled the return request.`),sendReturnEmail(r.customer_email,`Ashwini Clothing Return Cancelled - Order #${r.order_id}`,`Your return request #${r.id} has been cancelled successfully. Your order remains delivered.`)]);res.json({ok:true,return:db.prepare('SELECT * FROM returns WHERE id=?').get(r.id)})}catch(e){console.error('[Ashwini return cancel]',e);res.status(400).json({error:e.message})}});
-app.get('/api/admin/returns',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.created_at AS order_date,o.status AS order_status,u.name AS customer_name,u.email AS customer_email,u.phone AS customer_phone,ro.id AS replacement_order_id,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 WHEN 'PICKUP_SCHEDULED' THEN 2 WHEN 'COMPLETED' THEN 3 ELSE 4 END, r.id DESC`).all())}catch(e){res.status(400).json({error:e.message})}});
+app.get('/api/admin/returns',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.created_at AS order_date,o.updated_at AS order_updated_at,o.status AS order_status,u.name AS customer_name,u.email AS customer_email,u.phone AS customer_phone,ro.id AS replacement_order_id,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 WHEN 'PICKUP_SCHEDULED' THEN 2 WHEN 'COMPLETED' THEN 3 ELSE 4 END, r.id DESC`).all())}catch(e){res.status(400).json({error:e.message})}});
 function createReplacementOrderForReturn(returnRow){
  const existing=db.prepare('SELECT id FROM orders WHERE replacement_for_return_id=? ORDER BY id DESC LIMIT 1').get(returnRow.id);
  if(existing?.id)return existing.id;
@@ -558,8 +719,8 @@ app.get("/api/orders",auth,(req,res)=>{
   const os=phone && /^\d{10}$/.test(phone)
    ? db.prepare(`SELECT o.*,u.name AS customer_name,COALESCE(NULLIF(o.customer_phone,''),u.phone) AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.user_id=? OR o.customer_phone=? ORDER BY o.id DESC`).all(me.id,phone)
    : db.prepare("SELECT o.*,u.name AS customer_name,u.phone AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.user_id=? ORDER BY o.id DESC").all(me.id);
-  const items=db.prepare("SELECT oi.*,p.name,p.emoji FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?");
-  const returns=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC');res.json(os.map(o=>({...o,items:items.all(o.id),return_request:(()=>{const rr=returns.get(o.id); if(!rr)return null; const ro=rr.replacement_order_id?db.prepare('SELECT id,status,address FROM orders WHERE id=?').get(rr.replacement_order_id):null; return {...rr,replacement_order:ro||null};})(),tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}})));
+  const items=db.prepare("SELECT oi.*,p.name,p.emoji,p.image FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?");
+  const returns=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC');res.json(os.map(o=>{const deliveredAt=o.status==='DELIVERED'?Date.parse(String(o.delivered_at||o.updated_at||o.created_at||'')):NaN;const returnDeadline=Number.isFinite(deliveredAt)?new Date(deliveredAt+4*24*60*60*1000).toISOString():null;return {...o,return_deadline_at:returnDeadline,return_eligible:Boolean(returnDeadline&&Date.now()<=Date.parse(returnDeadline)),items:items.all(o.id),return_request:(()=>{const rr=returns.get(o.id); if(!rr)return null; const ro=rr.replacement_order_id?db.prepare('SELECT id,status,address FROM orders WHERE id=?').get(rr.replacement_order_id):null; return {...rr,replacement_order:ro||null};})(),tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}};}));
  }catch(e){console.error('[Ashwini my orders]',e);res.status(500).json({error:e.message||'Could not load orders'})}
 });
 app.get("/api/orders/:id",auth,(req,res)=>{
@@ -571,9 +732,9 @@ app.get("/api/orders/:id",auth,(req,res)=>{
    ? db.prepare(`SELECT o.*,u.name AS customer_name,COALESCE(NULLIF(o.customer_phone,''),u.phone) AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=? AND (o.user_id=? OR o.customer_phone=?)`).get(req.params.id,me.id,phone)
    : db.prepare("SELECT o.*,u.name AS customer_name,u.phone AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=? AND o.user_id=?").get(req.params.id,me.id);
   if(!o)return res.status(404).json({error:"Order not found for this account"});
-  const items=db.prepare("SELECT oi.*,p.name,p.emoji FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?").all(o.id);
+  const items=db.prepare("SELECT oi.*,p.name,p.emoji,p.image FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?").all(o.id);
   const return_request0=db.prepare('SELECT * FROM returns WHERE order_id=? ORDER BY id DESC LIMIT 1').get(o.id)||null; const return_request=return_request0?( {...return_request0,replacement_order:return_request0.replacement_order_id?db.prepare('SELECT id,status,address FROM orders WHERE id=?').get(return_request0.replacement_order_id):null} ):null;
-  res.json({...o,items,return_request,tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}});
+  const deliveredAt=o.status==='DELIVERED'?Date.parse(String(o.delivered_at||o.updated_at||o.created_at||'')):NaN;const returnDeadline=Number.isFinite(deliveredAt)?new Date(deliveredAt+4*24*60*60*1000).toISOString():null;res.json({...o,return_deadline_at:returnDeadline,return_eligible:Boolean(returnDeadline&&Date.now()<=Date.parse(returnDeadline)),items,return_request,tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}});
  }catch(e){res.status(500).json({error:e.message||'Could not load order'})}
 });
 
@@ -611,6 +772,12 @@ app.patch('/api/admin/customer-help/:id',auth,admin,async(req,res)=>{
  res.json({ok:true,email_sent:!!emailResult.sent});
 });
 
+app.get('/api/admin/help-chat/threads',auth,admin,(req,res)=>{try{const rows=db.prepare(`SELECT t.id,t.customer_name,t.customer_email,t.status,t.created_at,t.updated_at,(SELECT message FROM help_chat_messages m WHERE m.thread_id=t.id ORDER BY m.id DESC LIMIT 1) AS last_message,(SELECT COUNT(*) FROM help_chat_messages m WHERE m.thread_id=t.id AND m.sender_role='CUSTOMER' AND m.seen_at IS NULL) AS unread FROM help_chat_threads t ORDER BY unread DESC,t.updated_at DESC LIMIT 100`).all();res.json(rows)}catch(e){res.status(500).json({error:e.message||'Could not load help chats'})}});
+app.get('/api/admin/help-chat/threads/:id',auth,admin,(req,res)=>{try{const id=Number(req.params.id);const thread=db.prepare('SELECT * FROM help_chat_threads WHERE id=?').get(id);if(!thread)return res.status(404).json({error:'Chat not found'});db.prepare("UPDATE help_chat_messages SET seen_at=COALESCE(seen_at,CURRENT_TIMESTAMP) WHERE thread_id=? AND sender_role='CUSTOMER'").run(id);res.json({thread,messages:db.prepare('SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE thread_id=? ORDER BY id ASC').all(id)})}catch(e){res.status(500).json({error:e.message||'Could not load chat'})}});
+app.post('/api/admin/help-chat/threads/:id/reply',auth,admin,(req,res)=>{try{const id=Number(req.params.id),text=String(req.body?.message||'').trim().slice(0,1000);if(!text)return res.status(400).json({error:'Please enter a reply.'});const thread=db.prepare('SELECT * FROM help_chat_threads WHERE id=?').get(id);if(!thread)return res.status(404).json({error:'Chat not found'});const r=db.prepare("INSERT INTO help_chat_messages(thread_id,sender_role,message) VALUES(?,?,?)").run(id,'ADMIN',text);db.prepare("UPDATE help_chat_threads SET status='OPEN',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(id);const msg=db.prepare("SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE id=?").get(r.lastInsertRowid);publishHelpChat(id,{type:'message',message:msg});res.json({ok:true,message:msg})}catch(e){res.status(500).json({error:e.message||'Reply could not be sent'})}});
+app.patch('/api/admin/help-chat/threads/:id',auth,admin,(req,res)=>{try{const status=['OPEN','RESOLVED'].includes(String(req.body?.status||''))?String(req.body.status):'OPEN';db.prepare('UPDATE help_chat_threads SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(status,Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message||'Could not update chat'})}});
+app.get("/api/admin/whatsapp-help-events",auth,admin,(req,res)=>{try{res.json(db.prepare("SELECT * FROM whatsapp_help_events ORDER BY CASE status WHEN 'NEW' THEN 0 ELSE 1 END,id DESC LIMIT 100").all())}catch(e){res.status(500).json({error:e.message||'Could not load WhatsApp help notifications'})}});
+app.patch("/api/admin/whatsapp-help-events/:id",auth,admin,(req,res)=>{const status=['NEW','SEEN','RESOLVED'].includes(String(req.body?.status||''))?String(req.body.status):'SEEN';try{db.prepare("UPDATE whatsapp_help_events SET status=?,seen_at=CASE WHEN ?='SEEN' THEN CURRENT_TIMESTAMP ELSE seen_at END WHERE id=?").run(status,status,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message||'Could not update notification'})}});
 app.get("/api/admin/stats",auth,admin,(req,res)=>{
  const revenue=db.prepare("SELECT COALESCE(SUM(total),0) total FROM orders WHERE payment_status='PAID'").get().total;
  res.json({revenue,orders:db.prepare("SELECT COUNT(*) n FROM orders").get().n,customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,products:db.prepare("SELECT COUNT(*) n FROM products").get().n});
@@ -621,7 +788,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  if(!ok.includes(req.body.status))return res.status(400).json({error:"Invalid status"});
  const before=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
  if(!before)return res.status(404).json({error:"Order not found"});
- const result=db.prepare("UPDATE orders SET status=?,payment_status=CASE WHEN ?='DELIVERED' THEN 'PAID' ELSE payment_status END,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(req.body.status,req.body.status,req.params.id);
+ const result=db.prepare("UPDATE orders SET status=?,payment_status=CASE WHEN ?='DELIVERED' THEN 'PAID' ELSE payment_status END,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,cancelled_at=CASE WHEN ?='CANCELLED' AND COALESCE(cancelled_at,'')='' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(req.body.status,req.body.status,req.body.status,req.body.status,req.params.id);
  if(!result.changes)return res.status(404).json({error:"Order not found"});
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
  if(before.status!==order.status){const label=String(order.status).replaceAll("_"," ");const msg=`Order #${order.id} is now ${label}.${order.status==='DELIVERED'?' Payment status is now PAID.':''}`;addOrderEvent(order.id,order.user_id,order.status,`Order ${label}`,msg);const u=db.prepare("SELECT name,email FROM users WHERE id=?").get(order.user_id);if(u?.email){await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${u.name||'Customer'},\n\n${msg}\n\nTrack your order from Your Orders in your Ashwini Clothing account.`)}}

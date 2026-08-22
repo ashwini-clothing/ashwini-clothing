@@ -1,0 +1,6 @@
+V54 – Return/Product Links UI Fix
+- Returns & Replacements now shows each purchased product with a small photo and clickable product title.
+- Photo and title open the original product detail page.
+- Added subtle hover effect to product photo/title in Returns & Replacements and My Orders.
+- Removed the “Previously purchased · for customer reference” line from order details.
+- No backend, return eligibility, order, Help Desk, COD, or other business logic was changed.

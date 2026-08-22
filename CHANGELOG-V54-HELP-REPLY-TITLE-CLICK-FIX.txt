@@ -1,0 +1,9 @@
+Ashwini V54 – Help Desk Reply + My Orders Title Click Fix
+
+1. Admin WhatsApp/Help Desk button now opens a dedicated Customer Messages inbox.
+2. Admin can open any customer chat and reply directly inside the website.
+3. Help Desk settings remain available separately; existing enable/name/welcome settings are preserved.
+4. Customer mobile number is not shown in the internal Help Desk chat.
+5. My Orders: previously purchased product titles are now clickable and open the original product page, just like the product photo.
+6. Removed the text “Previously purchased · shown here for customer reference” from My Orders.
+7. No unrelated checkout, COD, return/replacement, login, product, payment, or existing working functions were intentionally changed.

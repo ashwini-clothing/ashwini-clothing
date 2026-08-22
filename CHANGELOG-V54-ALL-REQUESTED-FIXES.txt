@@ -1,0 +1,56 @@
+ASHWINI V54 — ALL REQUESTED OPTIONS / CORRECTIONS CHECKED
+
+This update keeps the supplied V54 MASTER WORKING database and existing storefront/admin flows. Changes are limited to requested fixes and missing controls.
+
+FIXED / VERIFIED
+1. Login & Security
+- Name editing now saves directly from the Login & Security Name section on the same flow.
+- The old profile-change validation that incorrectly required email/mobile for a name-only change is no longer used for Name.
+- 2-step verification keeps professional ON / OFF controls.
+- When ON, OTP delivery can be Automatic, E-mail OTP or Mobile OTP.
+- Login OTP delivery now respects the selected 2-step channel when 2-step is ON.
+- Existing customer OTP login, password change, email/mobile OTP verification and session login are preserved.
+
+2. Login page
+- Terms of Use and Privacy Policy are website-specific Ashwini pages.
+- Store admin sign in, Create a new Ashwini account and Forgot account / password links retain hover effects.
+- Existing long-lived server session behavior is preserved so users do not have to repeatedly sign in on normal refresh/reopen.
+
+3. Returns / Replacement
+- Server-side 4-day return window remains enforced from the delivered timestamp.
+- Refreshing/reopening the page cannot reactivate an expired return option.
+- Existing return cancellation, return status, replacement and replacement re-delivery workflows remain intact.
+- Admin return view now exposes request/order/delivery timing information.
+
+4. Ashwini Help Desk
+- Internal website chat remains in place; external WhatsApp login/wa.me is not opened.
+- Admin mobile number is not exposed to customers.
+- Customer and admin messages are stored in SQLite.
+- Real-time updates use SSE with polling fallback.
+- Every chat message displays saved date/time.
+- Admin can open the conversation, reply and mark it resolved.
+- Admin Help Desk unread count is shown as a red numerical badge.
+- Floating AI lady / Hi bubble design remains unchanged except for requested sizing already present in V54.
+
+5. Admin notification badges
+- Return Management badge counts active return requests.
+- Orders badge counts pending/active order notifications.
+- Help Desk badge counts unread customer chat messages.
+- Customer Questions badge counts unanswered questions.
+- Dashboard data loading is isolated with Promise.allSettled so one optional notification section cannot prevent the rest of the dashboard from opening.
+
+6. COD Control — ADDED
+- Admin Dashboard now has a dedicated “COD Control” option.
+- Global COD ON / OFF control lets the admin temporarily hold COD.
+- State-wise COD overrides allow individual Indian states to be turned ON/OFF or returned to the global setting.
+- Customer checkout checks the current COD setting before allowing COD.
+- Server-side checkout enforcement prevents bypassing the UI.
+- Razorpay/online payment remains available when COD is OFF.
+
+7. Date & time records
+- Admin order view shows order date/time and delivered date/time.
+- Existing order/return event history remains stored with timestamps.
+- Delivered timestamp is now persisted separately so later status edits do not move the original delivery time.
+
+8. Existing V54 functionality preserved
+- Products, maximum 5 gallery photos, zoom/pan, size chart, product history, care instructions, Ashwini Choice badge, offers, coupons, NEW2026, wishlist, cart, checkout, Razorpay, COD, PIN lookup, orders, tracking, returns, customer Q&A, reviews, categories, slides, logo/about page and admin controls remain in the package.

@@ -1,0 +1,11 @@
+V54 INTERNAL AI HELP DESK UPDATE
+
+1. Replaced external WhatsApp/wa.me customer flow with an Ashwini website chat.
+2. Customer Help Desk opens inside the website; WhatsApp Web/login is never opened.
+3. Admin mobile/WhatsApp number is not exposed to customers.
+4. Added customer chat threads and messages in SQLite.
+5. Added Admin Dashboard Help Desk Notifications with unread count.
+6. Admin can open each chat, read messages, reply, and mark chat resolved.
+7. Customer chat polls for admin replies automatically.
+8. Added a modern 3D-style AI lady avatar with glow/twinkle/float animation.
+9. Existing orders, products, login, returns and other functions were left unchanged.

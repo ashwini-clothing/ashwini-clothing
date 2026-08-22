@@ -1,0 +1,8 @@
+Ashwini V54 — Customer Help Desk Reply Notification Badge Fix
+
+ONLY requested change:
+- When Store Admin sends a reply in Ashwini Help Desk, the customer's floating lady now shows a red numerical unread badge.
+- Badge is persisted using help_chat_messages.seen_at, so it survives page refresh/reopen.
+- Badge is checked automatically every 2.5 seconds while the customer is on the website.
+- Opening Ashwini Help Desk marks admin replies as read and clears the badge.
+- Admin/customer chat content, mobile-number privacy, return/order/product functions and other existing features were not intentionally changed.

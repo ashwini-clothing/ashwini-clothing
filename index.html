@@ -14,15 +14,22 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}
 .toplink{color:#fff;background:none;border:0;text-align:left;padding:3px 4px;white-space:nowrap}.toplink small{display:block;font-size:11px}.toplink b{font-size:14px}.account-wrap{position:relative;z-index:120}.account-popover{display:none;position:absolute;top:calc(100% + 10px);right:0;width:min(520px,calc(100vw - 24px));background:#fffdfb;color:#2d2227;border:1px solid #eaded8;border-radius:10px;box-shadow:0 14px 40px rgba(36,21,28,.28);padding:14px;z-index:10000}.account-popover.open{display:block}.account-popover::before{content:"";position:absolute;top:-7px;right:28px;width:12px;height:12px;background:#fffdfb;border-left:1px solid #eaded8;border-top:1px solid #eaded8;transform:rotate(45deg)}.account-popover h3{margin:0;color:#5a2e40;font-size:18px}.account-popover .account-menu-grid{margin-top:12px}.account-popover .account-menu-card{background:#fff;border-radius:8px;padding:12px 38px 12px 12px}.account-popover .account-menu-card:hover{background:#fff5f7}.account-popover .account-chevron{right:12px;font-size:22px}.account-popover .gold{margin-top:12px}.account-popover-note{font-size:12px;color:#6b5260;margin:4px 0 0}
 .nav{background:#5a2e40;color:#fff;display:flex;align-items:center;gap:24px;padding:10px 3%;overflow:auto;position:relative;z-index:50}.nav span{white-space:nowrap;font-size:14px;cursor:pointer;padding:4px 2px;transition:color .15s ease,background .15s ease,transform .15s ease}.nav span:hover{color:#fff;background:rgba(255,255,255,.14);border-radius:4px}.nav span:active{transform:translateY(1px);background:rgba(255,255,255,.24)}.nav .all{font-weight:bold}
 .hero{max-width:1500px;margin:auto;min-height:330px;padding:65px 7%;display:flex;align-items:center;background:linear-gradient(100deg,#f4e8e6,#fbf7f2)}
-.hero h1{font-size:48px;margin:0 0 12px}.hero p{font-size:19px;max-width:620px;line-height:1.5}.gold{background:#b85c70;border:1px solid #944456;color:#fff;border-radius:5px;padding:12px 22px;font-weight:bold}
+.hero h1{font-size:48px;margin:0 0 12px}.hero p{font-size:19px;max-width:620px;line-height:1.5}.gold{background:#b85c70;border:1px solid #944456;color:#fff;border-radius:5px;padding:12px 22px;font-weight:bold}.account-action{background:#fffaf7!important;border:1px solid #eaded8!important;color:#2d2227!important;border-radius:8px!important;font-weight:600}.account-action:hover{background:#fff5f7!important;border-color:#b85c70!important;color:#5a2e40!important}
 .wrap{max-width:1500px;margin:-35px auto 0;padding:0 18px 40px;position:relative}.section{background:#fffdfb;padding:22px;margin-bottom:20px}.section h2{margin:0 0 18px;font-size:25px}
+
+
+.shop-category-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}.shop-category-row{display:flex;justify-content:space-between;align-items:center;text-align:left;background:#fff;border:1px solid #eaded8;border-radius:8px;padding:12px 14px;cursor:pointer}.shop-category-row:hover{background:#fff5f7;border-color:#b85c70}.shop-category-row b{font-size:20px;color:#5a2e40}@media(max-width:700px){.shop-category-list{grid-template-columns:1fr}}
+.shop-category-box{width:100%;display:flex;align-items:center;gap:14px;text-align:left;border:2px solid #023EBA;background:#CAF0F8;border-radius:10px;padding:16px 18px;cursor:pointer;box-shadow:0 2px 8px rgba(3,4,94,.10);color:#03045E}
+.shop-category-box:hover{background:#b7e8f2;border-color:#00B4D8}.shop-category-box strong{font-size:16px;color:#03045E}.shop-category-box span{flex:1;color:#03045E;font-size:13px}.shop-category-box b{font-size:24px;color:#023EBA;line-height:1}
+.profile-history{margin-top:22px}.profile-history-card{border:1px solid #eaded8;border-radius:10px;background:#fffdfb;padding:14px;margin:12px 0}.profile-history-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.profile-history-item{display:flex;justify-content:space-between;gap:12px;align-items:center;border-top:1px solid #eee;margin-top:10px;padding-top:10px}.profile-item-actions,.profile-order-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.profile-return-box{margin-top:10px;padding:10px;background:#fff7f2;border:1px solid #eaded8;border-radius:8px}
+@media(max-width:700px){.profile-history-item{display:block}.profile-item-actions button{width:100%}}
 .cats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.cat{border:1px solid #eaded8;background:#fffdfb;padding:14px;text-align:center}.cat strong{display:block;margin-top:7px}
 .layout{display:grid;grid-template-columns:230px 1fr;gap:20px}.filter{background:#fffdfb;padding:18px;height:max-content;position:sticky;top:10px}.filter h3{margin:0 0 12px}.filter label{display:block;margin:8px 0;font-size:14px}.filter input{margin-right:7px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ddd;padding-bottom:12px;margin-bottom:16px}.toolbar select{padding:8px}.products{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
 .card{background:#fff;border:1px solid #e7d9d2;padding:12px;position:relative}
 .pic img{width:100%;height:100%;object-fit:contain;object-position:center;object-position:center;border-radius:2px}
 .detailpic img{width:100%;height:100%;object-fit:contain}
-.badge{position:absolute;top:10px;left:10px;background:#cc0c39;color:#fff;padding:4px 7px;font-size:11px}.pic{height:300px;background:#f8f0ed;display:flex;align-items:center;justify-content:center;font-size:88px}.card h3{font-size:16px;min-height:40px;margin:10px 0 6px}.stars{color:#b85c70}.price{font-size:22px;font-weight:bold}.mrp{text-decoration:line-through;color:#777;font-size:13px;font-weight:normal}.deal{color:#8f3b4e;font-size:13px;margin:5px 0}.sizebox{display:flex;gap:5px;flex-wrap:wrap;margin:9px 0}.size{border:1px solid #888;background:#fff;padding:6px 8px;border-radius:4px}.size.sel{border:2px solid #b85c70;padding:5px 7px;background:#fbecef;color:#5a2e40;font-weight:700}.add{width:100%;background:#d2a75c;border:1px solid #b78d43;color:#2d2227;padding:9px;border-radius:18px;transition:all .18s ease}.add.added{background:#4f8a63;border-color:#3f7250;color:#fff;transform:scale(.99)}
+.badge{position:absolute;top:10px;left:10px;background:#cc0c39;color:#fff;padding:4px 7px;font-size:11px}.pic{height:300px;background:#f8f0ed;display:flex;align-items:center;justify-content:center;font-size:88px}.card h3{font-size:16px;min-height:40px;margin:10px 0 6px}.stars{color:#b85c70}.price{font-size:22px;font-weight:bold}.mrp{text-decoration:line-through;color:#777;font-size:13px;font-weight:normal}.deal{color:#8f3b4e;font-size:13px;margin:5px 0}.sizebox{display:flex;gap:5px;flex-wrap:wrap;margin:9px 0}.size{border:1px solid #888;background:#fff;padding:6px 8px;border-radius:4px}.size.sel{border:2px solid #b85c70;padding:5px 7px;background:#fbecef;color:#5a2e40;font-weight:700}.add{width:100%;background:#CAF0F8;border:2px solid #023EBA;color:#03045E;padding:9px;border-radius:18px;transition:all .18s ease}.add.added{background:#4f8a63;border-color:#3f7250;color:#fff;transform:scale(.99)}
 .gallery{display:grid;grid-template-columns:78px 1fr;gap:12px;min-width:0}.gallery-main{height:500px;background:#f7efec;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden}.gallery-main{position:relative}.gallery-main img{width:100%;height:100%;object-fit:contain;transform-origin:center center;transition:transform .15s ease;touch-action:none;user-select:none;-webkit-user-drag:none}.zoom-controls{position:absolute;right:10px;bottom:10px;z-index:5;display:flex;gap:5px;background:rgba(255,255,255,.94);padding:5px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.14)}.zoom-btn{width:34px;height:34px;border:1px solid #d8c7cc;background:#fff;color:#5a2e40;border-radius:6px;font-size:20px;font-weight:700;line-height:1;cursor:pointer}.zoom-btn:hover{background:#fbecef}.zoom-level{min-width:48px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#6b5260}.gallery-thumbs{display:flex;flex-direction:column;gap:8px;max-height:500px;overflow:auto}.gallery-thumb{width:76px;height:92px;border:1px solid #dfd0cb;background:#fff;padding:2px;border-radius:6px}.gallery-thumb.active{border:2px solid #b85c70}.gallery-thumb img{width:100%;height:100%;object-fit:contain}.gallery-count{text-align:center;color:#6b5260;font-size:12px;margin-top:6px}
 
 .modal{display:none;position:fixed;inset:0;background:rgba(36,21,28,.62);z-index:9999;align-items:center;justify-content:center;padding:15px;cursor:default}.box{position:relative;width:min(1050px,100%);max-height:94vh;overflow:auto;background:#fff;padding:24px;border-radius:10px;box-shadow:0 18px 60px rgba(0,0,0,.28)}.close{position:absolute;top:8px;right:12px;z-index:30;width:42px;height:42px;border:0;background:#fff;color:#24151c;font-size:30px;line-height:1;border-radius:50%;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)}.close:hover{background:#f6e9ed}
@@ -62,6 +69,62 @@ button:active{transform:translateY(1px)}
 
 .admin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.admin-stat{padding:14px;border:1px solid #eaded8;border-radius:10px;background:#fffaf7}.stat-button{display:block;width:100%;text-align:left;font:inherit;cursor:pointer;transition:all .18s ease}.stat-button:hover{background:#f7e9ed;border-color:#b85c70;transform:translateY(-1px)}.stat-button:active{transform:scale(.99)}.stat-button small{display:block;margin-top:6px;color:#7b6570}.admin-stat b{display:block;font-size:22px;color:#5a2e40;margin-top:4px}.admin-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.admin-toolbar button{border:1px solid #d9c6cc;background:#fff;padding:9px 12px;border-radius:7px;cursor:pointer}.admin-table{width:100%;border-collapse:collapse;margin-top:10px}.admin-table th,.admin-table td{padding:9px;border-bottom:1px solid #eaded8;text-align:left;vertical-align:top}.admin-table th{background:#fffaf7;color:#5a2e40}.admin-product{display:flex;gap:10px;align-items:center}.admin-product img{width:52px;height:64px;object-fit:cover;border-radius:6px}.admin-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}.admin-form .full{grid-column:1/-1}.admin-form input,.admin-form textarea,.admin-form select{width:100%;box-sizing:border-box;padding:10px;border:1px solid #d8c7cc;border-radius:7px}.admin-form textarea{min-height:90px;resize:vertical}.admin-note{font-size:12px;color:#6e5a61}.admin-actions{display:flex;gap:6px;flex-wrap:wrap}.admin-danger{background:#fff0f0!important;border-color:#e5b6b6!important;color:#9a3030}.status-select{padding:7px;border:1px solid #d8c7cc;border-radius:7px}
 @media(max-width:800px){.admin-grid{grid-template-columns:repeat(2,1fr)}.admin-form{grid-template-columns:1fr}.admin-form .full{grid-column:auto}.admin-table{font-size:12px}.admin-table-wrap{overflow:auto}}
+
+/* V54 Amazon-style Ashwini login */
+.amazon-login-wrap{max-width:430px;margin:0 auto;padding:4px 6px 2px;color:#111}
+.ashwini-login-logo{font-weight:800;letter-spacing:2.5px;text-align:center;font-size:28px;color:#03045E;margin:2px 0 16px}
+.amazon-login-wrap h2{font-family:Arial,Helvetica,sans-serif;font-size:27px;font-weight:500;color:#111;margin:0 0 18px}
+.login-label{font-size:13px;color:#111;display:block;margin-bottom:5px}
+.amazon-login-wrap .form{display:flex;flex-direction:column;gap:9px}
+.amazon-login-wrap .form input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #888;border-radius:4px;background:#fff;color:#111;font-size:14px}
+.amazon-login-wrap .form input:focus{outline:2px solid #00B4D8;border-color:#023EBA}
+.amazon-continue-btn{width:100%;min-height:38px;border-radius:7px!important;font-size:14px!important;font-weight:500!important}
+.login-legal{font-size:12px;line-height:1.45;color:#555;margin:2px 0 6px}
+.login-legal a{color:#8b1e3f;text-decoration:underline;font-weight:600}.policy-content{text-align:left;max-height:58vh;overflow:auto;padding:2px 4px 8px}.policy-content h3{font-size:15px;margin:16px 0 6px;color:#5f152a}.policy-content p{font-size:13px;line-height:1.6;color:#444;margin:7px 0}
+.login-divider{display:flex;align-items:center;gap:9px;color:#777;font-size:12px;margin:5px 0}
+.login-divider:before,.login-divider:after{content:"";height:1px;background:#ddd;flex:1}
+.login-divider span{white-space:nowrap}
+.login-account-id{font-size:14px;color:#111;margin:-8px 0 10px}
+.text-change{border:0;background:transparent;color:#0066c0;text-decoration:underline;cursor:pointer;padding:0;font:inherit}
+.admin-login-link{color:#0066c0!important;text-decoration:underline!important;font-size:13px}
+.amazon-login-wrap .linkbtn{font-size:13px;text-align:left;align-self:flex-start}
+/* Login links / actions: subtle professional hover effect */
+.amazon-login-wrap .login-action-link,.amazon-login-wrap .admin-login-link{display:block;width:100%;box-sizing:border-box;text-align:left;text-decoration:none!important;border:1px solid transparent;border-radius:8px;padding:10px 12px;background:#fff;transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .08s ease,box-shadow .18s ease}
+.amazon-login-wrap .login-action-link:hover,.amazon-login-wrap .admin-login-link:hover{background:#fff5f7;border-color:#ead0d8;color:#5a2e40!important;box-shadow:0 3px 10px rgba(90,46,64,.08);filter:none}
+.amazon-login-wrap .login-action-link:active,.amazon-login-wrap .admin-login-link:active{transform:translateY(1px)}
+.login-legal a{transition:color .18s ease,background-color .18s ease;border-radius:4px;padding:1px 3px}.login-legal a:hover{color:#5a2e40;background:#fff0f4;text-decoration:none}
+
+.ashwini-whatsapp-help{position:fixed;right:18px;bottom:12px;width:64px;height:88px;padding:0;border:0;background:transparent;color:inherit;display:flex;align-items:flex-end;justify-content:center;cursor:pointer;z-index:8500;filter:drop-shadow(0 18px 16px rgba(45,18,35,.25)) drop-shadow(0 3px 5px rgba(255,255,255,.22));transition:transform .22s ease,filter .22s ease;animation:ashwiniHelpFloat 3.6s ease-in-out infinite;perspective:700px}
+.ashwini-help-unread-badge{position:absolute;right:-2px;top:-8px;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#d71920;color:#fff;border:2px solid #fff;box-sizing:border-box;display:none;align-items:center;justify-content:center;font:800 11px/1 Arial,sans-serif;box-shadow:0 3px 8px rgba(80,0,0,.28);z-index:8;animation:ashwiniUnreadPulse 1.8s ease-in-out infinite}.ashwini-help-unread-badge.show{display:flex}@keyframes ashwiniUnreadPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.ashwini-whatsapp-help::after{content:"";position:absolute;left:18%;right:18%;bottom:4px;height:16px;border-radius:50%;background:rgba(65,25,45,.18);filter:blur(8px);z-index:-1;transform:scaleX(.78)}
+.ashwini-whatsapp-help::before{content:"Hi";position:absolute;right:2px;top:-18px;background:#8f1737;color:#fff;font:700 11px/1 Arial,sans-serif;padding:6px 9px;border-radius:16px 16px 4px 16px;box-shadow:0 6px 14px rgba(65,25,45,.22);z-index:3;animation:ashwiniHiPulse 3.6s ease-in-out infinite}
+.ashwini-whatsapp-help:hover{transform:translateY(-7px) scale(1.045);filter:drop-shadow(0 20px 24px rgba(67,25,48,.30));animation-play-state:paused}
+.ashwini-whatsapp-help:focus-visible{outline:3px solid #25D366;outline-offset:4px;border-radius:18px}
+.ashwini-ai-avatar{position:relative;width:64px;height:88px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none;overflow:visible}
+.ashwini-ai-avatar img{width:64px;height:86px;object-fit:contain;object-position:center bottom;display:block;mix-blend-mode:normal;transform:perspective(700px) rotateY(-6deg) rotateX(2deg) translateZ(8px);transform-origin:50% 100%;filter:drop-shadow(0 11px 8px rgba(35,15,28,.22)) drop-shadow(2px 1px 3px rgba(255,255,255,.28));backface-visibility:hidden}
+.ashwini-ai-avatar img{border:0;border-radius:0}
+.ashwini-whatsapp-label{display:none}
+@keyframes ashwiniHiPulse{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.04)}}
+@keyframes ashwiniHelpFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+
+.help-chat-modal,.admin-help-chat{width:min(760px,94vw);max-width:760px}
+.help-chat-hero{display:grid;grid-template-columns:190px 1fr;align-items:end;gap:16px;margin:-4px -2px 12px;padding:10px 12px 0;background:linear-gradient(135deg,#fff5f7,#fff);border:1px solid #ead8df;border-radius:16px;overflow:hidden}
+.help-chat-hero-lady{height:150px;display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
+.help-chat-hero-lady img{width:220px;height:158px;object-fit:cover;object-position:center top;mix-blend-mode:multiply;filter:drop-shadow(0 6px 8px rgba(35,15,28,.14))}
+.help-chat-hero-copy{padding:0 0 18px}
+.help-chat-hero-copy h2{margin:0 0 5px;color:#351b28;font-size:22px}
+.help-chat-hero-copy p{margin:0;color:#806673;font-size:13px;line-height:1.5}
+.help-chat-hero-copy .help-online-dot{display:block;margin-top:8px}
+.help-chat-mini-avatar{width:54px;height:54px;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 4px 12px rgba(83,32,52,.16);display:grid;place-items:center}
+.help-chat-mini-avatar img{width:100%;height:100%;object-fit:cover;object-position:center top;mix-blend-mode:multiply}.help-chat-head,.admin-help-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:4px 2px 14px;border-bottom:1px solid #ead8df}.help-chat-brand{display:flex;align-items:center;gap:12px}.help-chat-head h2,.admin-help-head h2{margin:0;color:#351b28}.help-chat-head small,.admin-help-head small{color:#806673}.help-online-dot{color:#1b8b55;font-size:12px;font-weight:800}.help-chat-mini-avatar{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 25%,#fff 0 10%,#ffd8e5 11% 25%,#d46b8b 26% 60%,#5a2140 61% 100%);box-shadow:0 4px 12px rgba(83,32,52,.24),inset 0 0 0 2px #fff;color:#fff;font-size:20px}.help-chat-messages{height:min(52vh,430px);overflow:auto;padding:16px 8px;background:linear-gradient(180deg,#fff8fa,#fff);border:1px solid #ead8df;border-radius:14px;margin:14px 0}.help-chat-row{display:flex;margin:8px 0}.help-chat-row.mine{justify-content:flex-end}.help-chat-row.theirs{justify-content:flex-start}.help-chat-bubble{max-width:78%;padding:10px 13px;border-radius:15px;background:#f5e9ee;color:#34232a;line-height:1.45;box-shadow:0 2px 7px rgba(90,46,64,.06);white-space:pre-wrap;word-break:break-word}.help-chat-row.mine .help-chat-bubble{background:#7b3152;color:#fff;border-bottom-right-radius:4px}.help-chat-row.theirs .help-chat-bubble{border-bottom-left-radius:4px}.help-chat-bubble small{display:block;margin-top:4px;font-size:10px;opacity:.65;text-align:right}.help-chat-compose{display:flex;gap:8px;align-items:flex-end}.help-chat-compose textarea{flex:1;resize:none;min-height:48px;padding:11px;border:1px solid #cdb7c0;border-radius:10px;font:inherit;box-sizing:border-box}.help-chat-compose textarea:focus{outline:2px solid #d36a88;border-color:#8f3f5f}.help-chat-compose button{min-height:48px;padding:0 18px}.help-chat-private{font-size:11px;color:#806673;margin-top:9px;text-align:center}.admin-chat-messages{height:min(55vh,460px)}
+@media(max-width:600px){.help-chat-modal,.admin-help-chat{width:94vw}.help-chat-bubble{max-width:88%}.help-chat-compose{align-items:stretch}.help-chat-compose button{padding:0 13px}}
+.return-expired-note{display:inline-block;margin-top:5px;color:#7d5966;font-weight:700}
+.order-product-link{transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;color:#4b2633!important}
+.order-product-link:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(75,38,51,.16);border-color:#c05b78!important}
+.order-product-title{transition:color .18s ease,transform .18s ease}
+.order-product-title:hover{color:#b43f62!important;text-decoration:underline!important;transform:translateX(2px)}
+.admin-section-heading{font-weight:800;color:#6d2947;padding:10px 0 2px;border-top:1px solid #ead8df;margin-top:8px}
+@media(max-width:600px){.ashwini-whatsapp-help{right:8px;bottom:8px;width:66px;height:84px}.ashwini-ai-avatar{width:66px;height:84px}.ashwini-ai-avatar img{width:66px;height:82px}.ashwini-whatsapp-help::before{top:-15px;right:0;font-size:11px;padding:6px 9px}.ashwini-whatsapp-label{right:12px;bottom:116px}}
 </style>
 <link rel="preload" as="image" href="/ad1-clean.jpg">
 <link rel="preload" as="image" href="/ad2-clean.jpg">
@@ -116,7 +179,7 @@ button:active{transform:translateY(1px)}
 </section>
 
 <div class="wrap">
-<section class="section"><h2>Shop by Category</h2><div class="cats" id="shopCategoryCards"></div></section>
+<section class="section shop-category-section"><button id="shopCategoryBox" class="shop-category-box" type="button" onclick="shopCategoryMenu()"><strong>Shop by Category</strong><b aria-hidden="true">⌄</b></button><div id="shopCategoryDropdown" class="shop-category-dropdown" aria-hidden="true"></div></section>
 
 <section class="layout" id="products">
 <aside class="filter"><h3>Categories</h3><label><input type="radio" name="c" value="All" onclick="cat('All')" checked>All Clothing</label><label><input type="radio" name="c" value="Western Dress" onclick="cat('Western Dress')">Western Dress</label><label><input type="radio" name="c" value="Co-ord Set" onclick="cat('Co-ord Set')">Co-ord Set</label><label><input type="radio" name="c" value="Skirt & Top" onclick="cat('Skirt & Top')">Skirt & Top</label><label><input type="radio" name="c" value="Kurta Set" onclick="cat('Kurta Set')">Kurta Set</label><label><input type="radio" name="c" value="Formal Ladies & Gents Pants" onclick="cat('Formal Ladies & Gents Pants')">Formal Ladies & Gents Pants</label><label><input type="radio" name="c" value="Sarara" onclick="cat('Sarara')">Sarara</label><label><input type="radio" name="c" value="Coat Set" onclick="cat('Coat Set')">Coat Set</label><label><input type="radio" name="c" value="Lehenga" onclick="cat('Lehenga')">Lehenga</label><label><input type="radio" name="c" value="Wedding Gown" onclick="cat('Wedding Gown')">Wedding Gown</label><label><input type="radio" name="c" value="Shirts" onclick="cat('Shirts')">Shirts</label><label><input type="radio" name="c" value="Party Wear" onclick="cat('Party Wear')">Party Wear</label><hr><h3>Quick filters</h3><label><input type="checkbox" onchange="load()">In stock</label><label><input type="checkbox">4 Stars & above</label></aside>
@@ -126,8 +189,27 @@ button:active{transform:translateY(1px)}
 
 <footer class="footer"><h2>Ashwini</h2><p>Premium clothing for everyday life.</p><p>Customer support · Returns & Exchange · Privacy · Terms</p><small>© 2026 Ashwini Clothing</small></footer>
 
+<div class="ashwini-whatsapp-wrap" aria-label="Ashwini Help Desk"><button class="ashwini-whatsapp-help" type="button" onclick="whatsappHelp()" aria-label="Ashwini Help Desk" title="Ashwini Help Desk"><span class="ashwini-help-unread-badge" id="ashwiniHelpUnreadBadge" aria-label="Unread Help Desk replies"></span><span class="ashwini-ai-avatar" aria-hidden="true"><img src="/ai-help-lady-transparent.png" alt="Ashwini Help Desk" loading="eager"></span></button></div>
+
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true" onclick="if(event.target===this)closeM()"><div class="box" onclick="event.stopPropagation()"><button type="button" id="modalClose" class="close" aria-label="Close">×</button><div id="body"></div></div></div><div class="toast" id="toast"></div>
 
 <script src="/app.js" defer></script>
 
-</body></html>
+</body></html><style>
+/* Shop by Category: compact right-aligned dropdown */
+.shop-category-section{position:relative;display:flex;justify-content:flex-end;align-items:flex-start}
+.shop-category-section>h2{display:none}
+.shop-category-box{width:auto;min-width:190px;max-width:240px;padding:11px 14px;margin-left:auto;justify-content:space-between;gap:18px}
+.shop-category-dropdown{position:absolute;right:0;top:calc(100% + 6px);width:280px;max-height:390px;overflow-y:auto;background:#fff;border:1px solid #023EBA;border-radius:10px;box-shadow:0 10px 28px rgba(3,4,94,.18);padding:8px;z-index:1200;display:none}
+.shop-category-dropdown.open{display:block}
+.shop-category-dropdown .shop-category-row{width:100%;margin:2px 0;background:#CAF0F8;border:1px solid #d6eef5;color:#03045E;padding:10px 12px}
+.shop-category-dropdown .shop-category-row:hover{background:#00B4D8;color:#fff;border-color:#00B4D8}
+</style>
+<style>
+/* V54 requested refinement: left-aligned category box + matching Buy Now color */
+.shop-category-section{justify-content:flex-start}
+.shop-category-box{margin-left:0;margin-right:auto}
+.shop-category-dropdown{left:0;right:auto;top:calc(100% + 6px)}
+.buy-now{background:#CAF0F8 !important;color:#03045E !important;border:1px solid #023EBA !important}
+.buy-now:hover{background:#00B4D8 !important;color:#fff !important;border-color:#00B4D8 !important}
+</style>

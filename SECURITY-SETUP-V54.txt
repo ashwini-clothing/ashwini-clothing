@@ -1,0 +1,37 @@
+ASHWINI CLOTHING V54 - LOGIN & DATA SECURITY UPDATE
+
+Implemented:
+- Customer login supports registered mobile OR email with a 6-digit OTP.
+- OTP validity is about 5 minutes.
+- OTP values are SHA-256 hashed in the database and cleared after successful verification.
+- OTP verification has a maximum of 5 incorrect attempts per IP/identifier window.
+- OTP requests have a cooldown and request-rate limit.
+- Requesting a fresh login OTP replaces the previous login OTP.
+- Server-side HttpOnly SameSite session cookies are used for new logins; session records are stored server-side and expire after 7 days.
+- Logout invalidates the server session and clears the cookie.
+- Customer order/return APIs require authentication and use the authenticated user id.
+- Passwords continue to use bcrypt hashing.
+- Email/mobile changes in Manage Profile require verification of the old and new contact methods.
+- Existing email/SMS providers are used when configured; demo OTPs are shown only outside production or when SHOW_DEV_OTP=true.
+- Old localStorage JWT tokens are removed from the browser client.
+
+Production environment variables:
+- NODE_ENV=production
+- SHOW_DEV_OTP=false
+- JWT_SECRET=<long random value> (kept only for legacy Bearer compatibility)
+- EMAIL_PROVIDER=smtp or resend
+- SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_SECURE / EMAIL_FROM, or RESEND_API_KEY / EMAIL_FROM
+- SMS_PROVIDER=twilio
+- TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM
+- ADMIN_EMAIL
+
+Database backup:
+- Run: npm run backup
+- Optional DB_PATH selects the live SQLite file.
+- Optional BACKUP_DIR selects the backup folder.
+- Schedule `npm run backup` with the hosting provider/OS scheduler for regular backups.
+- Keep at least one copy outside the application server. Test restoration periodically by replacing a test database with a backup copy.
+
+Secrets:
+- Never commit .env or API keys to GitHub.
+- Keep .env.example only as a template with placeholder values.
