@@ -58,6 +58,23 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
+// Ensure the configured Store Admin exists even when Render Free restarts/recreates
+// the local SQLite database. This only creates/promotes the designated admin account;
+// it does not reset customers, products, orders, or other data.
+try{
+ const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'parishdevi5@gmail.com').trim().toLowerCase();
+ if(/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(bootstrapAdminEmail)){
+  const existingAdmin=db.prepare("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
+  if(existingAdmin && existingAdmin.role!=='admin'){
+   db.prepare("UPDATE users SET role='admin' WHERE id=?").run(existingAdmin.id);
+  }else if(!existingAdmin){
+   const tempPassword=crypto.randomBytes(32).toString('hex');
+   const hash=bcrypt.hashSync(tempPassword,12);
+   db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'admin')")
+     .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
+  }
+ }
+}catch(e){console.error('[Ashwini Admin Bootstrap]',e.message)}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")}catch{}
