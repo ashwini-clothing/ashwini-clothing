@@ -478,6 +478,30 @@ app.post("/api/auth/setup-admin",async(req,res)=>{
  try{const hash=await bcrypt.hash(password,12);const r=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)").run(name,email.toLowerCase(),hash,'admin');const u=db.prepare("SELECT id,name,email,role FROM users WHERE id=?").get(r.lastInsertRowid);createSession(res,u.id);res.json({user:u})}
  catch{res.status(409).json({error:"Email already registered"})}
 });
+app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
+ const email=String(req.body?.email||"").trim().toLowerCase();
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:"Enter a valid admin email address"});
+ const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
+ if(!u)return res.status(404).json({error:"Admin account not found for this email"});
+ if(!otpGuard(req,res,email))return;
+ const otp=issueOtp(u,'login');
+ try{
+  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
+  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
+  res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
+ }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
+});
+app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
+ const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
+ const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
+ if(!u)return res.status(404).json({error:"Admin account not found"});
+ if(!otpVerifyGuard(req,res,email))return;
+ if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||Number(u.login_otp_expires_at)<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,email);return res.status(400).json({error:"Invalid or expired admin OTP"});}
+ db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
+ clearOtpFailures(req,email);
+ const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
+ createSession(res,u.id);res.json({user:safe});
+});
 app.post("/api/auth/login",async(req,res)=>{
  const u=db.prepare("SELECT * FROM users WHERE email=?").get((req.body.email||"").toLowerCase());
  if(!u||!(await bcrypt.compare(req.body.password||"",u.password_hash)))return res.status(401).json({error:"Invalid email or password"});
