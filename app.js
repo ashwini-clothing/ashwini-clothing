@@ -607,22 +607,12 @@ function showRegisterPanel(){
  <button type="button" class="gold" onclick="sendOtp()">Send OTP</button><input id="rotp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter 6-digit OTP"><button class="gold" type="button" onclick="register()">Verify OTP & Create Account</button><small id="otpHint">OTP will be shown only in local/demo mode.</small><button type="button" class="linkbtn" onclick="auth()">← Back to Sign in</button></div>`);
 }
 function showAdminLoginPanel(){
- openM(`<div class="amazon-login-wrap"><h2>Store admin sign in</h2><p>Use your store admin email. You can sign in with a secure Email OTP, or use the existing admin password.</p><div class="form"><input id="adminLoginEmail" type="email" placeholder="Admin email" autocomplete="username"><button class="gold" type="button" onclick="requestAdminEmailOtp()">Send Admin Email OTP</button><small id="adminOtpHint">OTP will be sent to the registered admin email.</small><input id="adminLoginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit Admin OTP"><button class="gold" type="button" onclick="verifyAdminEmailOtp()">Sign in with Email OTP</button><div class="login-divider"><span>or</span></div><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold" onclick="adminPasswordLogin()">Sign in with Password</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
-}
-async function requestAdminEmailOtp(){
- const email=(document.getElementById('adminLoginEmail')?.value||'').trim().toLowerCase(),hint=document.getElementById('adminOtpHint');
- if(!email){alert('Enter admin email first.');return}
- try{const d=await api('/api/auth/request-admin-login-otp',{method:'POST',body:{email}});if(hint)hint.textContent=d.devOtp?`Demo Admin OTP: ${d.devOtp}`:'Admin Email OTP sent. It expires in about 5 minutes.';document.getElementById('adminLoginOtp')?.focus();toast('✓ Admin OTP sent')}catch(e){if(hint)hint.textContent=e.message;alert(e.message)}
-}
-async function verifyAdminEmailOtp(){
- const email=(document.getElementById('adminLoginEmail')?.value||'').trim().toLowerCase(),otp=(document.getElementById('adminLoginOtp')?.value||'').trim();
- if(!email||!/^[0-9]{6}$/.test(otp)){alert('Enter admin email and the 6-digit OTP.');return}
- try{const d=await api('/api/auth/verify-admin-login-otp',{method:'POST',body:{email,otp}});if(d.user?.role!=='admin')throw new Error('Admin access denied');session(d);closeM();toast('✓ Admin signed in')}catch(e){alert(e.message||'Admin OTP sign in failed')}
+ openM(`<h2>Store admin sign in</h2><p>Admin access uses the store admin email and password. After sign-in, the secure session remains active until logout or expiry.</p><div class="form"><input id="adminLoginEmail" type="email" placeholder="Admin email" autocomplete="username"><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button class="gold" type="button" onclick="adminPasswordLogin()">Sign in as Admin</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div>`);
 }
 async function adminPasswordLogin(){
  const email=(document.getElementById('adminLoginEmail')?.value||'').trim().toLowerCase(), password=document.getElementById('adminLoginPassword')?.value||'';
  if(!email||!password){alert('Enter admin email and password.');return}
- try{const d=await api('/api/auth/login',{method:'POST',body:{email,password}});if(d.user?.role!=='admin')throw new Error('This account is not a store admin account.');session(d);closeM();toast('✓ Admin signed in');}
+ try{const d=await api('/api/auth/login',{method:'POST',body:{email,password}});session(d);closeM();toast('✓ Admin signed in');}
  catch(e){alert(e.message||'Admin sign in failed')}
 }
 function chooseOtpChannel(channel){const el=document.getElementById('loginIdentifier');if(el)el.placeholder=channel==='mobile'?'Mobile number':'Email address'}

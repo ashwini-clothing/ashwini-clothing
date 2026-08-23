@@ -58,23 +58,6 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
-// Ensure the configured Store Admin exists even when Render Free restarts/recreates
-// the local SQLite database. This only creates/promotes the designated admin account;
-// it does not reset customers, products, orders, or other data.
-try{
- const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'parishdevi5@gmail.com').trim().toLowerCase();
- if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail)){
-  const existingAdmin=db.prepare("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
-  if(existingAdmin && existingAdmin.role!=='admin'){
-   db.prepare("UPDATE users SET role='admin' WHERE id=?").run(existingAdmin.id);
-  }else if(!existingAdmin){
-   const tempPassword=crypto.randomBytes(32).toString('hex');
-   const hash=bcrypt.hashSync(tempPassword,12);
-   db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'admin')")
-     .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
-  }
- }
-}catch(e){console.error('[Ashwini Admin Bootstrap]',e.message)}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")}catch{}
@@ -494,30 +477,6 @@ app.post("/api/auth/setup-admin",async(req,res)=>{
  if(!name||!email||!password||String(password).length<8)return res.status(400).json({error:"Name, email and an 8+ character password are required"});
  try{const hash=await bcrypt.hash(password,12);const r=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)").run(name,email.toLowerCase(),hash,'admin');const u=db.prepare("SELECT id,name,email,role FROM users WHERE id=?").get(r.lastInsertRowid);createSession(res,u.id);res.json({user:u})}
  catch{res.status(409).json({error:"Email already registered"})}
-});
-app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
- const email=String(req.body?.email||"").trim().toLowerCase();
- if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:"Enter a valid admin email address"});
- const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
- if(!u)return res.status(404).json({error:"Admin account not found for this email"});
- if(!otpGuard(req,res,email))return;
- const otp=issueOtp(u,'login');
- try{
-  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
-  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
-  res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
- }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
-});
-app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
- const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
- const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
- if(!u)return res.status(404).json({error:"Admin account not found"});
- if(!otpVerifyGuard(req,res,email))return;
- if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||Number(u.login_otp_expires_at)<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,email);return res.status(400).json({error:"Invalid or expired admin OTP"});}
- db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
- clearOtpFailures(req,email);
- const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
- createSession(res,u.id);res.json({user:safe});
 });
 app.post("/api/auth/login",async(req,res)=>{
  const u=db.prepare("SELECT * FROM users WHERE email=?").get((req.body.email||"").toLowerCase());
