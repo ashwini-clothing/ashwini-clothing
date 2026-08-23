@@ -58,6 +58,27 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
+// Ensure the configured Store Admin can always sign in after Render restarts or a
+// database is recreated.  The previous implementation assigned a random password
+// to a newly-created admin, which made password sign-in impossible.
+try{
+ const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
+ const bootstrapAdminPassword=String(process.env.ADMIN_PASSWORD||'');
+ if(bootstrapAdminEmail && bootstrapAdminPassword.length>=8){
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail))throw new Error('ADMIN_EMAIL is invalid');
+  const hash=bcrypt.hashSync(bootstrapAdminPassword,12);
+  const existingAdmin=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
+  if(existingAdmin){
+   db.prepare("UPDATE users SET password_hash=?,role='admin' WHERE id=?").run(hash,existingAdmin.id);
+   db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(existingAdmin.id);
+  }else{
+   db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'admin')")
+     .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
+  }
+ }else if(bootstrapAdminEmail){
+  console.warn('[Ashwini Admin Bootstrap] ADMIN_PASSWORD must be set to an 8+ character secret before the admin account can be created or recovered.');
+ }
+}catch(e){console.error('[Ashwini Admin Bootstrap]',e.message)}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")}catch{}
@@ -388,6 +409,67 @@ function issueOtp(u, kind){
  console.log(`[Ashwini ${kind.toUpperCase()} OTP] ${u.email || u.phone}: ${otp}`);
  return otp;
 }
+// MSG91 OTP Widget configuration for the customer-facing mobile OTP flow.
+// The widget token is intended for client-side use; the account AuthKey stays server-side.
+app.get("/api/auth/msg91-config",(req,res)=>{
+ const widgetId=String(process.env.MSG91_WIDGET_ID||"").trim();
+ const tokenAuth=String(process.env.MSG91_WIDGET_TOKEN||"").trim();
+ if(!widgetId||!tokenAuth)return res.status(503).json({error:"MSG91 OTP is not configured. Add MSG91_WIDGET_ID and MSG91_WIDGET_TOKEN in Render."});
+ res.json({widgetId,tokenAuth});
+});
+async function verifyMsg91AccessToken(accessToken){
+ const authkey=String(process.env.MSG91_AUTHKEY||"").trim();
+ if(!authkey)throw new Error("MSG91 server AuthKey is not configured.");
+ const r=await fetch("https://control.msg91.com/api/v5/widget/verifyAccessToken",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({authkey,"access-token":String(accessToken||"")})});
+ const text=await r.text();
+ let data={}; try{data=JSON.parse(text)}catch{}
+ if(!r.ok||String(data.type||"").toLowerCase()==="error"||data.success===false)throw new Error(data.message||data.error||"MSG91 access token verification failed");
+ return data;
+}
+app.post("/api/auth/verify-msg91-login",async(req,res)=>{
+ try{
+  const identifier=String(req.body?.identifier||"").trim(), accessToken=String(req.body?.accessToken||"").trim();
+  const phone=normalizePhone(identifier);
+  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"MSG91 mobile verification requires a valid 10-digit mobile number."});
+  if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
+  const verification=await verifyMsg91AccessToken(accessToken);
+  const verifiedPhone=normalizePhone(verification.mobile||verification.phone||verification.identifier||verification.data?.mobile||verification.data?.phone||verification.data?.identifier);
+  if(verifiedPhone && verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the sign-in number."});
+  const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);
+  if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
+  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
+  clearOtpFailures(req,phone);
+  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
+  createSession(res,u.id);res.json({user:safe});
+ }catch(e){console.error("[MSG91 login verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
+});
+app.post("/api/auth/request-msg91-registration",(req,res)=>{
+ const phone=normalizePhone(req.body?.phone);
+ if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit mobile number"});
+ const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(phone);
+ if(existing && existing.role==='customer' && String(existing.password_hash||''))return res.status(409).json({error:"This mobile number is already registered. Please sign in instead."});
+ if(existing)db.prepare("UPDATE users SET otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(existing.id);
+ else db.prepare("INSERT INTO users(name,email,password_hash,phone,otp_hash,otp_expires_at,role) VALUES(?,?,?,?,?,?,?)").run("Pending Buyer",`phone_${phone}@ashwini.local`,"",phone,"",0,"customer");
+ res.json({ok:true});
+});
+app.post("/api/auth/register-msg91",async(req,res)=>{
+ try{
+  const {name,email,password,phone,accessToken}=req.body||{};
+  const normalized=normalizePhone(phone);
+  if(!name||!email||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
+  if(String(password).length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
+  const verification=await verifyMsg91AccessToken(accessToken);
+  const verifiedPhone=normalizePhone(verification.mobile||verification.phone||verification.identifier||verification.data?.mobile||verification.data?.phone||verification.data?.identifier);
+  if(verifiedPhone && verifiedPhone!==normalized)return res.status(401).json({error:"The verified mobile number does not match the registration number."});
+  const u0=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
+  if(!u0)return res.status(400).json({error:"Please request a fresh OTP"});
+  if(u0.role==='admin')return res.status(409).json({error:"This mobile number is reserved for the store admin."});
+  const hash=await bcrypt.hash(password,12);
+  db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(String(name).trim(),String(email).trim().toLowerCase(),hash,u0.id);
+  const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);
+  createSession(res,u.id);res.json({user:u});
+ }catch(e){console.error("[MSG91 registration verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
+});
 app.post("/api/auth/request-otp",(req,res)=>{
  const phone=normalizePhone(req.body?.phone);
  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit mobile number"});
@@ -477,6 +559,30 @@ app.post("/api/auth/setup-admin",async(req,res)=>{
  if(!name||!email||!password||String(password).length<8)return res.status(400).json({error:"Name, email and an 8+ character password are required"});
  try{const hash=await bcrypt.hash(password,12);const r=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)").run(name,email.toLowerCase(),hash,'admin');const u=db.prepare("SELECT id,name,email,role FROM users WHERE id=?").get(r.lastInsertRowid);createSession(res,u.id);res.json({user:u})}
  catch{res.status(409).json({error:"Email already registered"})}
+});
+app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
+ const email=String(req.body?.email||"").trim().toLowerCase();
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:"Enter a valid admin email address"});
+ const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
+ if(!u)return res.status(404).json({error:"Admin account not found for this email"});
+ if(!otpGuard(req,res,email))return;
+ const otp=issueOtp(u,'login');
+ try{
+  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
+  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
+  res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
+ }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
+});
+app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
+ const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
+ const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
+ if(!u)return res.status(404).json({error:"Admin account not found"});
+ if(!otpVerifyGuard(req,res,email))return;
+ if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||Number(u.login_otp_expires_at)<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,email);return res.status(400).json({error:"Invalid or expired admin OTP"});}
+ db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
+ clearOtpFailures(req,email);
+ const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
+ createSession(res,u.id);res.json({user:safe});
 });
 app.post("/api/auth/login",async(req,res)=>{
  const u=db.prepare("SELECT * FROM users WHERE email=?").get((req.body.email||"").toLowerCase());

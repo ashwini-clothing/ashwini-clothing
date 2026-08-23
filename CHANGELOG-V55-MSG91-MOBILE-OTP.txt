@@ -1,0 +1,20 @@
+ASHWINI V55 — MSG91 CUSTOMER MOBILE OTP
+
+Implemented on top of the uploaded GitHub main/V54 project.
+
+1. Customer mobile login now uses the configured MSG91 OTP Widget.
+2. Customer mobile signup now uses MSG91 OTP verification.
+3. MSG91 Send OTP, Retry OTP and Verify OTP are connected to the existing Ashwini login UI.
+4. MSG91 access tokens are verified server-side before creating an Ashwini session/account.
+5. Email customer login remains on the existing flow.
+6. Store admin login/password/Email OTP flow was not changed.
+7. Existing orders, returns/replacements, Help Desk, profile and other APIs were not intentionally changed.
+8. Added Render environment variables:
+   MSG91_WIDGET_ID=3668776a6531353432363138
+   MSG91_WIDGET_TOKEN=<your MSG91 OTP Widget token>
+   MSG91_AUTHKEY=<your MSG91 account AuthKey>
+
+IMPORTANT:
+- Do not put the MSG91 account AuthKey in frontend code.
+- MSG91_WIDGET_TOKEN is intended for the client-side widget integration; MSG91_AUTHKEY remains server-side.
+- The current uploaded project backup is preserved separately.
