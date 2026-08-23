@@ -577,16 +577,7 @@ async function initMsg91Widget(captchaId){
   const configuration={widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'',exposeMethods:true,captchaRenderId:captchaId||'',success:(data)=>console.log('MSG91 success',data),failure:(error)=>console.error('MSG91 failure',error)};
   await new Promise((resolve,reject)=>{
    if(typeof window.initSendOTP==='function'){window.initSendOTP(configuration);resolve();return}
-   const sources=['https://verify.msg91.com/otp-provider.js','https://verify.phone91.com/otp-provider.js'];let i=0;
-   const load=()=>{
-    if(i>=sources.length){reject(new Error('Could not load MSG91 OTP service. Please check your network and try again.'));return}
-    const s=document.createElement('script'),src=sources[i++];let settled=false;
-    const next=()=>{if(settled)return;settled=true;s.remove();load()};
-    const timer=setTimeout(next,12000);
-    s.src=src;s.async=true;
-    s.onload=()=>{if(settled)return;clearTimeout(timer);settled=true;try{if(typeof window.initSendOTP!=='function')throw new Error('MSG91 OTP service did not initialise.');window.initSendOTP(configuration);resolve()}catch(e){reject(e)}};
-    s.onerror=()=>{clearTimeout(timer);next()};document.head.appendChild(s);
-   };load();
+   const s=document.createElement('script');s.src='https://verify.msg91.com/otp-provider.js';s.async=true;s.onload=()=>{try{window.initSendOTP(configuration);resolve()}catch(e){reject(e)}};s.onerror=()=>reject(new Error('Could not load MSG91 OTP service.'));document.head.appendChild(s);
   });
   window.__msg91Config=configuration;
   return configuration;
