@@ -631,12 +631,33 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
    if(u){db.prepare('UPDATE users SET phone=? WHERE id=?').run(mobile,u.id);u={...u,phone:mobile};}
   }
   if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  // A mobile admin sign-in uses the already configured MSG91 secure widget.
+  // Email sign-in stays on the existing email-OTP route below.
+  if(/^\d{10}$/.test(mobile))return res.json({ok:true,channel:"mobile",phone:mobile});
   if(!otpGuard(req,res,u.email))return;
   const otp=issueOtp(u,'login');
   const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
   if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
   res.json({ok:true,email:u.email});
  }catch(e){console.error('[Ashwini Admin secure login]',e.message);res.status(503).json({error:"Admin OTP could not be delivered. Please check email configuration."});}
+});
+app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
+ try{
+  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||""),accessToken=String(req.body?.accessToken||"").trim();
+  const phone=normalizePhone(identifier);
+  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit admin mobile number."});
+  if(!password)return res.status(400).json({error:"Admin password is required."});
+  if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
+  const verification=await verifyMsg91AccessToken(accessToken);
+  const verifiedPhone=normalizePhone(verification.mobile||verification.phone||verification.identifier||verification.data?.mobile||verification.data?.phone||verification.data?.identifier);
+  if(verifiedPhone&&verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the admin sign-in number."});
+  const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
+  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
+  clearOtpFailures(req,phone);
+  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
+  createSession(res,u.id);res.json({user:safe});
+ }catch(e){console.error("[MSG91 admin login verification]",e.message);res.status(401).json({error:e.message||"MSG91 admin OTP verification failed."});}
 });
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
