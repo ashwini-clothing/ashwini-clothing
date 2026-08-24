@@ -576,7 +576,9 @@ async function initMsg91Widget(captchaId){
   const cfg=await api('/api/auth/msg91-config');
   const configuration={widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'',exposeMethods:true,captchaRenderId:captchaId||'',success:(data)=>console.log('MSG91 success',data),failure:(error)=>console.error('MSG91 failure',error)};
   await new Promise((resolve,reject)=>{
-   if(typeof window.initSendOTP==='function'){window.initSendOTP(configuration);resolve();return}
+   // MSG91 exposes its methods immediately, but it still fetches widget settings
+   // asynchronously. Give it a moment before the caller invokes sendOtp().
+   if(typeof window.initSendOTP==='function'){window.initSendOTP(configuration);setTimeout(resolve,1500);return}
    const sources=['https://verify.msg91.com/otp-provider.js','https://verify.phone91.com/otp-provider.js'];let i=0;
    const load=()=>{
     if(i>=sources.length){reject(new Error('Could not load MSG91 OTP service. Please check your network and try again.'));return}
@@ -584,7 +586,7 @@ async function initMsg91Widget(captchaId){
     const next=()=>{if(settled)return;settled=true;s.remove();load()};
     const timer=setTimeout(next,12000);
     s.src=src;s.async=true;
-    s.onload=()=>{if(settled)return;clearTimeout(timer);settled=true;try{if(typeof window.initSendOTP!=='function')throw new Error('MSG91 OTP service did not initialise.');window.initSendOTP(configuration);resolve()}catch(e){reject(e)}};
+    s.onload=()=>{if(settled)return;clearTimeout(timer);settled=true;try{if(typeof window.initSendOTP!=='function')throw new Error('MSG91 OTP service did not initialise.');window.initSendOTP(configuration);setTimeout(resolve,1500)}catch(e){reject(e)}};
     s.onerror=()=>{clearTimeout(timer);next()};document.head.appendChild(s);
    };load();
   });
