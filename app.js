@@ -50,7 +50,7 @@ async function lookupAddressPin(pin){
   if(city) city.value=d.city||d.district||'';
   if(state) state.value=d.state||'';
   updateCodAvailability();
-  if(out) out.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)}</small>`;
+  try{const estimate=await api('/api/delivery-estimate/'+encodeURIComponent(pin));if(out)out.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)} · Delivery: ${esc(deliveryDateText(estimate))} (${Number(estimate.minDays)}–${Number(estimate.maxDays)} days)</small>`}catch{if(out) out.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)}</small>`}
  }catch(e){if(out)out.textContent=e.message||'PIN code location not found.';}
 }
 function addressPinChanged(){
@@ -85,14 +85,16 @@ function productCard(p){
 function pick(id,s,b){const box=b?.parentElement;if(sizes[id]===s){sizes[id]='';b?.classList.remove('sel');return}sizes[id]=s;if(box)box.querySelectorAll('.size').forEach(x=>x.classList.remove('sel'));b?.classList.add('sel')}
 function flash(btn,text='✓ Added to Cart'){if(!btn)return;const old=btn.textContent;btn.textContent=text;btn.classList.add('added');setTimeout(()=>{if(btn.isConnected){btn.textContent=old;btn.classList.remove('added')}},1400)}
 function add(id,btn){let chosen=sizes[id];if(!chosen){toast('Please select a size');return false}let x=cart.find(a=>a.id===id&&a.size===chosen);if(x)x.quantity++;else cart.push({id,quantity:1,size:chosen});save();flash(btn);toast(`✓ Added to Cart · Size ${chosen}`);return true}
-function save(){localStorage.setItem('ashwiniCart',JSON.stringify(cart));const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
+function cartStorageKey(){return user?.role==='admin'?'ashwiniAdminCart':'ashwiniCart'}
+function loadCartForCurrentUser(){try{cart=JSON.parse(localStorage.getItem(cartStorageKey())||'[]');if(!Array.isArray(cart))cart=[]}catch{cart=[]}const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
+function save(){localStorage.setItem(cartStorageKey(),JSON.stringify(cart));const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
 function ensureAdminNotificationBadgeStyle(){if(document.getElementById('ashwiniAdminNotifBadgeStyle'))return;const st=document.createElement('style');st.id='ashwiniAdminNotifBadgeStyle';st.textContent='.admin-notif-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;margin-left:6px;border-radius:999px;background:#d71920;color:#fff;font-size:11px;font-weight:800;line-height:20px;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,.18)}.admin-toolbar .admin-notif-badge{position:relative;top:-1px}.admin-stat .admin-notif-badge{position:absolute;top:8px;right:8px}.admin-stat{position:relative}h3>.admin-notif-badge{font-size:10px;height:18px;min-width:18px;line-height:18px}';document.head.appendChild(st)}
 ensureAdminNotificationBadgeStyle();
 
 function enhancePasswordInputs(root=document){
  try{
-  if(!document.getElementById('ashwiniPasswordEyeStyle')){const st=document.createElement('style');st.id='ashwiniPasswordEyeStyle';st.textContent='.ash-pw-wrap{position:relative;display:block}.ash-pw-wrap>input{width:100%;padding-right:46px!important}.ash-pw-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent!important;padding:6px!important;min-width:32px;cursor:pointer;font-size:18px;line-height:1}';document.head.appendChild(st)}
-  const scope=root||document;scope.querySelectorAll?.('input[type="password"]:not([data-ash-eye])').forEach(input=>{const wrap=document.createElement('span');wrap.className='ash-pw-wrap';input.parentNode.insertBefore(wrap,input);wrap.appendChild(input);input.dataset.ashEye='1';const b=document.createElement('button');b.type='button';b.className='ash-pw-eye';b.setAttribute('aria-label','Show password');b.textContent='👁';b.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';b.textContent=show?'🙈':'👁';b.setAttribute('aria-label',show?'Hide password':'Show password')});wrap.appendChild(b)})
+  if(!document.getElementById('ashwiniPasswordEyeStyle')){const st=document.createElement('style');st.id='ashwiniPasswordEyeStyle';st.textContent='.ash-pw-wrap{position:relative;display:block;width:100%}.ash-pw-wrap>input{width:100%;box-sizing:border-box;padding-right:64px!important}.ash-pw-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);height:36px;border:0!important;background:transparent!important;color:#0066c0!important;padding:4px 10px!important;min-width:54px;cursor:pointer;font:600 12px Arial,sans-serif;line-height:1;border-radius:5px}.ash-pw-eye:hover{background:#eef6ff!important}.ash-pw-eye:focus-visible{outline:2px solid #007185;outline-offset:1px}';document.head.appendChild(st)}
+  const scope=root||document;scope.querySelectorAll?.('input[type="password"]:not([data-ash-eye])').forEach(input=>{const wrap=document.createElement('span');wrap.className='ash-pw-wrap';input.parentNode.insertBefore(wrap,input);wrap.appendChild(input);input.dataset.ashEye='1';const b=document.createElement('button');b.type='button';b.className='ash-pw-eye';b.setAttribute('aria-label','Show password');b.textContent='Show';b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';b.textContent=show?'Hide':'Show';b.setAttribute('aria-label',show?'Hide password':'Show password')});wrap.appendChild(b)})
  }catch{}
 }
 function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';document.getElementById('modalClose')?.focus()}
@@ -298,7 +300,8 @@ async function answerQuestion(questionId,productId){
  try{await api(`/api/questions/${questionId}/answers`,{method:'POST',body:{answer}});toast('Answer added');detail(productId)}catch(e){toast(e.message||'Could not add answer')}
 }
 
-function checkDelivery(id){const pin=(document.getElementById(`pin-${id}`)?.value||'').trim();const out=document.getElementById(`delivery-${id}`);if(!/^\d{6}$/.test(pin)){if(out)out.textContent='Please enter a valid 6-digit PIN code.';return}const first=Number(pin.slice(-1));const days=first%3+3;const d=new Date();d.setDate(d.getDate()+days);if(out)out.innerHTML=`<b>Free delivery</b> · Expected by ${d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})} · PIN ${pin}`}
+function deliveryDateText(d){const from=new Date(d.from),to=new Date(d.to),fmt={day:'numeric',month:'short'};return from.toLocaleDateString('en-IN',fmt)+' – '+to.toLocaleDateString('en-IN',fmt)}
+async function checkDelivery(id){const pin=(document.getElementById(`pin-${id}`)?.value||'').trim(),out=document.getElementById(`delivery-${id}`);if(!/^\d{6}$/.test(pin)){if(out)out.textContent='Please enter a valid 6-digit PIN code.';return}if(out)out.textContent='Checking delivery estimate…';try{const d=await api('/api/delivery-estimate/'+encodeURIComponent(pin));if(out)out.innerHTML=`<b>Free delivery</b> · ${esc(d.zone)} · Expected ${esc(deliveryDateText(d))} · ${Number(d.minDays)}–${Number(d.maxDays)} days`}catch(e){if(out)out.textContent=e.message||'Delivery estimate is unavailable for this PIN.'}}
 
 function cartView(){api('/api/products').then(ps=>{let total=0;const rows=cart.map((x,i)=>{const p=ps.find(z=>z.id===x.id);if(!p)return '';total+=p.price*x.quantity;return `<div class="cartrow"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h3>${esc(p.name)}</h3><p>Size: <b>${esc(x.size)}</b></p><div class="cart-actions"><div class="qty"><button type="button" onclick="changeQty(${i},-1)">−</button><span>${x.quantity}</span><button type="button" onclick="changeQty(${i},1)">+</button></div><button type="button" onclick="removeCart(${i})">Remove</button><button type="button" class="wishlist" onclick="addWishlist(${p.id},${i})">♡ Move to Wishlist</button></div></div><b>₹${(p.price*x.quantity).toLocaleString('en-IN')}</b></div>`}).join('');openM(`<h2>Shopping Cart (${cart.reduce((s,x)=>s+x.quantity,0)})</h2>${cart.length?rows:'<div class="empty-wish">Your cart is empty.</div>'}<div class="total">Subtotal: ₹${total.toLocaleString('en-IN')}</div>${cart.length?`<button class="gold" style="width:100%;font-size:17px" onclick="checkout()">Proceed to Secure Checkout →</button>`:''}<div class="wishlist-section"><h3>♥ Wishlist (${wishlist.length})</h3>${wishlist.length?wishlist.map(id=>{const p=ps.find(z=>z.id===id);return p?`<div class="wish-card"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h4>${esc(p.name)}</h4><div class="wish-price">₹${Number(p.price).toLocaleString('en-IN')}</div></div><button class="gold" type="button" onclick="addWishlistToCart(${p.id})">Add to Cart</button><button class="remove-wish" type="button" onclick="removeWishlist(${p.id})">Remove</button></div>`:''}).join(''):'<div class="empty-wish">Your wishlist is empty.</div>'}</div>`)}).catch(e=>toast(e.message))}
 function changeQty(i,n){cart[i].quantity=Math.max(1,cart[i].quantity+n);save();cartView()}
@@ -652,24 +655,20 @@ function showRegisterPanel(){
  <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div>`);
 }
 function showAdminLoginPanel(){
- openM(`<div class="amazon-login-wrap"><h2>Store admin sign in</h2><p>Use your store admin email. You can sign in with a secure Email OTP, or use the existing admin password.</p><div class="form"><input id="adminLoginEmail" type="email" placeholder="Admin email" autocomplete="username"><button class="gold" type="button" onclick="requestAdminEmailOtp()">Send Admin Email OTP</button><small id="adminOtpHint">OTP will be sent to the registered admin email.</small><input id="adminLoginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit Admin OTP"><button class="gold" type="button" onclick="verifyAdminEmailOtp()">Sign in with Email OTP</button><div class="login-divider"><span>or</span></div><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold" onclick="adminPasswordLogin()">Sign in with Password</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
+ openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo">ASHWINI</div><h2>Store admin sign in</h2><p class="login-legal">Enter your registered admin mobile number or email, then your password. A secure OTP will be sent to the admin email before dashboard access.</p><div class="form"><label class="login-label"><b>Admin mobile number or email</b></label><input id="adminLoginIdentifier" placeholder="Mobile number or email" autocomplete="username"><label class="login-label"><b>Password</b></label><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold amazon-continue-btn" onclick="adminBeginLogin()">Continue securely</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
 }
-async function requestAdminEmailOtp(){
- const email=(document.getElementById('adminLoginEmail')?.value||'').trim().toLowerCase(),hint=document.getElementById('adminOtpHint');
- if(!email){alert('Enter admin email first.');return}
- try{const d=await api('/api/auth/request-admin-login-otp',{method:'POST',body:{email}});if(hint)hint.textContent=d.devOtp?`Demo Admin OTP: ${d.devOtp}`:'Admin Email OTP sent. It expires in about 5 minutes.';document.getElementById('adminLoginOtp')?.focus();toast('✓ Admin OTP sent')}catch(e){if(hint)hint.textContent=e.message;alert(e.message)}
+async function adminBeginLogin(){
+ const identifier=(document.getElementById('adminLoginIdentifier')?.value||'').trim(),password=document.getElementById('adminLoginPassword')?.value||'';
+ if(!identifier||!password){alert('Enter admin mobile/email and password.');return}
+ try{const d=await api('/api/auth/admin-login-start',{method:'POST',body:{identifier,password}});window.__adminOtpEmail=d.email;openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo">ASHWINI</div><h2>Enter security OTP</h2><p class="login-legal">We sent a 6-digit OTP to your registered admin email.</p><div class="form"><input id="adminLoginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter 6-digit OTP" autofocus><button class="gold amazon-continue-btn" type="button" onclick="verifyAdminEmailOtp()">Sign in to Admin Dashboard</button><small id="adminOtpHint">OTP expires in about 5 minutes.</small><button type="button" class="linkbtn" onclick="showAdminLoginPanel()">← Back</button></div></div>`);toast('✓ Admin OTP sent')}catch(e){alert(e.message||'Could not start admin sign in')}
 }
 async function verifyAdminEmailOtp(){
- const email=(document.getElementById('adminLoginEmail')?.value||'').trim().toLowerCase(),otp=(document.getElementById('adminLoginOtp')?.value||'').trim();
- if(!email||!/^[0-9]{6}$/.test(otp)){alert('Enter admin email and the 6-digit OTP.');return}
+ const email=String(window.__adminOtpEmail||'').trim().toLowerCase(),otp=(document.getElementById('adminLoginOtp')?.value||'').trim();
+ if(!email||!/^[0-9]{6}$/.test(otp)){alert('Enter the 6-digit OTP.');return}
  try{const d=await api('/api/auth/verify-admin-login-otp',{method:'POST',body:{email,otp}});if(d.user?.role!=='admin')throw new Error('Admin access denied');session(d);closeM();toast('✓ Admin signed in')}catch(e){alert(e.message||'Admin OTP sign in failed')}
 }
-async function adminPasswordLogin(){
- const email=(document.getElementById('adminLoginEmail')?.value||'').trim().toLowerCase(), password=document.getElementById('adminLoginPassword')?.value||'';
- if(!email||!password){alert('Enter admin email and password.');return}
- try{const d=await api('/api/auth/login',{method:'POST',body:{email,password}});if(d.user?.role!=='admin')throw new Error('This account is not a store admin account.');session(d);closeM();toast('✓ Admin signed in');}
- catch(e){alert(e.message||'Admin sign in failed')}
-}
+async function requestAdminEmailOtp(){return adminBeginLogin()}
+async function adminPasswordLogin(){return adminBeginLogin()}
 function chooseOtpChannel(channel){const el=document.getElementById('loginIdentifier');if(el)el.placeholder=channel==='mobile'?'Mobile number':'Email address'}
 function showLoginMode(mode){}
 async function sendLoginOtp(){return continueCustomerLogin()}
@@ -698,9 +697,9 @@ async function register(){return sendOtp()}
 async function setupAdmin(){try{const d=await api('/api/auth/setup-admin',{method:'POST',body:{name:an.value,email:ae.value,password:apw.value}});session(d);closeM();dashboard()}catch(e){alert(e.message)}}
 async function login(){try{const d=await api('/api/auth/login',{method:'POST',body:{email:email.value,password:pass.value}});session(d);closeM()}catch(e){alert(e.message)}}
 function refreshAccountHeader(){const link=document.getElementById('accountTopLink');if(!link)return;const small=link.querySelector('small'),bold=link.querySelector('b');if(user){const short=String(user.name||'Customer').trim().split(/\s+/)[0]||'Customer';if(small)small.textContent=`Hello, ${short}`;if(bold)bold.textContent='Account & Lists';link.setAttribute('aria-label',`Account & Lists for ${short}`)}else{if(small)small.textContent='Hello, sign in';if(bold)bold.textContent='Account & Lists';link.setAttribute('aria-label','Sign in to Ashwini')}}
-function session(d){token='';user=d.user||d;localStorage.removeItem('ashwiniToken');localStorage.setItem('ashwiniUser',JSON.stringify(user));if(user.role==='admin'){const a=document.getElementById('admin');if(a)a.style.display='inline'}refreshAccountHeader();toast('Welcome to Ashwini')}
-async function logout(){try{await api('/api/auth/logout',{method:'POST'})}catch{}localStorage.removeItem('ashwiniToken');localStorage.removeItem('ashwiniUser');token='';user=null;const a=document.getElementById('admin');if(a)a.style.display='none';refreshAccountHeader();auth()}
-async function restoreSession(){try{const d=await api('/api/me');user=d.user||d;localStorage.setItem('ashwiniUser',JSON.stringify(user));if(user.role==='admin'){const a=document.getElementById('admin');if(a)a.style.display='inline'}refreshAccountHeader()}catch{localStorage.removeItem('ashwiniUser');user=null;refreshAccountHeader()}}
+function session(d){token='';user=d.user||d;localStorage.removeItem('ashwiniToken');localStorage.setItem('ashwiniUser',JSON.stringify(user));loadCartForCurrentUser();if(user.role==='admin'){const a=document.getElementById('admin');if(a)a.style.display='inline'}refreshAccountHeader();toast('Welcome to Ashwini')}
+async function logout(){try{await api('/api/auth/logout',{method:'POST'})}catch{}localStorage.removeItem('ashwiniToken');localStorage.removeItem('ashwiniUser');token='';user=null;loadCartForCurrentUser();const a=document.getElementById('admin');if(a)a.style.display='none';refreshAccountHeader();auth()}
+async function restoreSession(){try{const d=await api('/api/me');user=d.user||d;localStorage.setItem('ashwiniUser',JSON.stringify(user));loadCartForCurrentUser();if(user.role==='admin'){const a=document.getElementById('admin');if(a)a.style.display='inline'}refreshAccountHeader()}catch{localStorage.removeItem('ashwiniUser');user=null;loadCartForCurrentUser();refreshAccountHeader()}}
 async function orders(){
  try{
   const [os,evs]=await Promise.all([api('/api/orders'),api('/api/return-events')]);
@@ -912,6 +911,27 @@ async function adminHelpChat(id){try{const d=await api(`/api/admin/help-chat/thr
 async function refreshAdminHelpChat(id){try{const d=await api(`/api/admin/help-chat/threads/${id}`);const box=document.getElementById('adminHelpMessages');if(!box)return;box.innerHTML=d.messages.map(helpChatBubble).join('');box.scrollTop=box.scrollHeight}catch{}}
 async function sendAdminHelpReply(id){const input=document.getElementById('adminHelpInput'),text=input?.value.trim();if(!text)return;try{input.disabled=true;await api(`/api/admin/help-chat/threads/${id}/reply`,{method:'POST',body:{message:text}});input.value='';await refreshAdminHelpChat(id)}catch(e){alert(e.message||'Reply could not be sent')}finally{if(input){input.disabled=false;input.focus()}}}
 async function updateAdminHelpChat(id,status){try{await api(`/api/admin/help-chat/threads/${id}`,{method:'PATCH',body:{status}});toast(status==='RESOLVED'?'✓ Chat marked resolved':'✓ Chat reopened');dashboard()}catch(e){alert(e.message||'Could not update chat')}}
+// Keep the dashboard order shortcut and delivery controls separate from customer shopping state.
+document.addEventListener('click',e=>{
+ const orderCard=e.target.closest?.('.admin-stat.stat-button');
+ if(!orderCard||!/^Orders\b/.test(orderCard.textContent.trim()))return;
+ const orderHeading=[...document.querySelectorAll('.modal h3')].find(x=>x.textContent.trim()==='🚚 Orders');
+ if(!orderHeading)return;
+ e.preventDefault();e.stopImmediatePropagation();
+ orderHeading.scrollIntoView({behavior:'smooth',block:'start'});
+});
+const adminToolbarObserver=new MutationObserver(()=>{
+ document.querySelectorAll('.admin-toolbar').forEach(toolbar=>{
+  if(toolbar.querySelector('[data-delivery-settings]'))return;
+  const button=document.createElement('button');
+  button.type='button';button.dataset.deliverySettings='1';button.textContent='🚚 Delivery Settings';
+  button.addEventListener('click',adminDeliverySettings);
+  const info=[...toolbar.querySelectorAll('button')].find(x=>x.textContent.includes('Ashwini Information'));
+  info?info.insertAdjacentElement('afterend',button):toolbar.appendChild(button);
+ });
+});
+adminToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
+
 async function dashboard(){
  if(user?.role!=='admin')return alert('Admin only');
  const results=await Promise.allSettled([api('/api/admin/stats'),api('/api/admin/orders'),api('/api/products'),api('/api/admin/questions'),api('/api/admin/customer-help'),api('/api/admin/whatsapp-help-events'),api('/api/admin/help-chat/threads'),api('/api/admin/returns')]);
@@ -947,6 +967,21 @@ async function storeProfilePage(){
   openM(`<div class="store-profile-page"><img class="store-profile-logo" src="${esc(x.logo_data||'logo-clear.png')}" alt="Ashwini Clothing logo"><h2 class="store-profile-title">${esc(x.about_title||'About Ashwini Clothing')}</h2><div class="store-profile-section"><h3>Our History</h3><div class="store-profile-history">${esc(x.history||'Ashwini Clothing information will be updated soon.')}</div></div><div class="store-profile-section"><h3>📍 Ashwini Clothing Address & Contact</h3><div class="store-profile-contact">${contact||'Contact information will be updated soon.'}</div></div>${user?.role==='admin'?`<button class="gold" type="button" onclick="adminStoreProfile()">✎ Edit Ashwini Information</button>`:''}</div>`);
  }catch(e){alert('Could not load Ashwini information: '+e.message)}
 }
+async function adminDeliverySettings(){
+ if(user?.role!=='admin')return alert('Admin only');
+ try{
+  const d=await api('/api/admin/delivery-settings');
+  const row=(label,min,max,key)=>`<label>${label}<span class="delivery-range"><input id="delivery_${key}_min" type="number" min="1" max="30" value="${Number(d[`${key}_min`])}"><span>to</span><input id="delivery_${key}_max" type="number" min="1" max="30" value="${Number(d[`${key}_max`])}"><span>business days</span></span></label>`;
+  openM(`<h2>🚚 Delivery Settings</h2><p class="muted">Set estimates from your dispatch store. Customers will see the correct range after they enter their PIN code.</p><div class="admin-form"><label>Dispatch city<input id="delivery_city" value="${esc(d.dispatch_city)}" maxlength="80"></label><label>State<input id="delivery_state" value="${esc(d.dispatch_state)}" maxlength="80"></label><label>Dispatch PIN code<input id="delivery_pincode" inputmode="numeric" value="${esc(d.dispatch_pincode)}" maxlength="6"></label>${row('Jandli / Ambala Cantt','same_city_min','same_city_max','same_city')}${row('Other Haryana locations','same_state_min','same_state_max','same_state')}${row('Nearby states','nearby_min','nearby_max','nearby')}${row('Other India','rest_min','rest_max','rest')}${row('Remote locations','remote_min','remote_max','remote')}<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="gold" type="button" onclick="saveDeliverySettings()">Save delivery settings</button><button type="button" onclick="dashboard()">Back to dashboard</button></div></div>`);
+ }catch(e){alert(e.message||'Could not open delivery settings')}
+}
+async function saveDeliverySettings(){
+ const v=id=>document.getElementById(id)?.value.trim();
+ const body={dispatch_city:v('delivery_city'),dispatch_state:v('delivery_state'),dispatch_pincode:v('delivery_pincode')};
+ for(const zone of ['same_city','same_state','nearby','rest','remote']){body[`${zone}_min`]=Number(v(`delivery_${zone}_min`));body[`${zone}_max`]=Number(v(`delivery_${zone}_max`))}
+ try{await api('/api/admin/delivery-settings',{method:'PATCH',body});toast('✓ Delivery settings saved');dashboard()}catch(e){alert(e.message||'Could not save delivery settings')}
+}
+
 async function adminCodControl(){
  if(user?.role!=='admin')return alert('Admin only');
  try{

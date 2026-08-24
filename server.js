@@ -129,6 +129,8 @@ try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_name TEXT NOT NULL DE
 try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!'")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_state_settings (state TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_settings (id INTEGER PRIMARY KEY CHECK(id=1), dispatch_city TEXT NOT NULL DEFAULT 'Jandli, Ambala Cantt', dispatch_state TEXT NOT NULL DEFAULT 'Haryana', dispatch_pincode TEXT NOT NULL DEFAULT '134003', same_city_min INTEGER NOT NULL DEFAULT 1, same_city_max INTEGER NOT NULL DEFAULT 2, same_state_min INTEGER NOT NULL DEFAULT 2, same_state_max INTEGER NOT NULL DEFAULT 4, nearby_min INTEGER NOT NULL DEFAULT 3, nearby_max INTEGER NOT NULL DEFAULT 5, rest_min INTEGER NOT NULL DEFAULT 5, rest_max INTEGER NOT NULL DEFAULT 8, remote_min INTEGER NOT NULL DEFAULT 7, remote_max INTEGER NOT NULL DEFAULT 10, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.prepare(`INSERT OR IGNORE INTO delivery_settings(id) VALUES(1)`).run()}catch{}
 try{db.prepare("INSERT OR IGNORE INTO cod_settings(id,enabled) VALUES(1,1)").run()}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO store_profile(id,about_title,history,address,city,state,pincode,email,phone,logo_data) VALUES(1,?,?,?,?,?,?,?,?,?)`).run('About Ashwini Clothing','Welcome to Ashwini Clothing. Our story and company information can be updated by the store admin.','','','','','ashwiniweb88@gmail.com','', '')}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, user_id INTEGER, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(question_id) REFERENCES product_questions(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
@@ -306,6 +308,23 @@ app.get("/api/pincode/:pin",async(req,res)=>{
  }catch{}
  return res.status(404).json({error:"PIN code location could not be found. Please check the 6-digit PIN."});
 });
+app.get('/api/delivery-estimate/:pin',async(req,res)=>{
+ const pin=String(req.params.pin||'').trim();if(!/^\d{6}$/.test(pin))return res.status(400).json({error:'Enter a valid 6-digit PIN code'});
+ const settings=db.prepare('SELECT * FROM delivery_settings WHERE id=1').get();let place=null;
+ try{const r=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{headers:{accept:'application/json'}});if(r.ok){const data=await r.json(),po=data?.[0]?.PostOffice?.[0];if(po)place={city:po.Block||po.District||po.Division||'',district:po.District||'',state:po.State||''}}}catch{}
+ if(!place)return res.status(404).json({error:'PIN code location could not be found. Please check the 6-digit PIN.'});
+ const cityText=`${place.city} ${place.district}`.toLowerCase(),state=String(place.state||'').toLowerCase(),baseState=String(settings.dispatch_state||'').toLowerCase();
+ const nearby=['punjab','chandigarh','delhi','himachal pradesh','jammu and kashmir','rajasthan','uttarakhand','uttar pradesh'];
+ let min=settings.rest_min,max=settings.rest_max,zone='Across India';
+ if(pin===settings.dispatch_pincode||cityText.includes('ambala')||cityText.includes('jandli')){min=settings.same_city_min;max=settings.same_city_max;zone='Jandli / Ambala Cantt'}
+ else if(state===baseState){min=settings.same_state_min;max=settings.same_state_max;zone='Haryana'}
+ else if(nearby.includes(state)){min=settings.nearby_min;max=settings.nearby_max;zone='Nearby state'}
+ else if(['assam','arunachal pradesh','manipur','meghalaya','mizoram','nagaland','sikkim','tripura','andaman and nicobar islands','lakshadweep'].includes(state)){min=settings.remote_min;max=settings.remote_max;zone='Remote area'}
+ const from=new Date(),to=new Date();from.setDate(from.getDate()+Number(min));to.setDate(to.getDate()+Number(max));
+ res.json({pin,city:place.city||place.district,state:place.state,zone,minDays:Number(min),maxDays:Number(max),from:from.toISOString(),to:to.toISOString(),dispatch:{city:settings.dispatch_city,pincode:settings.dispatch_pincode}});
+});
+app.get('/api/admin/delivery-settings',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM delivery_settings WHERE id=1').get()));
+app.patch('/api/admin/delivery-settings',auth,admin,(req,res)=>{try{const b=req.body||{},days=['same_city_min','same_city_max','same_state_min','same_state_max','nearby_min','nearby_max','rest_min','rest_max','remote_min','remote_max'];const n={};for(const key of days){n[key]=Math.max(0,Math.min(30,Number(b[key])));if(!Number.isFinite(n[key]))throw Error('Enter valid delivery days')}for(const pair of [['same_city_min','same_city_max'],['same_state_min','same_state_max'],['nearby_min','nearby_max'],['rest_min','rest_max'],['remote_min','remote_max']])if(n[pair[0]]>n[pair[1]])throw Error('Minimum delivery day cannot exceed maximum day');const pin=String(b.dispatch_pincode||'').trim();if(!/^\d{6}$/.test(pin))throw Error('Enter a valid 6-digit dispatch PIN code');db.prepare(`UPDATE delivery_settings SET dispatch_city=?,dispatch_state=?,dispatch_pincode=?,same_city_min=?,same_city_max=?,same_state_min=?,same_state_max=?,nearby_min=?,nearby_max=?,rest_min=?,rest_max=?,remote_min=?,remote_max=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.dispatch_city||'Jandli, Ambala Cantt').trim(),String(b.dispatch_state||'Haryana').trim(),pin,n.same_city_min,n.same_city_max,n.same_state_min,n.same_state_max,n.nearby_min,n.nearby_max,n.rest_min,n.rest_max,n.remote_min,n.remote_max);res.json(db.prepare('SELECT * FROM delivery_settings WHERE id=1').get())}catch(e){res.status(400).json({error:e.message})}});
 
 app.post("/api/coupons/check",auth,(req,res)=>{try{const code=String(req.body?.code||'').trim().toUpperCase();if(code==='NEW2026'){const first=db.prepare("SELECT COUNT(*) n FROM orders WHERE user_id=?").get(req.user.id).n===0;if(!first)throw Error('Coupon already used or not available for this account');return res.json({ok:true,discount_percent:30,code})}const now=new Date().toISOString();const o=db.prepare("SELECT * FROM offers WHERE active=1 AND coupon_code=? AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY id DESC LIMIT 1").get(code,now,now);if(!o)throw Error('Coupon not recognised or expired');res.json({ok:true,discount_percent:Number(o.discount_percent||0),code:o.coupon_code,title:o.title})}catch(e){res.status(400).json({error:e.message})}});
 app.get("/api/slides",(req,res)=>{res.json(db.prepare("SELECT * FROM homepage_slides WHERE active=1 ORDER BY sort_order,id").all())});
@@ -579,6 +598,20 @@ app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
   if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
   res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
  }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
+});
+app.post("/api/auth/admin-login-start",async(req,res)=>{
+ try{
+  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||"");
+  if(!identifier||!password)return res.status(400).json({error:"Enter admin mobile/email and password"});
+  const mobile=normalizePhone(identifier),email=identifier.toLowerCase();
+  const u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
+  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  if(!otpGuard(req,res,u.email))return;
+  const otp=issueOtp(u,'login');
+  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
+  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
+  res.json({ok:true,email:u.email});
+ }catch(e){console.error('[Ashwini Admin secure login]',e.message);res.status(503).json({error:"Admin OTP could not be delivered. Please check email configuration."});}
 });
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
