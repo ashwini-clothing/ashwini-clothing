@@ -2,9 +2,9 @@ let token='';
 // Authentication is stored in the server-side HttpOnly session cookie.
 // Never clear it on page load; that was forcing users to sign in repeatedly.
 let user=JSON.parse(localStorage.getItem('ashwiniUser')||'null');
-let cart=JSON.parse(localStorage.getItem('ashwiniCart')||'[]');
+let cart=[];
 let wishlist=JSON.parse(localStorage.getItem('ashwiniWishlist')||'[]');
-let category='All', sizes={}, adIndex=0, adTimer, adPaused=false, checkoutItems=null;
+let category='All', sizes={}, adIndex=0, adTimer, adPaused=false, checkoutItems=null, quickFilters=new Set();
 const stages=['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED'];
 
 async function api(url,opts={}){
@@ -63,7 +63,7 @@ function cat(c){category=(c||'All').trim();const q=document.getElementById('q');
 async function load(){
  try{
   const q=document.getElementById('q')?.value||'', sort=document.getElementById('sort')?.value||'featured';
-  const p=await api(`/api/products?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}&sort=${sort}`);
+  const p=await api(`/api/products?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}&sort=${sort}&filters=${encodeURIComponent([...quickFilters].join(','))}`);
   const grid=document.getElementById('grid'); if(!grid)return;
   document.getElementById('resultCount').textContent=`(${p.length} results)`;
   grid.innerHTML=p.map(productCard).join('');
@@ -84,10 +84,10 @@ function productCard(p){
 }
 function pick(id,s,b){const box=b?.parentElement;if(sizes[id]===s){sizes[id]='';b?.classList.remove('sel');return}sizes[id]=s;if(box)box.querySelectorAll('.size').forEach(x=>x.classList.remove('sel'));b?.classList.add('sel')}
 function flash(btn,text='✓ Added to Cart'){if(!btn)return;const old=btn.textContent;btn.textContent=text;btn.classList.add('added');setTimeout(()=>{if(btn.isConnected){btn.textContent=old;btn.classList.remove('added')}},1400)}
-function add(id,btn){let chosen=sizes[id];if(!chosen){toast('Please select a size');return false}let x=cart.find(a=>a.id===id&&a.size===chosen);if(x)x.quantity++;else cart.push({id,quantity:1,size:chosen});save();flash(btn);toast(`✓ Added to Cart · Size ${chosen}`);return true}
-function cartStorageKey(){return user?.role==='admin'?'ashwiniAdminCart':'ashwiniCart'}
-function loadCartForCurrentUser(){try{cart=JSON.parse(localStorage.getItem(cartStorageKey())||'[]');if(!Array.isArray(cart))cart=[]}catch{cart=[]}const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
-function save(){localStorage.setItem(cartStorageKey(),JSON.stringify(cart));const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
+function add(id,btn){if(!user){auth('', 'Please sign in to add items to your cart.');return false}let chosen=sizes[id];if(!chosen){toast('Please select a size');return false}let x=cart.find(a=>a.id===id&&a.size===chosen);if(x)x.quantity++;else cart.push({id,quantity:1,size:chosen});save();flash(btn);toast(`✓ Added to Cart · Size ${chosen}`);return true}
+function cartStorageKey(){if(!user)return '';return user.role==='admin'?'ashwiniAdminCart':`ashwiniCart_${user.id}`}
+function loadCartForCurrentUser(){const key=cartStorageKey();try{cart=key?JSON.parse(localStorage.getItem(key)||'[]'):[];if(!Array.isArray(cart))cart=[]}catch{cart=[]}const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
+function save(){const key=cartStorageKey();if(key)localStorage.setItem(key,JSON.stringify(cart));const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
 function ensureAdminNotificationBadgeStyle(){if(document.getElementById('ashwiniAdminNotifBadgeStyle'))return;const st=document.createElement('style');st.id='ashwiniAdminNotifBadgeStyle';st.textContent='.admin-notif-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;margin-left:6px;border-radius:999px;background:#d71920;color:#fff;font-size:11px;font-weight:800;line-height:20px;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,.18)}.admin-toolbar .admin-notif-badge{position:relative;top:-1px}.admin-stat .admin-notif-badge{position:absolute;top:8px;right:8px}.admin-stat{position:relative}h3>.admin-notif-badge{font-size:10px;height:18px;min-width:18px;line-height:18px}';document.head.appendChild(st)}
 ensureAdminNotificationBadgeStyle();
 
@@ -303,7 +303,7 @@ async function answerQuestion(questionId,productId){
 function deliveryDateText(d){const from=new Date(d.from),to=new Date(d.to),fmt={day:'numeric',month:'short'};return from.toLocaleDateString('en-IN',fmt)+' – '+to.toLocaleDateString('en-IN',fmt)}
 async function checkDelivery(id){const pin=(document.getElementById(`pin-${id}`)?.value||'').trim(),out=document.getElementById(`delivery-${id}`);if(!/^\d{6}$/.test(pin)){if(out)out.textContent='Please enter a valid 6-digit PIN code.';return}if(out)out.textContent='Checking delivery estimate…';try{const d=await api('/api/delivery-estimate/'+encodeURIComponent(pin));if(out)out.innerHTML=`<b>Free delivery</b> · ${esc(d.zone)} · Expected ${esc(deliveryDateText(d))} · ${Number(d.minDays)}–${Number(d.maxDays)} days`}catch(e){if(out)out.textContent=e.message||'Delivery estimate is unavailable for this PIN.'}}
 
-function cartView(){api('/api/products').then(ps=>{let total=0;const rows=cart.map((x,i)=>{const p=ps.find(z=>z.id===x.id);if(!p)return '';total+=p.price*x.quantity;return `<div class="cartrow"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h3>${esc(p.name)}</h3><p>Size: <b>${esc(x.size)}</b></p><div class="cart-actions"><div class="qty"><button type="button" onclick="changeQty(${i},-1)">−</button><span>${x.quantity}</span><button type="button" onclick="changeQty(${i},1)">+</button></div><button type="button" onclick="removeCart(${i})">Remove</button><button type="button" class="wishlist" onclick="addWishlist(${p.id},${i})">♡ Move to Wishlist</button></div></div><b>₹${(p.price*x.quantity).toLocaleString('en-IN')}</b></div>`}).join('');openM(`<h2>Shopping Cart (${cart.reduce((s,x)=>s+x.quantity,0)})</h2>${cart.length?rows:'<div class="empty-wish">Your cart is empty.</div>'}<div class="total">Subtotal: ₹${total.toLocaleString('en-IN')}</div>${cart.length?`<button class="gold" style="width:100%;font-size:17px" onclick="checkout()">Proceed to Secure Checkout →</button>`:''}<div class="wishlist-section"><h3>♥ Wishlist (${wishlist.length})</h3>${wishlist.length?wishlist.map(id=>{const p=ps.find(z=>z.id===id);return p?`<div class="wish-card"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h4>${esc(p.name)}</h4><div class="wish-price">₹${Number(p.price).toLocaleString('en-IN')}</div></div><button class="gold" type="button" onclick="addWishlistToCart(${p.id})">Add to Cart</button><button class="remove-wish" type="button" onclick="removeWishlist(${p.id})">Remove</button></div>`:''}).join(''):'<div class="empty-wish">Your wishlist is empty.</div>'}</div>`)}).catch(e=>toast(e.message))}
+function cartView(){if(!user){auth('', 'Please sign in to view your cart.');return}api('/api/products').then(ps=>{let total=0;const rows=cart.map((x,i)=>{const p=ps.find(z=>z.id===x.id);if(!p)return '';total+=p.price*x.quantity;return `<div class="cartrow"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h3>${esc(p.name)}</h3><p>Size: <b>${esc(x.size)}</b></p><div class="cart-actions"><div class="qty"><button type="button" onclick="changeQty(${i},-1)">−</button><span>${x.quantity}</span><button type="button" onclick="changeQty(${i},1)">+</button></div><button type="button" onclick="removeCart(${i})">Remove</button><button type="button" class="wishlist" onclick="addWishlist(${p.id},${i})">♡ Move to Wishlist</button></div></div><b>₹${(p.price*x.quantity).toLocaleString('en-IN')}</b></div>`}).join('');openM(`<h2>Shopping Cart (${cart.reduce((s,x)=>s+x.quantity,0)})</h2>${cart.length?rows:'<div class="empty-wish">Your cart is empty.</div>'}<div class="total">Subtotal: ₹${total.toLocaleString('en-IN')}</div>${cart.length?`<button class="gold" style="width:100%;font-size:17px" onclick="checkout()">Proceed to Secure Checkout →</button>`:''}<div class="wishlist-section"><h3>♥ Wishlist (${wishlist.length})</h3>${wishlist.length?wishlist.map(id=>{const p=ps.find(z=>z.id===id);return p?`<div class="wish-card"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h4>${esc(p.name)}</h4><div class="wish-price">₹${Number(p.price).toLocaleString('en-IN')}</div></div><button class="gold" type="button" onclick="addWishlistToCart(${p.id})">Add to Cart</button><button class="remove-wish" type="button" onclick="removeWishlist(${p.id})">Remove</button></div>`:''}).join(''):'<div class="empty-wish">Your wishlist is empty.</div>'}</div>`)}).catch(e=>toast(e.message))}
 function changeQty(i,n){cart[i].quantity=Math.max(1,cart[i].quantity+n);save();cartView()}
 function removeCart(i){cart.splice(i,1);save();cartView()}
 
@@ -555,14 +555,15 @@ function showTermsOfUse(){
 function showPrivacyNotice(){
  openM(`<div class="amazon-login-wrap policy-page"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Ashwini Privacy Policy</h2><div class="policy-content"><p>Your privacy matters to Ashwini Clothing. This policy explains what information we use to provide shopping, account, payment and support services.</p><h3>1. Information We Use</h3><p>We may use information such as your name, mobile number, email address, delivery address, order details and account preferences to operate the website and fulfil orders.</p><h3>2. How We Use Information</h3><p>We use this information to sign you in, process orders and payments, arrange delivery, provide returns and replacements, send important order or security messages, and respond to support requests.</p><h3>3. OTP & Account Security</h3><p>When you use OTP or 2-step verification, your verification code is used only to confirm access to your account. Never share an OTP with anyone.</p><h3>4. Payments</h3><p>Payment details are handled through the payment provider used by Ashwini. Ashwini does not ask customers to share card PINs, CVVs or OTPs with support staff.</p><h3>5. Cookies & Local Storage</h3><p>The website may use browser storage and cookies to keep your cart, wishlist, login state and preferences working correctly.</p><h3>6. Your Choices</h3><p>You can update eligible account information from Login & Security and Manage Profile. You can also contact Ashwini Support for privacy-related questions.</p></div><button type="button" class="gold amazon-continue-btn" onclick="auth()">Back to Sign in</button></div>`);
 }
-function auth(){
+function auth(prefill='',notice=''){
  if(user){accountMenu();return}
  openM(`<div class="amazon-login-wrap">
  <div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div>
  <h2>Sign in or create account</h2>
  <div class="form">
    <label class="login-label"><b>Enter mobile number or email</b></label>
-   <input id="loginIdentifier" placeholder="Mobile number or email" autocomplete="username" autofocus>
+   <input id="loginIdentifier" value="${esc(prefill)}" placeholder="Mobile number or email" autocomplete="username" autofocus>
+   <div id="loginNotice" class="login-notice" role="status">${notice?esc(notice):''}</div>
    <button type="button" class="gold amazon-continue-btn" onclick="continueCustomerLogin()">Continue</button>
    <p class="login-legal">By continuing, you agree to Ashwini's <a href="#" onclick="showTermsOfUse();return false">Terms of Use</a> and <a href="#" onclick="showPrivacyNotice();return false">Privacy Policy</a>.</p>
    <div class="login-divider"><span>or</span></div>
@@ -620,19 +621,20 @@ function backToSignIn(){__msg91FlowId++;auth()}
 async function continueCustomerLogin(){
  const el=document.getElementById('loginIdentifier');
  const identifier=(el?.value||'').trim();
- if(!identifier){alert('Enter your mobile number or email.');el?.focus();return}
+ if(!identifier){showLoginNotice('Enter your mobile number or email.');el?.focus();return}
  if(!isMobileIdentifier(identifier)){
   try{
    window.__pendingLoginIdentifier=identifier;
    const d=await api('/api/auth/request-login-otp',{method:'POST',body:{identifier}});
    openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Sign in</h2><p class="login-account-id">${esc(identifier)} <button type="button" class="text-change" onclick="auth()">Change</button></p><div class="form"><label class="login-label"><b>Enter OTP</b></label><input id="loginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit OTP" autofocus><button class="gold amazon-continue-btn" type="button" onclick="verifyLoginOtpFor()">Sign in</button><small id="loginOtpHint">${d.devOtp?`Demo OTP: ${esc(d.devOtp)}`:`OTP sent to your email. It expires in about 5 minutes.`}</small><button type="button" class="linkbtn" onclick="resendLoginOtp()">Resend OTP</button><button type="button" class="linkbtn" onclick="auth()">← Back</button></div></div>`);
-  }catch(e){alert(e.message||'Could not continue sign in')}
+  }catch(e){showLoginNotice(e.message||'Could not continue sign in')}
   return;
  }
  const phone=identifier.replace(/\D/g,''),flowId=++__msg91FlowId;
  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Secure mobile verification</h2><p class="login-account-id">+91 ${esc(phone)}</p><div class="form"><small id="loginOtpHint">Opening the secure MSG91 OTP screen…</small><button type="button" class="linkbtn" data-auth-action="cancel-msg91">Cancel</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
- try{const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;const verified=await api('/api/auth/verify-msg91-login',{method:'POST',body:{identifier:phone,accessToken}});if(flowId!==__msg91FlowId)return;session(verified);closeM();toast('✓ Signed in')}catch(e){if(flowId!==__msg91FlowId)return;const h=document.getElementById('loginOtpHint');if(h)h.textContent=e.message||'Mobile verification could not be completed.';alert(e.message||'Mobile verification could not be completed')}
+ try{const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;const verified=await api('/api/auth/verify-msg91-login',{method:'POST',body:{identifier:phone,accessToken}});if(flowId!==__msg91FlowId)return;session(verified);closeM();toast('✓ Signed in')}catch(e){if(flowId!==__msg91FlowId)return;auth(phone,e.message||'Mobile verification could not be completed.')}
 }
+function showLoginNotice(message){const n=document.getElementById('loginNotice');if(n){n.textContent=message;n.classList.add('show')}else auth((document.getElementById('loginIdentifier')?.value||''),message)}
 async function resendLoginOtp(){
  const identifier=window.__pendingLoginIdentifier||'';
  if(isMobileIdentifier(identifier)){
@@ -931,6 +933,21 @@ const adminToolbarObserver=new MutationObserver(()=>{
  });
 });
 adminToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
+const quickFilterToolbarObserver=new MutationObserver(()=>{
+ document.querySelectorAll('.admin-toolbar').forEach(toolbar=>{
+  if(toolbar.querySelector('[data-quick-filter-settings]'))return;
+  const button=document.createElement('button');button.type='button';button.dataset.quickFilterSettings='1';button.textContent='⚡ Quick Filters';button.addEventListener('click',adminQuickFilters);
+  const delivery=toolbar.querySelector('[data-delivery-settings]');delivery?delivery.insertAdjacentElement('afterend',button):toolbar.appendChild(button);
+ });
+});
+quickFilterToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
+
+async function loadQuickFilters(){try{const items=await api('/api/quick-filters'),box=document.getElementById('quickFilterDropdown');if(!box)return items;box.innerHTML=items.length?items.map(x=>`<label class="quick-filter-row"><input type="checkbox" value="${esc(x.filter_type)}" ${quickFilters.has(x.filter_type)?'checked':''} onchange="toggleQuickFilter(this.value,this.checked)"><span>${esc(x.label)}</span></label>`).join(''):'<p class="quick-filter-empty">No quick filters added yet.</p>';return items}catch(e){console.error(e);return[]}}
+function toggleQuickFilter(type,enabled){enabled?quickFilters.add(type):quickFilters.delete(type);load()}
+async function adminQuickFilters(){if(user?.role!=='admin')return alert('Admin only');try{const items=await api('/api/admin/quick-filters');const rows=items.map(x=>`<tr><td><b>${esc(x.label)}</b></td><td>${x.filter_type==='IN_STOCK'?'In-stock items':'Rating 4+ items'}</td><td>${x.active?'Active':'Hidden'}</td><td>${x.sort_order}</td><td><button class="gold" type="button" onclick="quickFilterEditor(${x.id})">✎ Edit</button> <button class="admin-danger" type="button" onclick="deleteQuickFilter(${x.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="5">No quick filters.</td></tr>';openM(`<h2>⚡ Quick Filters</h2><p class="admin-note">These appear in the customer dropdown. Select whether each filter shows in-stock products or products rated 4 stars and above.</p><div class="admin-toolbar"><button class="gold" type="button" onclick="quickFilterEditor()">＋ Add Quick Filter</button><button type="button" onclick="dashboard()">Back</button></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Filter</th><th>Applies to</th><th>Status</th><th>Order</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`)}catch(e){alert(e.message||'Could not open quick filters')}}
+async function quickFilterEditor(id){let x={label:'',filter_type:'IN_STOCK',active:1,sort_order:0};if(id)x=await api('/api/admin/quick-filters').then(xs=>xs.find(a=>a.id===id)||x);openM(`<h2>⚡ ${id?'Edit':'Add'} Quick Filter</h2><div class="admin-form"><label>Filter name<input id="qf_label" value="${esc(x.label||'')}" placeholder="In stock"></label><label>Filter action<select id="qf_type"><option value="IN_STOCK" ${x.filter_type==='IN_STOCK'?'selected':''}>Show in-stock products</option><option value="RATING_4" ${x.filter_type==='RATING_4'?'selected':''}>Show 4 stars & above</option></select></label><label>Display order<input id="qf_order" type="number" min="0" value="${Number(x.sort_order||0)}"></label><label><input id="qf_active" type="checkbox" ${x.active?'checked':''}> Active</label></div><div class="admin-actions"><button class="gold" type="button" onclick="saveQuickFilter(${id||0})">Save Quick Filter</button><button type="button" onclick="adminQuickFilters()">Cancel</button></div>`)}
+async function saveQuickFilter(id){try{const body={label:qf_label.value,filter_type:qf_type.value,sort_order:Number(qf_order.value||0),active:qf_active.checked};await api(id?`/api/admin/quick-filters/${id}`:'/api/admin/quick-filters',{method:id?'PATCH':'POST',body});toast('✓ Quick filter saved');await loadQuickFilters();adminQuickFilters()}catch(e){alert(e.message||'Could not save quick filter')}}
+async function deleteQuickFilter(id){if(!confirm('Remove this quick filter?'))return;try{await api(`/api/admin/quick-filters/${id}`,{method:'DELETE'});toast('Quick filter removed');await loadQuickFilters();adminQuickFilters()}catch(e){alert(e.message||'Could not remove quick filter')}}
 
 async function dashboard(){
  if(user?.role!=='admin')return alert('Admin only');
@@ -1180,5 +1197,5 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
  const admin=document.getElementById('admin');if(admin&&user?.role==='admin')admin.style.display='inline';
- restoreSession().finally(()=>{save();loadSiteLogo();load();loadSlides();loadShopCategories();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);});
+ restoreSession().finally(()=>{loadSiteLogo();load();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);});
 });

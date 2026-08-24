@@ -93,6 +93,8 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS offers (id INTEGER PRIMARY KEY AUTOINCRE
 try{db.exec(`CREATE TABLE IF NOT EXISTS homepage_slides (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT DEFAULT '', offer_text TEXT DEFAULT '', image_url TEXT NOT NULL, button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE homepage_slides ADD COLUMN offer_text TEXT DEFAULT ''")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS shop_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, icon TEXT DEFAULT '👗', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS quick_filters (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL UNIQUE, filter_type TEXT NOT NULL DEFAULT 'IN_STOCK', active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{const defaults=[['In stock','IN_STOCK',0],['4 Stars & above','RATING_4',1]];const add=db.prepare('INSERT INTO quick_filters(label,filter_type,active,sort_order) VALUES(?,?,1,?)');for(const [label,type,order] of defaults){if(!db.prepare('SELECT id FROM quick_filters WHERE label=?').get(label))add.run(label,type,order)}}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_highlights (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, value TEXT NOT NULL, active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{ const defaults=[['Fabric','Premium Feel',0],['Fit','Comfort Fit',1],['Delivery','Fast Dispatch',2]]; const add=db.prepare('INSERT INTO product_highlights(label,value,active,sort_order) VALUES(?,?,?,?)'); for(const [label,value,order] of defaults){const row=db.prepare('SELECT id FROM product_highlights WHERE label=? ORDER BY id LIMIT 1').get(label); if(!row)add.run(label,value,1,order);} }catch{}
 try{
@@ -343,6 +345,12 @@ app.post("/api/admin/categories",auth,admin,(req,res)=>{try{const b=req.body||{}
 app.patch("/api/admin/categories/:id",auth,admin,(req,res)=>{try{const b=req.body||{};const name=String(b.name||'').trim();if(!name)throw Error('Category name is required');db.prepare("UPDATE shop_categories SET name=?,icon=?,active=?,sort_order=? WHERE id=?").run(name,String(b.icon||'👗'),b.active?1:0,Number(b.sort_order||0),req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/categories/:id",auth,admin,(req,res)=>{try{db.prepare("DELETE FROM shop_categories WHERE id=?").run(req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 
+app.get('/api/quick-filters',(req,res)=>res.json(db.prepare('SELECT * FROM quick_filters WHERE active=1 ORDER BY sort_order,id').all()));
+app.get('/api/admin/quick-filters',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM quick_filters ORDER BY sort_order,id').all()));
+app.post('/api/admin/quick-filters',auth,admin,(req,res)=>{try{const b=req.body||{},label=String(b.label||'').trim(),filterType=String(b.filter_type||'').trim();if(!label)throw Error('Filter name is required');if(!['IN_STOCK','RATING_4'].includes(filterType))throw Error('Choose a valid filter type');const r=db.prepare('INSERT INTO quick_filters(label,filter_type,active,sort_order) VALUES(?,?,?,?)').run(label,filterType,b.active===false?0:1,Number(b.sort_order||0));res.json(db.prepare('SELECT * FROM quick_filters WHERE id=?').get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
+app.patch('/api/admin/quick-filters/:id',auth,admin,(req,res)=>{try{const b=req.body||{},label=String(b.label||'').trim(),filterType=String(b.filter_type||'').trim();if(!label)throw Error('Filter name is required');if(!['IN_STOCK','RATING_4'].includes(filterType))throw Error('Choose a valid filter type');db.prepare('UPDATE quick_filters SET label=?,filter_type=?,active=?,sort_order=? WHERE id=?').run(label,filterType,b.active?1:0,Number(b.sort_order||0),Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+app.delete('/api/admin/quick-filters/:id',auth,admin,(req,res)=>{try{db.prepare('DELETE FROM quick_filters WHERE id=?').run(Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+
 function offerIsCurrentlyActive(o){
  if(!o || Number(o.active)!==1) return false;
  const now=Date.now();
@@ -402,10 +410,13 @@ app.post("/api/admin/offers/:id/send",auth,admin,(req,res)=>{
  }catch(e){res.status(400).json({error:e.message})}
 });
 app.get("/api/products",(req,res)=>{
- const {q="",category="All",sort="featured"}=req.query;
+ const {q="",category="All",sort="featured",filters=""}=req.query;
  let rows=db.prepare(`SELECT * FROM products
  WHERE (?='' OR name LIKE ? OR category LIKE ?)
  AND (?='All' OR lower(trim(category))=lower(trim(?)))`).all(q,`%${q}%`,`%${q}%`,category,category);
+ const selected=String(filters).split(',').map(x=>x.trim()).filter(Boolean);
+ if(selected.includes('IN_STOCK'))rows=rows.filter(x=>Number(x.stock)>0);
+ if(selected.includes('RATING_4'))rows=rows.filter(x=>Number(x.rating)>=4);
  if(sort==="low")rows.sort((a,b)=>a.price-b.price);
  if(sort==="high")rows.sort((a,b)=>b.price-a.price);
  if(sort==="rating")rows.sort((a,b)=>b.rating-a.rating);
