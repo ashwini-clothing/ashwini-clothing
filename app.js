@@ -98,7 +98,7 @@ function enhancePasswordInputs(root=document){
   const scope=root||document;scope.querySelectorAll?.('input[type="password"]:not([data-ash-eye])').forEach(input=>{const wrap=document.createElement('span');wrap.className='ash-pw-wrap';input.parentNode.insertBefore(wrap,input);wrap.appendChild(input);input.dataset.ashEye='1';const b=document.createElement('button');b.type='button';b.className='ash-pw-eye';b.setAttribute('aria-label','Show password');b.textContent='Show';b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';b.textContent=show?'Hide':'Show';b.setAttribute('aria-label',show?'Hide password':'Show password')});wrap.appendChild(b)})
  }catch{}
 }
-function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';document.getElementById('modalClose')?.focus()}
+function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';if(String(html).includes('Ashwini Admin Dashboard'))requestAnimationFrame(addAppearanceDashboardBox);document.getElementById('modalClose')?.focus()}
 function closeM(){if(window.__helpChatTimer){clearInterval(window.__helpChatTimer);window.__helpChatTimer=null}if(window.__helpChatStream){window.__helpChatStream.close();window.__helpChatStream=null}const m=document.getElementById('modal');if(!m)return;m.style.display='none';m.style.zIndex='';m.setAttribute('aria-hidden','true');document.body.style.overflow=''}
 
 const galleryFallback={1:['/_model_western.jpg'],2:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg'],3:['/_model_purple.jpg'],4:['/_model_purple.jpg'],5:['/_model_blue.jpg'],6:['/_model_blue.jpg'],7:['/_model_purple.jpg'],8:['/_model_western.jpg'],9:['/_model_blue.jpg'],10:['/_model_pink.jpg'],11:['/_model_western.jpg'],12:['/_model_purple.jpg'],13:['/_model_pink.jpg'],14:['/_model_purple.jpg'],100:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg']};
@@ -602,7 +602,7 @@ function msg91AccessToken(data){
  };return walk(data)
 }
 async function openMsg91Verification(phone){
- const cfg=await api('/api/auth/msg91-config');await loadMsg91Sdk();
+ const [cfg]=await Promise.all([api('/api/auth/msg91-config'),loadMsg91Sdk()]);
  // MSG91 creates its own secure OTP modal. Remove Ashwini's temporary panel
  // completely so only one clean OTP screen is visible to the customer.
  const ownModal=document.getElementById('modal');if(ownModal){ownModal.style.display='none';ownModal.style.zIndex='';ownModal.setAttribute('aria-hidden','true');document.body.style.overflow=''}
@@ -623,17 +623,19 @@ async function continueCustomerLogin(){
  const el=document.getElementById('loginIdentifier');
  const identifier=(el?.value||'').trim();
  if(!identifier){showLoginNotice('Enter your mobile number or email.');el?.focus();return}
+ const continueButton=[...document.querySelectorAll('.amazon-continue-btn')].find(b=>b.offsetParent!==null);
+ if(continueButton){continueButton.disabled=true;continueButton.textContent='Please wait…'}
  if(!isMobileIdentifier(identifier)){
   try{
    window.__pendingLoginIdentifier=identifier;
    const d=await api('/api/auth/request-login-otp',{method:'POST',body:{identifier}});
    openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Sign in</h2><p class="login-account-id">${esc(identifier)} <button type="button" class="text-change" onclick="auth()">Change</button></p><div class="form"><label class="login-label"><b>Enter OTP</b></label><input id="loginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit OTP" autofocus><button class="gold amazon-continue-btn" type="button" onclick="verifyLoginOtpFor()">Sign in</button><small id="loginOtpHint">${d.devOtp?`Demo OTP: ${esc(d.devOtp)}`:`OTP sent to your email. It expires in about 5 minutes.`}</small><button type="button" class="linkbtn" onclick="resendLoginOtp()">Resend OTP</button><button type="button" class="linkbtn" onclick="auth()">← Back</button></div></div>`);
-  }catch(e){showLoginNotice(e.message||'Could not continue sign in')}
+  }catch(e){showLoginNotice(e.message||'Could not continue sign in')}finally{if(continueButton){continueButton.disabled=false;continueButton.textContent='Continue'}}
   return;
  }
  const phone=identifier.replace(/\D/g,''),flowId=++__msg91FlowId;
  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Secure mobile verification</h2><p class="login-account-id">+91 ${esc(phone)}</p><div class="form"><small id="loginOtpHint">Opening the secure MSG91 OTP screen…</small><button type="button" class="linkbtn" data-auth-action="cancel-msg91">Cancel</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
- try{const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;const verified=await api('/api/auth/verify-msg91-login',{method:'POST',body:{identifier:phone,accessToken}});if(flowId!==__msg91FlowId)return;session(verified);closeM();toast('✓ Signed in')}catch(e){if(flowId!==__msg91FlowId)return;auth(phone,e.message||'Mobile verification could not be completed.')}
+ try{const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;const verified=await api('/api/auth/verify-msg91-login',{method:'POST',body:{identifier:phone,accessToken}});if(flowId!==__msg91FlowId)return;session(verified);closeM();toast('✓ Signed in')}catch(e){if(flowId!==__msg91FlowId)return;auth(phone,e.message||'Mobile verification could not be completed.')}finally{if(continueButton){continueButton.disabled=false;continueButton.textContent='Continue'}}
 }
 function showLoginNotice(message){const n=document.getElementById('loginNotice');if(n){n.textContent=message;n.classList.add('show')}else auth((document.getElementById('loginIdentifier')?.value||''),message)}
 async function resendLoginOtp(){
@@ -947,15 +949,7 @@ const adminToolbarObserver=new MutationObserver(()=>{
  });
 });
 adminToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
-const appearanceToolbarObserver=new MutationObserver(()=>{
- document.querySelectorAll('.admin-toolbar').forEach(toolbar=>{
-  if(toolbar.querySelector('[data-appearance-settings]'))return;
-  const button=document.createElement('button');button.type='button';button.dataset.appearanceSettings='1';button.textContent='🎨 Appearance / Design';button.addEventListener('click',adminAppearance);
-  const info=[...toolbar.querySelectorAll('button')].find(x=>x.textContent.includes('Ashwini Information'));
-  info?info.insertAdjacentElement('afterend',button):toolbar.appendChild(button);
- });
-});
-appearanceToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
+// Appearance settings is shown as a dashboard box below Inventory instead of a toolbar button.
 const quickFilterToolbarObserver=new MutationObserver(()=>{
  document.querySelectorAll('.admin-toolbar').forEach(toolbar=>{
   if(toolbar.querySelector('[data-quick-filter-settings]'))return;
@@ -998,6 +992,15 @@ async function dashboard(){
  const orderRows=o.length?o.map(x=>`<tr><td>#${x.id}<br><small>Ordered: ${new Date(x.created_at||'').toLocaleString('en-IN')}</small>${x.status==='DELIVERED'&&x.updated_at?`<br><small>Delivered: ${new Date(x.updated_at).toLocaleString('en-IN')}</small>`:''}</td><td><b>${esc(x.name||'Customer')}</b><br><small>${esc(x.email||'')}</small></td><td>₹${Number(x.total).toLocaleString('en-IN')}<br><small>${esc(x.payment_method)}</small></td><td><select class="status-select" onchange="updateOrderStatus(${x.id},this.value)">${['PAYMENT_PENDING','PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED'].map(st=>`<option ${st===x.status?'selected':''}>${st}</option>`).join('')}</select></td><td>${esc((x.address||'').slice(0,55))}</td></tr>`).join(''):'<tr><td colspan="5">No orders yet.</td></tr>';
  const productRows=p.map(x=>`<tr><td><div class="admin-product">${x.image?`<img src="${esc(x.image)}" alt="">`:'👗'}<div><b>${esc(x.name)}</b><br><small>${esc(x.category)}</small></div></div></td><td>₹${Number(x.price).toLocaleString('en-IN')}<br><small>MRP ₹${Number(x.mrp).toLocaleString('en-IN')}</small></td><td>${x.stock}</td><td><div class="admin-actions"><button type="button" onclick="productEditor(${x.id})">✎ Edit</button><button type="button" class="admin-danger" onclick="deleteProduct(${x.id})">Delete</button></div></td></tr>`).join('');
  openM(`<h2>👑 Ashwini Admin Dashboard</h2><div class="admin-toolbar"><button class="gold" onclick="productEditor()">＋ Add New Product</button><button onclick="adminOffers()">🎁 Offer Management</button><button onclick="adminReturns()">↩️ Return Management ${notifBadge(returnCount)}</button><button onclick="adminSlides()">🖼️ Slides</button><button onclick="adminCategories()">🏷️ Shop by Category</button><button onclick="adminHighlights()">✨ Product Highlights</button><button onclick="adminStoreProfile()">🏢 Ashwini Information</button><button onclick="adminCodControl()">💵 COD Control</button><button onclick="adminHelpInbox()">💬 WhatsApp Help Desk ${notifBadge(waUnread)}</button><button onclick="dashboard()">↻ Refresh</button></div><div class="admin-grid"><button class="admin-stat stat-button" type="button" onclick="adminStat('revenue')">Revenue<b>₹${Number(s.revenue).toLocaleString('en-IN')}</b><small>View paid orders</small></button><button class="admin-stat stat-button" type="button" onclick="adminStat('orders')">Orders${notifBadge(orderCount)}<b>${s.orders}</b><small>View all orders</small></button><button class="admin-stat stat-button" type="button" onclick="adminStat('customers')">Customers<b>${s.customers}</b><small>View customers</small></button><button class="admin-stat stat-button" type="button" onclick="adminInventory()">Products<b>${s.products}</b><small>View inventory</small></button></div><button class="inventory-launch" type="button" onclick="adminInventory()">📦 Inventory / Products <span aria-hidden="true">⌄</span></button><h3 style="margin-top:24px">🚚 Orders</h3><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th>Address</th></tr></thead><tbody>${orderRows}</tbody></table></div><h3 style="margin-top:24px">💬 Ashwini Help Desk Notifications ${hc.filter(x=>Number(x.unread)>0).length?`<span class="status-pill" style="margin-left:8px">${hc.filter(x=>Number(x.unread)>0).length} NEW</span>`:''}</h3><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Customer</th><th>Latest Message</th><th>Updated</th><th>Unread</th><th>Action</th></tr></thead><tbody>${hc.length?hc.map(x=>`<tr><td><b>${esc(x.customer_name||'Guest customer')}</b>${x.customer_email?`<br><small>${esc(x.customer_email)}</small>`:''}</td><td style="max-width:360px">${esc(x.last_message||'No messages')}</td><td><small>${new Date(x.updated_at||x.created_at).toLocaleString('en-IN')}</small></td><td>${Number(x.unread)>0?`<span class="status-pill">${x.unread} NEW</span>`:'✓'}</td><td><button class="gold" type="button" onclick="adminHelpChat(${x.id})">Open Chat</button></td></tr>`).join(''):'<tr><td colspan="5">No customer help messages yet.</td></tr>'}</tbody></table></div><h3 style="margin-top:24px">📞 Customer Help & Callback Requests</h3><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Customer</th><th>Problem</th><th>Contact</th><th>Mobile</th><th>Status</th><th>Action</th></tr></thead><tbody>${h.length?h.map(x=>`<tr><td>${esc(x.customer_name)}<br><small>${esc(x.customer_email)}</small></td><td><b>${esc(x.subject)}</b><br>${esc(x.message)}</td><td>${esc(x.contact_method)}</td><td>${x.customer_phone?`<a href="tel:${esc(x.customer_phone)}">${esc(x.customer_phone)}</a>`:'Not registered'}</td><td><span class="status-pill">${esc(x.status)}</span></td><td><button type="button" onclick="updateHelpStatus(${x.id},'CONTACTED')">Contacted</button> <button class="gold" type="button" onclick="updateHelpStatus(${x.id},'RESOLVED')">Resolved</button></td></tr>`).join(''):'<tr><td colspan="6">No customer help requests.</td></tr>'}</tbody></table></div><h3 style="margin-top:24px">❓ Customer Questions ${notifBadge(questionCount)}</h3><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Product</th><th>Question</th><th>Customer</th><th>Answers</th><th>Action</th></tr></thead><tbody>${q.length?q.map(x=>`<tr><td>${esc(x.product_name)}</td><td>${esc(x.question)}</td><td>${esc(x.asker_name)}</td><td>${x.answer_count}</td><td><div style="display:flex;gap:6px;align-items:flex-start;min-width:280px"><textarea id="admin-answer-${x.id}" rows="2" maxlength="1000" placeholder="Write answer here" style="flex:1;min-width:170px;padding:8px;border:1px solid #d8c7cc;border-radius:7px;resize:vertical"></textarea><button class="gold" type="button" onclick="adminAnswerQuestion(${x.id},${x.product_id})">Answer</button></div></td></tr>`).join(''):'<tr><td colspan="5">No customer questions yet.</td></tr>'}</tbody></table></div>`);
+}
+function addAppearanceDashboardBox(){
+ const inventoryBox=document.querySelector('.modal .inventory-launch');
+ if(!inventoryBox||document.querySelector('.modal [data-appearance-launch]'))return;
+ const appearanceBox=document.createElement('button');
+ appearanceBox.type='button';appearanceBox.className='inventory-launch';appearanceBox.dataset.appearanceLaunch='1';
+ appearanceBox.innerHTML='🎨 Appearance / Design Settings <span aria-hidden="true">⌄</span>';
+ appearanceBox.addEventListener('click',adminAppearance);
+ inventoryBox.insertAdjacentElement('afterend',appearanceBox);
 }
 async function adminInventory(){
  if(user?.role!=='admin')return alert('Admin only');
@@ -1248,5 +1251,5 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
  const admin=document.getElementById('admin');if(admin&&user?.role==='admin')admin.style.display='inline';
- restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);});
+ restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{loadMsg91Sdk().catch(()=>{})},400);});
 });
