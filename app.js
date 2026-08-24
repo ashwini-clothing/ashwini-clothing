@@ -95,8 +95,8 @@ function enhancePasswordInputs(root=document){
   const scope=root||document;scope.querySelectorAll?.('input[type="password"]:not([data-ash-eye])').forEach(input=>{const wrap=document.createElement('span');wrap.className='ash-pw-wrap';input.parentNode.insertBefore(wrap,input);wrap.appendChild(input);input.dataset.ashEye='1';const b=document.createElement('button');b.type='button';b.className='ash-pw-eye';b.setAttribute('aria-label','Show password');b.textContent='👁';b.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';b.textContent=show?'🙈':'👁';b.setAttribute('aria-label',show?'Hide password':'Show password')});wrap.appendChild(b)})
  }catch{}
 }
-function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';document.getElementById('modalClose')?.focus()}
-function closeM(){if(window.__helpChatTimer){clearInterval(window.__helpChatTimer);window.__helpChatTimer=null}if(window.__helpChatStream){window.__helpChatStream.close();window.__helpChatStream=null}const m=document.getElementById('modal');if(!m)return;m.style.display='none';m.setAttribute('aria-hidden','true');document.body.style.overflow=''}
+function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';document.getElementById('modalClose')?.focus()}
+function closeM(){if(window.__helpChatTimer){clearInterval(window.__helpChatTimer);window.__helpChatTimer=null}if(window.__helpChatStream){window.__helpChatStream.close();window.__helpChatStream=null}const m=document.getElementById('modal');if(!m)return;m.style.display='none';m.style.zIndex='';m.setAttribute('aria-hidden','true');document.body.style.overflow=''}
 
 const galleryFallback={1:['/_model_western.jpg'],2:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg'],3:['/_model_purple.jpg'],4:['/_model_purple.jpg'],5:['/_model_blue.jpg'],6:['/_model_blue.jpg'],7:['/_model_purple.jpg'],8:['/_model_western.jpg'],9:['/_model_blue.jpg'],10:['/_model_pink.jpg'],11:['/_model_western.jpg'],12:['/_model_purple.jpg'],13:['/_model_pink.jpg'],14:['/_model_purple.jpg'],100:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg']};
 function getGallery(p){let a=[];try{a=JSON.parse(p.gallery||'[]')}catch{}if(!Array.isArray(a)||!a.length)a=galleryFallback[p.id]||[];if(p.image&&!a.includes(p.image))a.unshift(p.image);return [...new Set(a)].filter(Boolean).slice(0,5)}
@@ -591,6 +591,9 @@ function isMobileIdentifier(v){return /^\d{10}$/.test(String(v||'').replace(/\D/
 function msg91AccessToken(data){return data?.accessToken||data?.access_token||data?.token||data?.jwt||''}
 async function openMsg91Verification(phone){
  const cfg=await api('/api/auth/msg91-config');await loadMsg91Sdk();
+ // MSG91 creates its own secure OTP modal. Keep Ashwini's modal behind it so
+ // the customer can see and use the MSG91 OTP entry, resend and close controls.
+ const ownModal=document.getElementById('modal');if(ownModal)ownModal.style.zIndex='8000';
  return new Promise((resolve,reject)=>{
   let finished=false;
   const finish=(fn,value)=>{if(finished)return;finished=true;fn(value)};
@@ -639,7 +642,7 @@ async function verifyLoginOtpFor(){
 function showRegisterPanel(){
  openM(`<h2>Create your Ashwini account</h2><p>Verify your mobile once and your account will be created. Existing mobile numbers will not create duplicate accounts.</p><div class="form">
  <input id="rn" placeholder="Full name" autocomplete="name"><input id="re" placeholder="Email" autocomplete="email"><input id="rp" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><input id="rphone" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel">
- <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><small id="otpHint">Secure MSG91 verification will open after you continue.</small><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div>`);
+ <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div>`);
 }
 function showAdminLoginPanel(){
  openM(`<div class="amazon-login-wrap"><h2>Store admin sign in</h2><p>Use your store admin email. You can sign in with a secure Email OTP, or use the existing admin password.</p><div class="form"><input id="adminLoginEmail" type="email" placeholder="Admin email" autocomplete="username"><button class="gold" type="button" onclick="requestAdminEmailOtp()">Send Admin Email OTP</button><small id="adminOtpHint">OTP will be sent to the registered admin email.</small><input id="adminLoginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit Admin OTP"><button class="gold" type="button" onclick="verifyAdminEmailOtp()">Sign in with Email OTP</button><div class="login-divider"><span>or</span></div><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold" onclick="adminPasswordLogin()">Sign in with Password</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
