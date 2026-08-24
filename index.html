@@ -182,6 +182,7 @@ button:active{transform:translateY(1px)}
 </section>
 
 <div class="wrap">
+<section class="section shop-category-section"><button id="shopCategoryBox" class="shop-category-box" type="button" onclick="shopCategoryMenu()"><strong>Shop by Category</strong><span>Browse collections</span><b aria-hidden="true">⌄</b></button><div id="shopCategoryDropdown" class="shop-category-dropdown" aria-label="Shop by Category" aria-hidden="true"></div></section>
 <section class="section quick-filter-section"><button id="quickFilterBox" class="quick-filter-box" type="button" onclick="document.getElementById('quickFilterDropdown').classList.toggle('open')"><strong>Quick filters</strong><b aria-hidden="true">⌄</b></button><div id="quickFilterDropdown" class="quick-filter-dropdown" aria-label="Quick filters"></div></section>
 
 <section class="product-area" id="products">
@@ -214,4 +215,7 @@ button:active{transform:translateY(1px)}
 .shop-category-dropdown{left:0;right:auto;top:calc(100% + 6px)}
 .buy-now{background:#CAF0F8 !important;color:#03045E !important;border:1px solid #023EBA !important}
 .buy-now:hover{background:#00B4D8 !important;color:#fff !important;border-color:#00B4D8 !important}
+</style>
+<style>
+.inventory-launch{display:flex;align-items:center;gap:10px;width:100%;margin:20px 0 12px;padding:14px 16px;border:1px solid #a53d57;border-radius:10px;background:linear-gradient(135deg,#8f2946,#c65d78);color:#fff;font-size:19px;font-weight:800;text-align:left;cursor:pointer;box-shadow:0 6px 16px rgba(122,35,59,.18);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}.inventory-launch span{margin-left:auto;font-size:20px}.inventory-launch:hover{transform:translateY(-2px);filter:brightness(1.07);box-shadow:0 10px 22px rgba(122,35,59,.28)}.inventory-launch:focus-visible{outline:3px solid #00B4D8;outline-offset:3px}
 </style>
