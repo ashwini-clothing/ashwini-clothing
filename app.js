@@ -569,36 +569,41 @@ function auth(){
  </div>
  </div>`);
 }
-let __msg91Ready=null;
-async function initMsg91Widget(captchaId){
- if(__msg91Ready)return __msg91Ready;
- __msg91Ready=(async()=>{
-  const cfg=await api('/api/auth/msg91-config');
-  const configuration={widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'',exposeMethods:true,captchaRenderId:captchaId||'',success:(data)=>console.log('MSG91 success',data),failure:(error)=>console.error('MSG91 failure',error)};
-  await new Promise((resolve,reject)=>{
-   // MSG91 exposes its methods immediately, but it still fetches widget settings
-   // asynchronously. Give it a moment before the caller invokes sendOtp().
-   if(typeof window.initSendOTP==='function'){window.initSendOTP(configuration);setTimeout(resolve,1500);return}
-   const sources=['https://verify.msg91.com/otp-provider.js','https://verify.phone91.com/otp-provider.js'];let i=0;
-   const load=()=>{
-    if(i>=sources.length){reject(new Error('Could not load MSG91 OTP service. Please check your network and try again.'));return}
-    const s=document.createElement('script'),src=sources[i++];let settled=false;
-    const next=()=>{if(settled)return;settled=true;s.remove();load()};
-    const timer=setTimeout(next,12000);
-    s.src=src;s.async=true;
-    s.onload=()=>{if(settled)return;clearTimeout(timer);settled=true;try{if(typeof window.initSendOTP!=='function')throw new Error('MSG91 OTP service did not initialise.');window.initSendOTP(configuration);setTimeout(resolve,1500)}catch(e){reject(e)}};
-    s.onerror=()=>{clearTimeout(timer);next()};document.head.appendChild(s);
-   };load();
-  });
-  window.__msg91Config=configuration;
-  return configuration;
- })().catch(e=>{__msg91Ready=null;throw e});
- return __msg91Ready;
+let __msg91SdkReady=null, __msg91FlowId=0;
+async function loadMsg91Sdk(){
+ if(typeof window.initSendOTP==='function')return;
+ if(__msg91SdkReady)return __msg91SdkReady;
+ __msg91SdkReady=new Promise((resolve,reject)=>{
+  const sources=['https://verify.msg91.com/otp-provider.js','https://verify.phone91.com/otp-provider.js'];let index=0;
+  const load=()=>{
+   if(index>=sources.length){__msg91SdkReady=null;reject(new Error('MSG91 OTP service could not be loaded. Please try again.'));return}
+   const script=document.createElement('script'),source=sources[index++];let done=false;
+   const next=()=>{if(done)return;done=true;script.remove();load()};
+   const timer=setTimeout(next,12000);
+   script.src=source;script.async=true;
+   script.onload=()=>{if(done)return;clearTimeout(timer);done=true;typeof window.initSendOTP==='function'?resolve():next()};
+   script.onerror=()=>{clearTimeout(timer);next()};document.head.appendChild(script);
+  };load();
+ });
+ return __msg91SdkReady;
 }
 function isMobileIdentifier(v){return /^\d{10}$/.test(String(v||'').replace(/\D/g,''));}
-function msg91Send(identifier){return new Promise((resolve,reject)=>{try{window.sendOtp(identifier,resolve,reject)}catch(e){reject(e)}})}
-function msg91Retry(reqId){return new Promise((resolve,reject)=>{try{window.retryOtp(null,resolve,reject,reqId||undefined)}catch(e){reject(e)}})}
-function msg91Verify(otp,reqId){return new Promise((resolve,reject)=>{try{window.verifyOtp(otp,resolve,reject,reqId||undefined)}catch(e){reject(e)}})}
+function msg91AccessToken(data){return data?.accessToken||data?.access_token||data?.token||data?.jwt||''}
+async function openMsg91Verification(phone){
+ const cfg=await api('/api/auth/msg91-config');await loadMsg91Sdk();
+ return new Promise((resolve,reject)=>{
+  let finished=false;
+  const finish=(fn,value)=>{if(finished)return;finished=true;fn(value)};
+  const configuration={
+   widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'91'+phone,
+   success:data=>{const accessToken=msg91AccessToken(data);if(!accessToken){finish(reject,new Error('MSG91 verified the OTP but did not return a verification token.'));return}finish(resolve,accessToken)},
+   failure:error=>finish(reject,new Error(error?.message||error?.error||'MSG91 verification was cancelled or failed.'))
+  };
+  try{window.initSendOTP(configuration)}catch(error){finish(reject,error)}
+ });
+}
+function cancelMsg91Flow(){__msg91FlowId++;closeM()}
+function backToSignIn(){__msg91FlowId++;auth()}
 async function continueCustomerLogin(){
  const el=document.getElementById('loginIdentifier');
  const identifier=(el?.value||'').trim();
@@ -611,14 +616,14 @@ async function continueCustomerLogin(){
   }catch(e){alert(e.message||'Could not continue sign in')}
   return;
  }
- const phone=identifier.replace(/\D/g,''); window.__pendingLoginIdentifier=phone; window.__msg91ReqId='';
- openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Sign in</h2><p class="login-account-id">+91 ${esc(phone)} <button type="button" class="text-change" onclick="auth()">Change</button></p><div id="msg91Captcha" style="margin:8px 0"></div><div class="form"><label class="login-label"><b>Enter OTP</b></label><input id="loginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit OTP" autofocus><button class="gold amazon-continue-btn" type="button" onclick="verifyLoginOtpFor()">Sign in</button><small id="loginOtpHint">Sending OTP…</small><button type="button" class="linkbtn" onclick="resendLoginOtp()">Resend OTP</button><button type="button" class="linkbtn" onclick="auth()">← Back</button></div></div>`);
- try{await initMsg91Widget('msg91Captcha');const d=await msg91Send('91'+phone);window.__msg91ReqId=d?.reqId||d?.requestId||d?.req_id||'';document.getElementById('loginOtpHint').textContent='OTP sent to your mobile. Enter the 6-digit code.';toast('✓ OTP sent')}catch(e){const h=document.getElementById('loginOtpHint');if(h)h.textContent=e.message||'Could not send OTP';alert(e.message||'Could not send OTP')}
+ const phone=identifier.replace(/\D/g,''),flowId=++__msg91FlowId;
+ openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Secure mobile verification</h2><p class="login-account-id">+91 ${esc(phone)}</p><div class="form"><small id="loginOtpHint">Opening the secure MSG91 OTP screen…</small><button type="button" class="linkbtn" data-auth-action="cancel-msg91">Cancel</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
+ try{const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;const verified=await api('/api/auth/verify-msg91-login',{method:'POST',body:{identifier:phone,accessToken}});if(flowId!==__msg91FlowId)return;session(verified);closeM();toast('✓ Signed in')}catch(e){if(flowId!==__msg91FlowId)return;const h=document.getElementById('loginOtpHint');if(h)h.textContent=e.message||'Mobile verification could not be completed.';alert(e.message||'Mobile verification could not be completed')}
 }
 async function resendLoginOtp(){
  const identifier=window.__pendingLoginIdentifier||'';
  if(isMobileIdentifier(identifier)){
-  try{await initMsg91Widget('msg91Captcha');const d=await msg91Retry(window.__msg91ReqId);window.__msg91ReqId=d?.reqId||d?.requestId||window.__msg91ReqId;toast('✓ OTP resent');const h=document.getElementById('loginOtpHint');if(h)h.textContent='OTP resent to your mobile.'}catch(e){alert(e.message||'Could not resend OTP')}return;
+  alert('For mobile OTP, use Resend OTP inside the secure MSG91 verification screen.');return;
  }
  try{const d=await api('/api/auth/request-login-otp',{method:'POST',body:{identifier}});const h=document.getElementById('loginOtpHint');if(h)h.textContent=d.devOtp?`Demo OTP: ${d.devOtp}`:`OTP sent securely. It expires in about 5 minutes.`;toast('✓ OTP sent')}catch(e){alert(e.message)}
 }
@@ -627,20 +632,14 @@ async function verifyLoginOtpFor(){
  const otp=(document.getElementById('loginOtp')?.value||'').trim();
  if(!/^\d{6}$/.test(otp)){alert('Please enter the 6-digit OTP.');return}
  try{
-  if(isMobileIdentifier(identifier)){
-   if(!window.verifyOtp)throw new Error('MSG91 OTP service is still loading. Please try again.');
-   const d=await msg91Verify(otp,window.__msg91ReqId);
-   const accessToken=d?.accessToken||d?.access_token||d?.token||d?.jwt;
-   if(!accessToken)throw new Error('MSG91 did not return a verification token.');
-   const verified=await api('/api/auth/verify-msg91-login',{method:'POST',body:{identifier,accessToken}});session(verified);closeM();toast('✓ Signed in');return;
-  }
+  if(isMobileIdentifier(identifier))throw new Error('Please use the secure MSG91 verification screen.');
   const d=await api('/api/auth/verify-login-otp',{method:'POST',body:{identifier,otp}});session(d);closeM();toast('✓ Signed in')
  }catch(e){alert(e.message||'OTP verification failed')}
 }
 function showRegisterPanel(){
  openM(`<h2>Create your Ashwini account</h2><p>Verify your mobile once and your account will be created. Existing mobile numbers will not create duplicate accounts.</p><div class="form">
  <input id="rn" placeholder="Full name" autocomplete="name"><input id="re" placeholder="Email" autocomplete="email"><input id="rp" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><input id="rphone" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel">
- <button type="button" class="gold" onclick="sendOtp()">Send OTP</button><input id="rotp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter 6-digit OTP"><button class="gold" type="button" onclick="register()">Verify OTP & Create Account</button><small id="otpHint">OTP will be shown only in local/demo mode.</small><button type="button" class="linkbtn" onclick="auth()">← Back to Sign in</button></div>`);
+ <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><small id="otpHint">Secure MSG91 verification will open after you continue.</small><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div>`);
 }
 function showAdminLoginPanel(){
  openM(`<div class="amazon-login-wrap"><h2>Store admin sign in</h2><p>Use your store admin email. You can sign in with a secure Email OTP, or use the existing admin password.</p><div class="form"><input id="adminLoginEmail" type="email" placeholder="Admin email" autocomplete="username"><button class="gold" type="button" onclick="requestAdminEmailOtp()">Send Admin Email OTP</button><small id="adminOtpHint">OTP will be sent to the registered admin email.</small><input id="adminLoginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit Admin OTP"><button class="gold" type="button" onclick="verifyAdminEmailOtp()">Sign in with Email OTP</button><div class="login-divider"><span>or</span></div><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold" onclick="adminPasswordLogin()">Sign in with Password</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
@@ -675,18 +674,17 @@ async function resetPasswordFlow(){const identifier=(document.getElementById('pa
 async function sendOtp(){
  const phoneEl=document.getElementById('rphone'),hint=document.getElementById('otpHint'),phone=(phoneEl?.value||'').replace(/\D/g,''),name=document.getElementById('rn')?.value||'',email=document.getElementById('re')?.value||'',password=document.getElementById('rp')?.value||'';
  if(!/^\d{10}$/.test(phone)){if(hint)hint.textContent='Please enter a valid 10-digit mobile number.';phoneEl?.focus();return}
- const btn=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Send OTP');if(btn){btn.disabled=true;btn.textContent='Sending...'}
+ const btn=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Verify mobile & create account');if(btn){btn.disabled=true;btn.textContent='Opening...'}
  try{
   await api('/api/auth/request-msg91-registration',{method:'POST',body:{phone}});
-  openM(`<h2>Create your Ashwini account</h2><p>Enter your details and verify your mobile with OTP.</p><div class="form"><input id="rn" value="${esc(name)}" placeholder="Full name" autocomplete="name"><input id="re" value="${esc(email)}" placeholder="Email" autocomplete="email"><input id="rp" type="password" value="${esc(password)}" placeholder="Password (8+ characters)" autocomplete="new-password"><input id="rphone" inputmode="numeric" maxlength="10" value="${esc(phone)}" placeholder="10-digit mobile number" autocomplete="tel"><div id="msg91Captcha" style="margin:8px 0"></div><input id="rotp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter 6-digit OTP"><button class="gold" type="button" onclick="register()">Verify OTP & Create Account</button><small id="otpHint">Sending OTP…</small><button type="button" class="linkbtn" onclick="resendRegistrationOtp()">Resend OTP</button><button type="button" class="linkbtn" onclick="auth()">← Back to Sign in</button></div>`);
-  window.__pendingRegistrationPhone=phone;window.__msg91ReqId='';await initMsg91Widget('msg91Captcha');const d=await msg91Send('91'+phone);window.__msg91ReqId=d?.reqId||d?.requestId||d?.req_id||'';document.getElementById('otpHint').textContent='OTP sent to your mobile. Enter the 6-digit code.';toast('✓ OTP sent');
- }catch(e){if(hint)hint.textContent=e.message||'Could not send OTP';alert(e.message)}finally{if(btn){btn.disabled=false;btn.textContent='Send OTP'}}
+  const flowId=++__msg91FlowId;
+  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Secure mobile verification</h2><p>MSG91 will send and verify your OTP securely.</p><div class="form"><small id="otpHint">Opening the secure MSG91 OTP screen…</small><button type="button" class="linkbtn" data-auth-action="cancel-msg91">Cancel</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
+  const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;
+  const verified=await api('/api/auth/register-msg91',{method:'POST',body:{name,email,password,phone,accessToken}});if(flowId!==__msg91FlowId)return;session(verified);closeM();toast('✓ Account created');
+ }catch(e){if(hint)hint.textContent=e.message||'Could not start mobile verification';alert(e.message||'Could not start mobile verification')}finally{if(btn){btn.disabled=false;btn.textContent='Verify mobile & create account'}}
 }
-async function resendRegistrationOtp(){try{await initMsg91Widget('msg91Captcha');const d=await msg91Retry(window.__msg91ReqId);window.__msg91ReqId=d?.reqId||d?.requestId||window.__msg91ReqId;toast('✓ OTP resent');const h=document.getElementById('otpHint');if(h)h.textContent='OTP resent to your mobile.'}catch(e){alert(e.message||'Could not resend OTP')}}
-async function register(){
- const name=document.getElementById('rn')?.value||'',email=document.getElementById('re')?.value||'',password=document.getElementById('rp')?.value||'',phone=(document.getElementById('rphone')?.value||'').replace(/\D/g,''),otp=(document.getElementById('rotp')?.value||'').trim();
- if(!name||!email||!password||!/^\d{10}$/.test(phone)||!/^\d{6}$/.test(otp)){alert('Enter all details and the 6-digit OTP.');return}
- try{const d=await msg91Verify(otp,window.__msg91ReqId);const accessToken=d?.accessToken||d?.access_token||d?.token||d?.jwt;if(!accessToken)throw new Error('MSG91 did not return a verification token.');const verified=await api('/api/auth/register-msg91',{method:'POST',body:{name,email,password,phone,accessToken}});session(verified);closeM();toast('✓ Account created')}catch(e){alert(e.message||'Could not create account')}}
+async function resendRegistrationOtp(){alert('For mobile OTP, use Resend OTP inside the secure MSG91 verification screen.')}
+async function register(){return sendOtp()}
 async function setupAdmin(){try{const d=await api('/api/auth/setup-admin',{method:'POST',body:{name:an.value,email:ae.value,password:apw.value}});session(d);closeM();dashboard()}catch(e){alert(e.message)}}
 async function login(){try{const d=await api('/api/auth/login',{method:'POST',body:{email:email.value,password:pass.value}});session(d);closeM()}catch(e){alert(e.message)}}
 function refreshAccountHeader(){const link=document.getElementById('accountTopLink');if(!link)return;const small=link.querySelector('small'),bold=link.querySelector('b');if(user){const short=String(user.name||'Customer').trim().split(/\s+/)[0]||'Customer';if(small)small.textContent=`Hello, ${short}`;if(bold)bold.textContent='Account & Lists';link.setAttribute('aria-label',`Account & Lists for ${short}`)}else{if(small)small.textContent='Hello, sign in';if(bold)bold.textContent='Account & Lists';link.setAttribute('aria-label','Sign in to Ashwini')}}
@@ -1131,8 +1129,9 @@ document.addEventListener('DOMContentLoaded',()=>{
  searchInput?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();load();document.getElementById('products')?.scrollIntoView({behavior:'smooth',block:'start'})}});
  searchInput?.addEventListener('input',()=>{clearTimeout(window.__searchTimer);window.__searchTimer=setTimeout(load,250)});
  document.addEventListener('click',e=>{if(!e.target.closest('.shop-category-section')){const b=document.getElementById('shopCategoryDropdown');if(b){b.classList.remove('open');b.setAttribute('aria-hidden','true')}}});
-document.querySelector('.nav')?.addEventListener('click',e=>{const el=e.target.closest('[data-category]');if(el){e.preventDefault();e.stopPropagation();cat(el.dataset.category)}});
+ document.querySelector('.nav')?.addEventListener('click',e=>{const el=e.target.closest('[data-category]');if(el){e.preventDefault();e.stopPropagation();cat(el.dataset.category)}});
  document.getElementById('modalClose')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();closeM()});
+ document.getElementById('body')?.addEventListener('click',e=>{const button=e.target.closest('[data-auth-action]');if(!button)return;e.preventDefault();e.stopPropagation();if(button.dataset.authAction==='cancel-msg91')cancelMsg91Flow();if(button.dataset.authAction==='back-signin')backToSignIn()});
  document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
  const admin=document.getElementById('admin');if(admin&&user?.role==='admin')admin.style.display='inline';
