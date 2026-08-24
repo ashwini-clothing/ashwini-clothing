@@ -588,12 +588,19 @@ async function loadMsg91Sdk(){
  return __msg91SdkReady;
 }
 function isMobileIdentifier(v){return /^\d{10}$/.test(String(v||'').replace(/\D/g,''));}
-function msg91AccessToken(data){return data?.accessToken||data?.access_token||data?.token||data?.jwt||''}
+function msg91AccessToken(data){
+ const seen=new Set(),walk=value=>{
+  if(!value||seen.has(value))return '';if(typeof value==='string')return /^eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/.test(value.trim())?value.trim():'';
+  if(typeof value!=='object')return '';seen.add(value);
+  for(const key of ['accessToken','access_token','access-token','accesstoken','jwt','token','authToken','auth_token','auth-token']){const candidate=value[key];if(typeof candidate==='string'&&candidate.trim())return candidate.trim()}
+  for(const valuePart of Object.values(value)){const found=walk(valuePart);if(found)return found}return '';
+ };return walk(data)
+}
 async function openMsg91Verification(phone){
  const cfg=await api('/api/auth/msg91-config');await loadMsg91Sdk();
- // MSG91 creates its own secure OTP modal. Keep Ashwini's modal behind it so
- // the customer can see and use the MSG91 OTP entry, resend and close controls.
- const ownModal=document.getElementById('modal');if(ownModal)ownModal.style.zIndex='8000';
+ // MSG91 creates its own secure OTP modal. Remove Ashwini's temporary panel
+ // completely so only one clean OTP screen is visible to the customer.
+ const ownModal=document.getElementById('modal');if(ownModal){ownModal.style.display='none';ownModal.style.zIndex='';ownModal.setAttribute('aria-hidden','true');document.body.style.overflow=''}
  return new Promise((resolve,reject)=>{
   let finished=false;
   const finish=(fn,value)=>{if(finished)return;finished=true;fn(value)};
