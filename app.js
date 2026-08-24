@@ -50,11 +50,12 @@ async function lookupAddressPin(pin){
   if(city) city.value=d.city||d.district||'';
   if(state) state.value=d.state||'';
   updateCodAvailability();
-  try{const estimate=await api('/api/delivery-estimate/'+encodeURIComponent(pin));if(out)out.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)} · Delivery: ${esc(deliveryDateText(estimate))} (${Number(estimate.minDays)}–${Number(estimate.maxDays)} days)</small>`}catch{if(out) out.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)}</small>`}
+  try{const estimate=await api('/api/delivery-estimate/'+encodeURIComponent(pin));window.__deliveryUnavailable=estimate.deliverable===false;if(out)out.innerHTML=estimate.deliverable===false?`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small style="color:#b42318;font-weight:700">${esc(estimate.message||'Delivery is not available for your area.')}</small>`:`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)} · Delivery: ${esc(deliveryDateText(estimate))} (${Number(estimate.minDays)}–${Number(estimate.maxDays)} days)</small>`}catch{if(out) out.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)} , ${esc(d.state)}<br><small>PIN ${esc(d.pin)}</small>`}
  }catch(e){if(out)out.textContent=e.message||'PIN code location not found.';}
 }
 function addressPinChanged(){
  const pin=(document.getElementById('pin')?.value||'').trim();
+ if(pin.length!==6)window.__deliveryUnavailable=false;
  if(pin.length===6) lookupAddressPin(pin);
 }
 
@@ -301,7 +302,7 @@ async function answerQuestion(questionId,productId){
 }
 
 function deliveryDateText(d){const from=new Date(d.from),to=new Date(d.to),fmt={day:'numeric',month:'short'};return from.toLocaleDateString('en-IN',fmt)+' – '+to.toLocaleDateString('en-IN',fmt)}
-async function checkDelivery(id){const pin=(document.getElementById(`pin-${id}`)?.value||'').trim(),out=document.getElementById(`delivery-${id}`);if(!/^\d{6}$/.test(pin)){if(out)out.textContent='Please enter a valid 6-digit PIN code.';return}if(out)out.textContent='Checking delivery estimate…';try{const d=await api('/api/delivery-estimate/'+encodeURIComponent(pin));if(out)out.innerHTML=`<b>Free delivery</b> · ${esc(d.zone)} · Expected ${esc(deliveryDateText(d))} · ${Number(d.minDays)}–${Number(d.maxDays)} days`}catch(e){if(out)out.textContent=e.message||'Delivery estimate is unavailable for this PIN.'}}
+async function checkDelivery(id){const pin=(document.getElementById(`pin-${id}`)?.value||'').trim(),out=document.getElementById(`delivery-${id}`);if(!/^\d{6}$/.test(pin)){if(out)out.textContent='Please enter a valid 6-digit PIN code.';return}if(out)out.textContent='Checking delivery estimate…';try{const d=await api('/api/delivery-estimate/'+encodeURIComponent(pin));if(out)out.innerHTML=d.deliverable===false?`<b style="color:#b42318">${esc(d.message||'Delivery is not available for your area.')}</b>`:`<b>Free delivery</b> · ${esc(d.zone)} · Expected ${esc(deliveryDateText(d))} · ${Number(d.minDays)}–${Number(d.maxDays)} days`}catch(e){if(out)out.textContent=e.message||'Delivery estimate is unavailable for this PIN.'}}
 
 function cartView(){if(!user){auth('', 'Please sign in to view your cart.');return}api('/api/products').then(ps=>{let total=0;const rows=cart.map((x,i)=>{const p=ps.find(z=>z.id===x.id);if(!p)return '';total+=p.price*x.quantity;return `<div class="cartrow"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h3>${esc(p.name)}</h3><p>Size: <b>${esc(x.size)}</b></p><div class="cart-actions"><div class="qty"><button type="button" onclick="changeQty(${i},-1)">−</button><span>${x.quantity}</span><button type="button" onclick="changeQty(${i},1)">+</button></div><button type="button" onclick="removeCart(${i})">Remove</button><button type="button" class="wishlist" onclick="addWishlist(${p.id},${i})">♡ Move to Wishlist</button></div></div><b>₹${(p.price*x.quantity).toLocaleString('en-IN')}</b></div>`}).join('');openM(`<h2>Shopping Cart (${cart.reduce((s,x)=>s+x.quantity,0)})</h2>${cart.length?rows:'<div class="empty-wish">Your cart is empty.</div>'}<div class="total">Subtotal: ₹${total.toLocaleString('en-IN')}</div>${cart.length?`<button class="gold" style="width:100%;font-size:17px" onclick="checkout()">Proceed to Secure Checkout →</button>`:''}<div class="wishlist-section"><h3>♥ Wishlist (${wishlist.length})</h3>${wishlist.length?wishlist.map(id=>{const p=ps.find(z=>z.id===id);return p?`<div class="wish-card"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:p.emoji}</div><div><h4>${esc(p.name)}</h4><div class="wish-price">₹${Number(p.price).toLocaleString('en-IN')}</div></div><button class="gold" type="button" onclick="addWishlistToCart(${p.id})">Add to Cart</button><button class="remove-wish" type="button" onclick="removeWishlist(${p.id})">Remove</button></div>`:''}).join(''):'<div class="empty-wish">Your wishlist is empty.</div>'}</div>`)}).catch(e=>toast(e.message))}
 function changeQty(i,n){cart[i].quantity=Math.max(1,cart[i].quantity+n);save();cartView()}
@@ -922,6 +923,11 @@ document.addEventListener('click',e=>{
  e.preventDefault();e.stopImmediatePropagation();
  orderHeading.scrollIntoView({behavior:'smooth',block:'start'});
 });
+document.addEventListener('click',e=>{
+ const button=e.target.closest?.('button');
+ if(!window.__deliveryUnavailable||!button||!button.textContent.includes('Place Order'))return;
+ e.preventDefault();e.stopImmediatePropagation();alert('Delivery is not available for this PIN code. Please use another delivery address.');
+},true);
 const adminToolbarObserver=new MutationObserver(()=>{
  document.querySelectorAll('.admin-toolbar').forEach(toolbar=>{
   if(toolbar.querySelector('[data-delivery-settings]'))return;
@@ -941,6 +947,19 @@ const quickFilterToolbarObserver=new MutationObserver(()=>{
  });
 });
 quickFilterToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
+const deliveryBlockToolbarObserver=new MutationObserver(()=>{
+ document.querySelectorAll('.admin-toolbar').forEach(toolbar=>{
+  if(toolbar.querySelector('[data-delivery-blocks]'))return;
+  const button=document.createElement('button');button.type='button';button.dataset.deliveryBlocks='1';button.textContent='🚫 Delivery Blocks';button.addEventListener('click',adminDeliveryBlocks);
+  const delivery=toolbar.querySelector('[data-delivery-settings]');delivery?delivery.insertAdjacentElement('afterend',button):toolbar.appendChild(button);
+ });
+});
+deliveryBlockToolbarObserver.observe(document.documentElement,{childList:true,subtree:true});
+
+async function adminDeliveryBlocks(){if(user?.role!=='admin')return alert('Admin only');try{const items=await api('/api/admin/delivery-blocks');const rows=items.map(x=>`<tr><td>${esc(x.block_type)}</td><td><b>${esc(x.block_value)}</b></td><td>${esc(x.note||'—')}</td><td>${x.active?'Blocked':'Off'}</td><td><button type="button" class="gold" onclick="toggleDeliveryBlock(${x.id},${x.active?false:true})">${x.active?'Turn off':'Turn on'}</button> <button type="button" class="admin-danger" onclick="deleteDeliveryBlock(${x.id})">Delete</button></td></tr>`).join('')||'<tr><td colspan="5">No delivery blocks.</td></tr>';openM(`<h2>🚫 Delivery Area Blocks</h2><p class="admin-note">Add a PIN code, city, or state that should not receive deliveries. Customers will see “Delivery is not available for your area” when they check their PIN.</p><div class="admin-form"><label>Block by<select id="db_type"><option value="PIN">PIN code</option><option value="CITY">City / district</option><option value="STATE">State</option></select></label><label>Value<input id="db_value" placeholder="e.g. 134003 or Ambala or Haryana"></label><label>Internal note (optional)<input id="db_note" placeholder="Reason for block"></label><button class="gold" type="button" onclick="addDeliveryBlock()">Block delivery area</button></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Type</th><th>Area</th><th>Note</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div><button type="button" onclick="dashboard()">Back to dashboard</button>`)}catch(e){alert(e.message||'Could not open delivery blocks')}}
+async function addDeliveryBlock(){try{await api('/api/admin/delivery-blocks',{method:'POST',body:{block_type:db_type.value,block_value:db_value.value,note:db_note.value}});toast('✓ Delivery block added');adminDeliveryBlocks()}catch(e){alert(e.message||'Could not block delivery area')}}
+async function toggleDeliveryBlock(id,active){try{await api(`/api/admin/delivery-blocks/${id}`,{method:'PATCH',body:{active}});toast(active?'Delivery block turned on':'Delivery block turned off');adminDeliveryBlocks()}catch(e){alert(e.message||'Could not update delivery block')}}
+async function deleteDeliveryBlock(id){if(!confirm('Delete this delivery block?'))return;try{await api(`/api/admin/delivery-blocks/${id}`,{method:'DELETE'});toast('Delivery block deleted');adminDeliveryBlocks()}catch(e){alert(e.message||'Could not delete delivery block')}}
 
 async function loadQuickFilters(){try{const items=await api('/api/quick-filters'),box=document.getElementById('quickFilterDropdown');if(!box)return items;box.innerHTML=items.length?items.map(x=>`<label class="quick-filter-row"><input type="checkbox" value="${esc(x.filter_type)}" ${quickFilters.has(x.filter_type)?'checked':''} onchange="toggleQuickFilter(this.value,this.checked)"><span>${esc(x.label)}</span></label>`).join(''):'<p class="quick-filter-empty">No quick filters added yet.</p>';return items}catch(e){console.error(e);return[]}}
 function toggleQuickFilter(type,enabled){enabled?quickFilters.add(type):quickFilters.delete(type);load()}
