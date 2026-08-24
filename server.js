@@ -420,8 +420,15 @@ app.get("/api/auth/msg91-config",(req,res)=>{
 async function verifyMsg91AccessToken(accessToken){
  const authkey=String(process.env.MSG91_AUTHKEY||"").trim();
  if(!authkey)throw new Error("MSG91 server AuthKey is not configured.");
- const r=await fetch("https://control.msg91.com/api/v5/widget/verifyAccessToken",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({authkey,"access-token":String(accessToken||"")})});
- const text=await r.text();
+ const endpoint="https://control.msg91.com/api/v5/widget/verifyAccessToken",verifiedToken=String(accessToken||"").trim();
+ let r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({authkey,"access-token":verifiedToken})});
+ let text=await r.text();
+ // Some MSG91 accounts accept the server integration payload as JSON instead
+ // of a form. Retry only for that specific parsing response.
+ if(/access-token field is required/i.test(text)){
+  r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authkey},body:JSON.stringify({"access-token":verifiedToken})});
+  text=await r.text();
+ }
  let data={}; try{data=JSON.parse(text)}catch{}
  if(!r.ok||String(data.type||"").toLowerCase()==="error"||data.success===false)throw new Error(data.message||data.error||"MSG91 access token verification failed");
  return data;

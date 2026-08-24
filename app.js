@@ -592,7 +592,7 @@ function msg91AccessToken(data){
  const seen=new Set(),walk=value=>{
   if(!value||seen.has(value))return '';if(typeof value==='string')return /^eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/.test(value.trim())?value.trim():'';
   if(typeof value!=='object')return '';seen.add(value);
-  for(const key of ['accessToken','access_token','access-token','accesstoken','jwt','token','authToken','auth_token','auth-token']){const candidate=value[key];if(typeof candidate==='string'&&candidate.trim())return candidate.trim()}
+  for(const key of ['accessToken','access_token','access-token','accesstoken','jwt','token','authToken','auth_token','auth-token']){const candidate=value[key];if(typeof candidate==='string'&&candidate.trim().length>30)return candidate.trim()}
   for(const valuePart of Object.values(value)){const found=walk(valuePart);if(found)return found}return '';
  };return walk(data)
 }
