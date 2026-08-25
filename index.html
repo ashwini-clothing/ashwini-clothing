@@ -210,8 +210,65 @@ button:active{transform:translateY(1px)}
   .sizes{gap:3px;margin:6px 0}.size{min-width:27px;padding:4px 3px;font-size:11px}
   .add,.view{padding:8px 5px;font-size:12px;border-radius:7px;margin-top:5px}
   .ashwini-whatsapp-help{width:46px;height:61px;right:8px;bottom:8px}.ashwini-ai-avatar,.ashwini-ai-avatar img{width:46px;height:61px}
-  .box{width:100%;max-width:none;min-height:100dvh;max-height:100dvh;border-radius:0;padding:18px 14px;overflow:auto}
-  .modal{align-items:flex-end}.close{top:12px;right:12px}
+  /* Keep the signed-in greeting visible but short in the phone header. */
+  #accountTopLink{min-width:54px;max-width:68px;padding:2px 3px;text-align:left;overflow:hidden}
+  #accountTopLink small{display:block!important;font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #accountTopLink b,#accountTopLink span{display:none!important}
+  #accountTopLink b::after{content:none}
+  /* Account menu is pinned to the real phone viewport, never outside it. */
+  .account-wrap{position:static}
+  .account-popover{position:fixed;top:112px;left:8px;right:8px;width:auto;max-width:none;max-height:calc(100dvh - 122px);overflow-y:auto;box-sizing:border-box;padding:12px;border-radius:10px}
+  .account-popover::before{top:-6px;right:52px}
+  .account-popover .account-menu-grid{grid-template-columns:1fr!important;gap:9px;margin-top:10px}
+  .account-popover .account-menu-card{padding:11px 34px 11px 11px;font-size:13px}
+  .account-popover .account-menu-card small{font-size:11px;line-height:1.25}
+  /* All sign-in, profile and My Orders panels fit the phone screen. */
+  .box{width:100%;max-width:none;min-height:100dvh;max-height:100dvh;border-radius:0;padding:18px 14px;overflow:auto;box-sizing:border-box}
+  .modal{align-items:flex-end;padding:0}.close{top:12px;right:12px}
+  #body>h2{font-size:23px;line-height:1.2;margin:44px 40px 12px 0}
+  #body>p{font-size:13px;line-height:1.4}
+  #body .login-card,#body .auth-card,#body .order-card{width:100%;box-sizing:border-box}
+  #body .track{gap:5px;overflow-x:auto;padding-bottom:4px}.track .step{min-width:72px;font-size:10px}
+  #body .total{font-size:23px}.order-row,.order-item{grid-template-columns:72px 1fr!important;gap:10px!important}
+  /* Shared sizing for every customer page opened in a popup. */
+  #body{overflow-wrap:anywhere}
+  #body .amazon-login-wrap{max-width:none;padding:2px 0 18px}
+  #body .amazon-login-wrap h2{font-size:24px;margin:8px 34px 14px 0}
+  #body .login-label{font-size:13px}
+  #body .form input,#body .form textarea,#body .form select,#body input:not([type="checkbox"]):not([type="radio"]),#body textarea,#body select{max-width:100%;box-sizing:border-box;font-size:16px}
+  #body .form input,#body .form textarea,#body .form select{padding:11px}
+  #body .gold,#body .buy-now,#body .account-action,#body .linkbtn{min-height:42px}
+  #body .checkout-grid,#body .detail,#body .gallery,#body .qa .form{grid-template-columns:1fr!important;gap:12px!important}
+  #body .checkout-card{padding:13px;border-radius:9px}
+  #body .checkout-card h3{font-size:18px}
+  #body .coupon-box{padding:10px}.coupon-box>div,.pin-row{flex-wrap:wrap}
+  #body .coupon-box input,.pin-row input{min-width:0;width:100%}
+  #body .gallery{display:flex!important;flex-direction:column-reverse}
+  #body .gallery-main{height:330px;border-radius:7px}
+  #body .gallery-thumbs{flex-direction:row;max-width:100%;max-height:none;overflow-x:auto;padding-bottom:3px}
+  #body .gallery-thumb{width:58px;height:68px;flex:0 0 auto}
+  #body .detail h1{font-size:24px;line-height:1.2}
+  #body .detailpic{height:310px;font-size:90px}
+  #body .cartrow{grid-template-columns:74px minmax(0,1fr)!important;gap:10px;padding:11px 0}
+  #body .cartrow>.mini{height:90px;font-size:40px}
+  #body .cartrow .cart-actions{grid-column:1/-1;justify-content:space-between}
+  #body .wishlist-grid{grid-template-columns:1fr}
+  #body .wish-card{grid-template-columns:62px minmax(0,1fr)!important}
+  #body .wish-card .remove-wish{grid-column:1/-1}
+  #body .profile-history-card{padding:11px}.profile-history-head,.profile-history-item{align-items:flex-start;flex-direction:column;gap:7px}
+  #body .profile-order-actions,#body .profile-item-actions{width:100%}
+  #body .profile-order-actions button,#body .profile-item-actions button{flex:1}
+  #body .success{padding:16px 4px}.success .big{font-size:44px}
+  #body .help-chat-modal,#body .admin-help-chat{width:100%;max-width:none;min-height:100%;border-radius:0}
+  #body .help-chat-hero{padding:14px}.help-chat-hero-copy h2{font-size:20px}
+  #body .admin-toolbar{gap:7px}.admin-toolbar button{flex:1 1 calc(50% - 7px);padding:9px 7px;font-size:12px}
+  #body .admin-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  #body .admin-stat{padding:10px;font-size:13px}.admin-stat b{font-size:19px}
+  #body .inventory-launch{font-size:16px;padding:13px}.inventory-launch span{font-size:28px}
+  #body .admin-form{grid-template-columns:1fr!important}.admin-form .full{grid-column:auto}
+  #body .admin-table-wrap{width:100%;overflow-x:auto;border:1px solid #eaded8;border-radius:7px}
+  #body .admin-table{min-width:620px;font-size:12px;margin:0}
+  #body .status-select{max-width:150px}
 }
 </style>
 </head>
