@@ -239,7 +239,11 @@ async function sendEmail(to,subject,text,html){
 }
 function adminEmail(){return process.env.ADMIN_EMAIL||db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com'}
 async function notifyEmail(to,subject,details){
- const result=await sendEmail(to,subject,`Ashwini Clothing\n\n${details}\n\nFor help, contact ${adminEmail()}.`);
+ const shopUrl=/^https:\/\//i.test(String(process.env.STORE_URL||''))?String(process.env.STORE_URL).trim():'https://ashwiniweb.com';
+ const escapeHtml=v=>String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+ const text=`Ashwini Clothing\n\n${details}\n\nShop: ${shopUrl}\n\nFor help, contact ${adminEmail()}.`;
+ const html=`<div style="font-family:Arial,sans-serif;line-height:1.6;color:#2d2030;max-width:620px;margin:auto"><h2 style="margin:0 0 16px;color:#5a2e40">Ashwini Clothing</h2><p style="white-space:pre-line">${escapeHtml(details)}</p><p style="margin:24px 0"><a href="${escapeHtml(shopUrl)}" style="display:inline-block;background:#CAF0F8;color:#03045E;border:1px solid #023EBA;border-radius:7px;padding:12px 22px;font-weight:700;text-decoration:none">Shop Now</a></p><p style="font-size:13px;color:#695c62">For help, contact <a href="mailto:${escapeHtml(adminEmail())}">${escapeHtml(adminEmail())}</a>.</p></div>`;
+ const result=await sendEmail(to,subject,text,html);
  if(!result.sent)console.warn(`[Ashwini Email] ${to} was not notified: ${result.error||'unknown error'}`);
  return result;
 }
