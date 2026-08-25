@@ -574,7 +574,7 @@ function auth(prefill='',notice=''){
  </div>
  </div>`);
 }
-let __msg91SdkReady=null, __msg91FlowId=0;
+let __msg91SdkReady=null, __msg91Warmup=null, __msg91FlowId=0;
 async function loadMsg91Sdk(){
  if(typeof window.initSendOTP==='function')return;
  if(__msg91SdkReady)return __msg91SdkReady;
@@ -593,6 +593,11 @@ async function loadMsg91Sdk(){
  return __msg91SdkReady;
 }
 function isMobileIdentifier(v){return /^\d{10}$/.test(String(v||'').replace(/\D/g,''));}
+function warmMsg91(){
+ if(__msg91Warmup)return __msg91Warmup;
+ __msg91Warmup=Promise.all([api('/api/auth/msg91-config'),loadMsg91Sdk()]).catch(error=>{__msg91Warmup=null;throw error});
+ return __msg91Warmup;
+}
 function msg91AccessToken(data){
  const seen=new Set(),walk=value=>{
   if(!value||seen.has(value))return '';if(typeof value==='string')return /^eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+$/.test(value.trim())?value.trim():'';
@@ -602,7 +607,7 @@ function msg91AccessToken(data){
  };return walk(data)
 }
 async function openMsg91Verification(phone){
- const [cfg]=await Promise.all([api('/api/auth/msg91-config'),loadMsg91Sdk()]);
+ const [cfg]=await warmMsg91();
  // MSG91 creates its own secure OTP modal. Remove Ashwini's temporary panel
  // completely so only one clean OTP screen is visible to the customer.
  const ownModal=document.getElementById('modal');if(ownModal){ownModal.style.display='none';ownModal.style.zIndex='';ownModal.setAttribute('aria-hidden','true');document.body.style.overflow=''}
@@ -1018,9 +1023,9 @@ async function adminReturns(){
 async function saveReturnAdmin(id){try{const status=document.getElementById(`return-status-${id}`)?.value,pickup_at=document.getElementById(`return-pickup-${id}`)?.value||'',admin_note=document.getElementById(`return-note-${id}`)?.value||'';if(status==='PICKUP_SCHEDULED'&&!pickup_at){toast('Please select a pickup date and time');return}await api(`/api/admin/returns/${id}`,{method:'PATCH',body:{status,pickup_at,admin_note}});toast('✓ Return updated and customer notified');adminReturns()}catch(e){alert(e.message)}}
 async function updateReturnStatus(id,status){const sel=document.getElementById(`return-status-${id}`);if(sel)sel.value=status;return saveReturnAdmin(id)}
 async function previewStoreLogo(input){const f=input?.files?.[0],out=document.getElementById('sp_logo_preview');if(!f||!out)return;if(f.size>10*1024*1024){alert('Logo image must be 10MB or smaller');input.value='';return}const r=new FileReader();r.onload=()=>{out.innerHTML=`<img src="${esc(String(r.result||''))}" alt="New logo preview" style="max-width:180px;max-height:100px;object-fit:contain;border:1px solid #ddd;border-radius:8px;padding:8px;background:#fff">`};r.readAsDataURL(f)}
-async function loadSiteLogo(){try{const x=await api('/api/store-profile');const src=x.logo_data||'logo-clear.png';document.querySelectorAll('img[src="logo-clear.png"]').forEach(img=>{img.src=src});const brand=document.querySelector('a.logo img');if(brand)brand.src=src}catch(e){console.warn('Logo load failed',e)}}
+async function loadSiteLogo(){try{const x=await api('/api/store-profile');const src=x.logo_data||'logo-clear.png';document.querySelectorAll('img[src="logo-clear.png"]').forEach(img=>{img.src=src});const brand=document.querySelector('a.logo img');if(brand){brand.src=src;document.documentElement.style.setProperty('--ashwini-logo-mask',`url("${brand.src.replace(/"/g,'%22')}")`)}}catch(e){console.warn('Logo load failed',e)}}
 function safeHex(value,fallback){return /^#[0-9a-f]{6}$/i.test(String(value||''))?String(value):fallback}
-async function applyAppearance(){try{const x=await api('/api/appearance'),style=document.getElementById('ashwini-appearance')||Object.assign(document.createElement('style'),{id:'ashwini-appearance'});style.textContent=`.top{background:${safeHex(x.header_bg,'#321c29')}!important;color:${safeHex(x.header_text,'#ffffff')}!important}.top .logo,.top .toplink{color:${safeHex(x.header_text,'#ffffff')}!important}.nav{background:${safeHex(x.nav_bg,'#5a2e40')}!important;color:${safeHex(x.nav_text,'#ffffff')}!important}.nav span{color:${safeHex(x.nav_text,'#ffffff')}!important}.search input{background:${safeHex(x.search_bg,'#ffffff')}!important}.search button{background:${safeHex(x.search_button_bg,'#c9a86a')}!important;color:${safeHex(x.search_button_text,'#03045E')}!important}.gold,.add,.buy-now{background:${safeHex(x.button_bg,'#CAF0F8')}!important;color:${safeHex(x.button_text,'#03045E')}!important;border-color:${safeHex(x.button_border,'#023EBA')}!important;font-size:${Math.max(11,Math.min(24,Number(x.button_font_size)||15))}px!important}`;if(!style.parentNode)document.head.appendChild(style);return x}catch(e){console.warn('Appearance load failed',e);return{}}}
+async function applyAppearance(){try{const x=await api('/api/appearance'),style=document.getElementById('ashwini-appearance')||Object.assign(document.createElement('style'),{id:'ashwini-appearance'}),headerText=safeHex(x.header_text,'#ffffff');style.textContent=`.top{background:${safeHex(x.header_bg,'#321c29')}!important;color:${headerText}!important}.top .logo,.top .toplink{color:${headerText}!important}.top .logo{position:relative}.top .logo img{opacity:0!important}.top .logo::before{content:"";display:block;width:88px;height:50px;flex:0 0 88px;background:${headerText};-webkit-mask:var(--ashwini-logo-mask,url("logo-clear.png")) center/contain no-repeat;mask:var(--ashwini-logo-mask,url("logo-clear.png")) center/contain no-repeat}.nav{background:${safeHex(x.nav_bg,'#5a2e40')}!important;color:${safeHex(x.nav_text,'#ffffff')}!important}.nav span{color:${safeHex(x.nav_text,'#ffffff')}!important}.search input{background:${safeHex(x.search_bg,'#ffffff')}!important}.search button{background:${safeHex(x.search_button_bg,'#c9a86a')}!important;color:${safeHex(x.search_button_text,'#03045E')}!important}.gold,.add,.buy-now{background:${safeHex(x.button_bg,'#CAF0F8')}!important;color:${safeHex(x.button_text,'#03045E')}!important;border-color:${safeHex(x.button_border,'#023EBA')}!important;font-size:${Math.max(11,Math.min(24,Number(x.button_font_size)||15))}px!important}`;if(!style.parentNode)document.head.appendChild(style);return x}catch(e){console.warn('Appearance load failed',e);return{}}}
 async function adminAppearance(){if(user?.role!=='admin')return alert('Admin only');try{const x=await api('/api/appearance');const color=(id,label,value)=>`<label>${label}<input id="${id}" type="color" value="${esc(safeHex(value,'#ffffff'))}"></label>`;openM(`<h2>🎨 Appearance / Design Settings</h2><p class="admin-note">Change website colours and main button text size. These changes apply to customers immediately after Save.</p><div class="admin-form"><h3 class="full">Main Buttons</h3>${color('ap_button_bg','Button background',x.button_bg)}${color('ap_button_text','Button text',x.button_text)}${color('ap_button_border','Button outline',x.button_border)}<label>Button text size (px)<input id="ap_button_size" type="number" min="11" max="24" value="${Number(x.button_font_size||15)}"></label><h3 class="full">Header</h3>${color('ap_header_bg','Top header background',x.header_bg)}${color('ap_header_text','Top header letters',x.header_text)}${color('ap_nav_bg','Menu bar background',x.nav_bg)}${color('ap_nav_text','Menu bar letters',x.nav_text)}<h3 class="full">Search Bar</h3>${color('ap_search_bg','Search field background',x.search_bg)}${color('ap_search_button_bg','Search button background',x.search_button_bg)}${color('ap_search_button_text','Search button icon colour',x.search_button_text)}</div><div class="admin-actions"><button class="gold" type="button" onclick="saveAppearance()">💾 Save Design</button><button type="button" onclick="dashboard()">Cancel</button></div>`)}catch(e){alert(e.message||'Could not load design settings')}}
 async function saveAppearance(){try{const body={button_bg:ap_button_bg.value,button_text:ap_button_text.value,button_border:ap_button_border.value,button_font_size:Number(ap_button_size.value),header_bg:ap_header_bg.value,header_text:ap_header_text.value,nav_bg:ap_nav_bg.value,nav_text:ap_nav_text.value,search_bg:ap_search_bg.value,search_button_bg:ap_search_button_bg.value,search_button_text:ap_search_button_text.value};await api('/api/admin/appearance',{method:'PATCH',body});await applyAppearance();toast('✓ Design settings saved');dashboard()}catch(e){alert(e.message||'Could not save design settings')}}
 async function storeProfilePage(){
@@ -1251,5 +1256,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
  const admin=document.getElementById('admin');if(admin&&user?.role==='admin')admin.style.display='inline';
- restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{loadMsg91Sdk().catch(()=>{})},400);});
+ document.getElementById('accountTopLink')?.addEventListener('pointerdown',()=>{warmMsg91().catch(()=>{})},{passive:true});
+ document.getElementById('accountTopLink')?.addEventListener('pointerenter',()=>{warmMsg91().catch(()=>{})},{passive:true});
+ restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{warmMsg91().catch(()=>{})},400);});
 });
