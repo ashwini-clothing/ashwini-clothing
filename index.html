@@ -269,6 +269,34 @@ button:active{transform:translateY(1px)}
   #body .admin-table-wrap{width:100%;overflow-x:auto;border:1px solid #eaded8;border-radius:7px}
   #body .admin-table{min-width:620px;font-size:12px;margin:0}
   #body .status-select{max-width:150px}
+  /* Final phone fit pass: carts, checkout, account and support pages. */
+  html,body{max-width:100%;overflow-x:hidden}
+  button,input,select,textarea{max-width:100%}
+  #body .cartrow> b{grid-column:2;text-align:right;align-self:end;font-size:16px}
+  #body .cart-actions{display:flex;flex-wrap:wrap;gap:7px;width:100%}
+  #body .cart-actions>button{flex:1 1 122px;min-height:38px}
+  #body .qty{display:inline-flex;align-items:center;min-height:38px}
+  #body .qty button{min-width:36px;min-height:36px}
+  #body .summary-row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;font-size:13px}
+  #body .summary-row span{min-width:0;overflow-wrap:anywhere}
+  #body .checkout-card .gold,#body .checkout-card .wishlist{width:100%}
+  #body .delivery-result{font-size:12px;line-height:1.4}
+  #body .policy-page{padding-bottom:28px}
+  #body .policy-content{font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+  #body .policy-content h3{font-size:17px}
+  #body .help-list{display:grid;gap:9px}
+  #body .help-row{width:100%;min-height:54px;padding:10px;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  #body .help-row div{min-width:0}
+  #body .help-row small{display:block;overflow-wrap:anywhere}
+  #body .account-menu-card,#body .account-action{width:100%;box-sizing:border-box}
+  #body .admin-actions{display:flex;flex-wrap:wrap;gap:8px}
+  #body .admin-actions button{flex:1 1 140px;min-height:42px}
+  #body .admin-note{font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+  #body .return-card,#body .order-card,#body .profile-history-card{max-width:100%;box-sizing:border-box}
+  #body .return-actions{display:flex;flex-wrap:wrap;gap:8px}
+  #body .return-actions button{flex:1 1 135px}
+  #body .rating-breakdown,#body .qa-list{max-width:100%;overflow-wrap:anywhere}
+  #body img{max-width:100%;height:auto}
 }
 </style>
 </head>
