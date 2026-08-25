@@ -119,6 +119,9 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS offer_notifications (id INTEGER PRIMARY 
 try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, reason TEXT NOT NULL, request_type TEXT NOT NULL DEFAULT 'REPLACEMENT', replacement_size TEXT DEFAULT '', replacement_color TEXT DEFAULT '', pickup_at TEXT DEFAULT '', admin_note TEXT DEFAULT '', replacement_order_id INTEGER DEFAULT NULL, status TEXT NOT NULL DEFAULT 'REQUESTED', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(return_id) REFERENCES returns(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+// A Razorpay attempt is kept separate from a real order.  This means a cancelled
+// or failed payment can never appear in My Orders or the admin dashboard.
+try{db.exec(`CREATE TABLE IF NOT EXISTS payment_checkout_intents (razorpay_order_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, total REAL NOT NULL, address TEXT NOT NULL, customer_phone TEXT DEFAULT '', items_json TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
@@ -142,6 +145,13 @@ try{db.prepare("INSERT OR IGNORE INTO site_appearance(id) VALUES(1)").run()}catc
 try{db.prepare(`INSERT OR IGNORE INTO store_profile(id,about_title,history,address,city,state,pincode,email,phone,logo_data) VALUES(1,?,?,?,?,?,?,?,?,?)`).run('About Ashwini Clothing','Welcome to Ashwini Clothing. Our story and company information can be updated by the store admin.','','','','','ashwiniweb88@gmail.com','', '')}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, user_id INTEGER, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(question_id) REFERENCES product_questions(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 db.exec(fs.readFileSync(path.join(__dirname,"seed.sql"),"utf8"));
+// Remove only the old, locally-created Razorpay placeholders made before the
+// payment gateway could start. Restore their stock before removing them.
+try{
+ const abandoned=db.prepare("SELECT id FROM orders WHERE payment_method='RAZORPAY' AND payment_status='PENDING' AND status='PAYMENT_PENDING' AND COALESCE(razorpay_order_id,'')=''").all();
+ const clearAbandoned=db.transaction(()=>{const items=db.prepare('SELECT product_id,quantity FROM order_items WHERE order_id=?');const restore=db.prepare('UPDATE products SET stock=stock+? WHERE id=?');for(const row of abandoned){for(const item of items.all(row.id))restore.run(item.quantity,item.product_id);db.prepare('DELETE FROM order_events WHERE order_id=?').run(row.id);db.prepare('DELETE FROM order_items WHERE order_id=?').run(row.id);db.prepare('DELETE FROM orders WHERE id=?').run(row.id);}});
+ if(abandoned.length)clearAbandoned();
+}catch(e){console.error('[Ashwini Razorpay cleanup]',e.message)}
 // Keep the Ashwini product photo path correct even if an older database already exists.
 db.prepare("UPDATE products SET image=? WHERE id=?").run('/new-model-dress-clean.jpg',100);
 const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET
@@ -823,12 +833,12 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
   if(couponCode==="NEW2026"){if(!firstOrder)throw Error("NEW2026 is only available for a new customer"); total=Math.round(total*0.70);}
   else if(couponCode){const now=new Date().toISOString();const offer=db.prepare("SELECT discount_percent FROM offers WHERE active=1 AND coupon_code=? AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY id DESC LIMIT 1").get(couponCode,now,now);if(!offer)throw Error("Coupon not recognised or expired");const pct=Math.max(0,Math.min(100,Number(offer.discount_percent||0)));total=Math.round(total*(1-pct/100));}
 
-  const createOrder=db.transaction(()=>{
+  const createOrder=db.transaction((payment={method:payment_method,status:payment_method==="COD"?"PLACED":"CONFIRMED",paymentStatus:"PENDING",razorpayOrderId:"",razorpayPaymentId:"",razorpaySignature:""})=>{
    // Explicitly verify the parent row before the FK insert.
    const parent=db.prepare("SELECT id FROM users WHERE id=?").get(currentUser.id);
    if(!parent)throw Error("Customer account was not found. Please sign in again.");
-   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone) VALUES(?,?,?,?,?,?,?)")
-    .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone);
+   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,razorpay_order_id,razorpay_payment_id,razorpay_signature) VALUES(?,?,?,?,?,?,?,?,?,?)")
+    .run(parent.id,total,payment.status,payment.paymentStatus,payment.method,address,customerPhone,payment.razorpayOrderId,payment.razorpayPaymentId,payment.razorpaySignature);
    const add=db.prepare("INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)");
    const dec=db.prepare("UPDATE products SET stock=stock-? WHERE id=?");
    for(const x of out){
@@ -838,22 +848,40 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
    return Number(r.lastInsertRowid);
   });
 
-  const orderId=createOrder();
-  if(payment_method==="COD")return res.json({ok:true,mode:"COD",orderId,total});
-  if(!razorpay)return res.status(503).json({error:"Razorpay not configured. Add keys in .env"});
-  const rp=await razorpay.orders.create({amount:total*100,currency:"INR",receipt:`ASHWINI-${orderId}`});
-  db.prepare("UPDATE orders SET razorpay_order_id=? WHERE id=?").run(rp.id,orderId);
-  res.json({ok:true,mode:"RAZORPAY",orderId,total,razorpayOrderId:rp.id,keyId:process.env.RAZORPAY_KEY_ID});
+  if(payment_method==="COD"){
+   const orderId=createOrder();
+   return res.json({ok:true,mode:"COD",orderId,total});
+  }
+  if(!razorpay)return res.status(503).json({error:"Order not placed because the payment transaction could not be started. Please try again later."});
+  const rp=await razorpay.orders.create({amount:total*100,currency:"INR",receipt:`ASHWINI-${currentUser.id}-${Date.now()}`});
+  const now=Date.now();
+  const intentItems=out.map(x=>({product_id:x.p.id,size:x.size,quantity:x.qty,unit_price:x.p.price}));
+  db.prepare('DELETE FROM payment_checkout_intents WHERE expires_at<?').run(now);
+  db.prepare('INSERT OR REPLACE INTO payment_checkout_intents(razorpay_order_id,user_id,total,address,customer_phone,items_json,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)').run(rp.id,currentUser.id,total,address,customerPhone,JSON.stringify(intentItems),now,now+30*60*1000);
+  res.json({ok:true,mode:"RAZORPAY",total,razorpayOrderId:rp.id,keyId:process.env.RAZORPAY_KEY_ID});
  }catch(e){console.error('[Ashwini checkout]',e);res.status(400).json({error:e.message||"Order could not be created"})}
 });
 app.post("/api/checkout/verify",auth,(req,res)=>{
- const {orderId,razorpay_order_id,razorpay_payment_id,razorpay_signature}=req.body;
- const o=db.prepare("SELECT * FROM orders WHERE id=? AND user_id=?").get(orderId,req.user.id);
- if(!o||o.razorpay_order_id!==razorpay_order_id)return res.status(400).json({error:"Order mismatch"});
- const expected=crypto.createHmac("sha256",process.env.RAZORPAY_KEY_SECRET||"").update(o.razorpay_order_id+"|"+razorpay_payment_id).digest("hex");
- if(expected!==razorpay_signature)return res.status(400).json({error:"Payment verification failed"});
- db.prepare("UPDATE orders SET payment_status='PAID',status='CONFIRMED',razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
- res.json({ok:true});
+ try{
+ const {razorpay_order_id,razorpay_payment_id,razorpay_signature}=req.body||{};
+ const intent=db.prepare('SELECT * FROM payment_checkout_intents WHERE razorpay_order_id=? AND user_id=?').get(razorpay_order_id,req.user.id);
+ if(!intent || Number(intent.expires_at)<Date.now())return res.status(400).json({error:"Order not placed because the payment transaction was not completed. Please try again."});
+ const expected=crypto.createHmac("sha256",process.env.RAZORPAY_KEY_SECRET||"").update(razorpay_order_id+"|"+razorpay_payment_id).digest("hex");
+ if(expected!==razorpay_signature){db.prepare('DELETE FROM payment_checkout_intents WHERE razorpay_order_id=?').run(razorpay_order_id);return res.status(400).json({error:"Order not placed because the payment transaction was not completed."});}
+ const intentItems=JSON.parse(intent.items_json||'[]');
+ if(!Array.isArray(intentItems)||!intentItems.length)throw Error('Order items are missing. Please try again.');
+ const createPaidOrder=db.transaction(()=>{
+  const parent=db.prepare('SELECT id FROM users WHERE id=?').get(intent.user_id);if(!parent)throw Error('Customer account was not found. Please sign in again.');
+  for(const item of intentItems){const product=db.prepare('SELECT stock FROM products WHERE id=?').get(item.product_id);if(!product||Number(product.stock)<Number(item.quantity))throw Error('One or more items are no longer in stock. No order was placed.');}
+  const order=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,razorpay_order_id,razorpay_payment_id,razorpay_signature) VALUES(?,?,?,?,?,?,?,?,?,?)").run(intent.user_id,intent.total,'CONFIRMED','PAID','RAZORPAY',intent.address,intent.customer_phone,razorpay_order_id,razorpay_payment_id,razorpay_signature);
+  const add=db.prepare('INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)');const dec=db.prepare('UPDATE products SET stock=stock-? WHERE id=?');
+  for(const item of intentItems){add.run(order.lastInsertRowid,item.product_id,item.size,item.quantity,item.unit_price);dec.run(item.quantity,item.product_id);}
+  db.prepare('DELETE FROM payment_checkout_intents WHERE razorpay_order_id=?').run(razorpay_order_id);
+  return Number(order.lastInsertRowid);
+ });
+ const orderId=createPaidOrder();
+ res.json({ok:true,orderId});
+ }catch(e){console.error('[Ashwini payment verify]',e);res.status(400).json({error:e.message||'Order not placed because the payment transaction was not completed.'});}
 });
 
 app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
