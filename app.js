@@ -936,7 +936,7 @@ document.addEventListener('click',e=>{
  const orderHeading=document.querySelector('.modal [data-dashboard-section="orders"]');
  if(!orderHeading)return;
  e.preventDefault();e.stopImmediatePropagation();
- orderHeading.scrollIntoView({behavior:'smooth',block:'start'});
+ openAdminDashboardSection('orders');
 });
 document.addEventListener('click',e=>{
  const button=e.target.closest?.('button');
@@ -1015,7 +1015,13 @@ function toggleAdminDashboardSection(name){
  document.querySelectorAll('.modal .dashboard-section-launch').forEach(x=>x.classList.remove('open'));
  if(opening){target.hidden=false;document.querySelector(`.modal .dashboard-section-launch[data-dashboard-section="${name}"]`)?.classList.add('open');target.scrollIntoView({behavior:'smooth',block:'start'});}
 }
+function openAdminDashboardSection(name){
+ const section=window.__adminDashboardSections?.[name];
+ if(!section)return;
+ openM(`<h2>${section.label}</h2><div class="admin-toolbar"><button type="button" onclick="dashboard()">← Back to Dashboard</button></div><div class="admin-table-wrap">${section.html}</div>`);
+}
 function upgradeAdminDashboardSections(){
+ window.__adminDashboardSections={};
  const sections=[
   {name:'orders',label:'🚚 Orders',match:t=>t==='🚚 Orders'},
   {name:'helpdesk',label:'💬 Ashwini Help Desk Notifications',match:t=>t.startsWith('💬 Ashwini Help Desk Notifications')},
@@ -1029,7 +1035,8 @@ function upgradeAdminDashboardSections(){
   const badge=heading.querySelector('.admin-notif-badge,.status-pill')?.outerHTML||'';
   const button=document.createElement('button');button.type='button';button.className='inventory-launch dashboard-section-launch';button.dataset.dashboardSection=section.name;
   button.innerHTML=`${section.label} ${badge}<span aria-hidden="true">⌄</span>`;
-  button.addEventListener('click',()=>toggleAdminDashboardSection(section.name));
+  window.__adminDashboardSections[section.name]={label:section.label,html:content.innerHTML};
+  button.addEventListener('click',()=>openAdminDashboardSection(section.name));
   content.classList.add('dashboard-section-content');content.dataset.dashboardSectionContent=section.name;content.hidden=true;
   heading.replaceWith(button);
  }
