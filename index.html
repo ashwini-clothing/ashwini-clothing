@@ -11,6 +11,10 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}
 .logo{width:255px;height:50px;display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;cursor:pointer}.logo img{width:88px;height:50px;object-fit:contain;background:transparent;border-radius:0;display:block;transition:transform .18s ease,filter .18s ease,box-shadow .18s ease}.brand-name{font-family:Georgia,serif;font-size:27px;letter-spacing:3px;font-weight:600;line-height:1;transition:color .18s ease,text-shadow .18s ease,transform .18s ease}.logo:hover img{transform:scale(1.06);filter:drop-shadow(0 3px 7px rgba(255,255,255,.35))}.logo:hover .brand-name{color:#ffd6e5;text-shadow:0 2px 8px rgba(255,182,207,.35);transform:translateY(-1px)}.logo:focus-visible{outline:2px solid #ffd6e5;outline-offset:4px;border-radius:8px}
 .deliver{font-size:12px;line-height:1.2}.deliver b{font-size:14px}
 .search{display:flex;flex:1;height:42px;position:relative;z-index:60}.search select{width:65px;border:0;background:#f7f0ea;padding:0 6px}.search input{flex:1;border:0;padding:0 12px;outline:0}.search button{width:52px;border:0;background:#c9a86a;font-size:20px;cursor:pointer;transition:background .15s ease,transform .15s ease}.search button:hover{background:#a98243}.search button:active{transform:scale(.96)}
+.search .search-action{width:42px;border:0;background:#f7f0ea;color:#5a2e40;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer}.search .search-action:hover{background:#f0dfdf}.search .search-submit{width:52px}.search .search-photo{user-select:none}.search #photoSearchInput{display:none}.mobile-delivery-strip{display:none}
+.modal-back{display:inline-flex;align-items:center;gap:5px;min-height:36px;border:1px solid #d8c7cc;border-radius:7px;background:#fff;color:#5a2e40;padding:7px 10px;font-weight:700;margin:0 0 12px;cursor:pointer}.modal-back:hover{background:#fff5f7;border-color:#b85c70}
+.gallery-nav{display:flex;align-items:center;justify-content:center;position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.94);font-size:34px;line-height:1;color:#5a2e40;box-shadow:0 2px 9px rgba(0,0,0,.18)}.gallery-nav:hover{background:#fff}.gallery-prev{left:10px}.gallery-next{right:10px}
+.mobile-product-suggestions{margin-top:22px;border-top:1px solid #eaded8;padding-top:16px}.mobile-product-suggestions h3{font-size:20px;color:#5a2e40;margin:18px 0 11px}.suggestion-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.suggestion-card{display:grid;grid-template-rows:160px auto auto;gap:6px;text-align:left;border:1px solid #eaded8;background:#fff;border-radius:8px;padding:8px;color:#2d2227;cursor:pointer}.suggestion-card:hover{border-color:#b85c70;box-shadow:0 6px 16px rgba(90,46,64,.12)}.suggestion-card img{width:100%;height:160px;object-fit:contain}.suggestion-card span{font-size:13px;line-height:1.3}.suggestion-card b{font-size:15px;color:#5a2e40}
 .toplink{color:#fff;background:none;border:0;text-align:left;padding:3px 4px;white-space:nowrap}.toplink small{display:block;font-size:11px}.toplink b{font-size:14px}.account-wrap{position:relative;z-index:120}.account-popover{display:none;position:absolute;top:calc(100% + 10px);right:0;width:min(520px,calc(100vw - 24px));background:#fffdfb;color:#2d2227;border:1px solid #eaded8;border-radius:10px;box-shadow:0 14px 40px rgba(36,21,28,.28);padding:14px;z-index:10000}.account-popover.open{display:block}.account-popover::before{content:"";position:absolute;top:-7px;right:28px;width:12px;height:12px;background:#fffdfb;border-left:1px solid #eaded8;border-top:1px solid #eaded8;transform:rotate(45deg)}.account-popover h3{margin:0;color:#5a2e40;font-size:18px}.account-popover .account-menu-grid{margin-top:12px}.account-popover .account-menu-card{background:#fff;border-radius:8px;padding:12px 38px 12px 12px}.account-popover .account-menu-card:hover{background:#fff5f7}.account-popover .account-chevron{right:12px;font-size:22px}.account-popover .gold{margin-top:12px}.account-popover-note{font-size:12px;color:#6b5260;margin:4px 0 0}
 .nav{background:#5a2e40;color:#fff;display:flex;align-items:center;gap:24px;padding:10px 3%;overflow:auto;position:relative;z-index:50}.nav span{white-space:nowrap;font-size:14px;cursor:pointer;padding:4px 2px;transition:color .15s ease,background .15s ease,transform .15s ease}.nav span:hover{color:#fff;background:rgba(255,255,255,.14);border-radius:4px}.nav span:active{transform:translateY(1px);background:rgba(255,255,255,.24)}.nav .all{font-weight:bold}
 .hero{max-width:1500px;margin:auto;min-height:330px;padding:65px 7%;display:flex;align-items:center;background:linear-gradient(100deg,#f4e8e6,#fbf7f2)}
@@ -297,6 +301,50 @@ button:active{transform:translateY(1px)}
   #body .return-actions button{flex:1 1 135px}
   #body .rating-breakdown,#body .qa-list{max-width:100%;overflow-wrap:anywhere}
   #body img{max-width:100%;height:auto}
+  /* Mobile-only search, delivery and product discovery controls. */
+  .search{display:grid!important;grid-template-columns:57px minmax(0,1fr) 34px 34px 43px;align-items:stretch}
+  .search select,.search input{min-width:0}.search .search-action,.search .search-submit{width:auto!important;min-width:0!important;display:flex;align-items:center;justify-content:center;padding:0;font-size:16px;border:0;background:#f7f0ea;cursor:pointer}
+  .search .search-submit{background:#c9a86a}.search-photo{font-size:16px;cursor:pointer}.search #photoSearchInput{display:none}
+  .mobile-delivery-strip{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px;align-items:center;background:#fff;padding:8px 10px;border-bottom:1px solid #e7dfe0;font-size:12px;position:relative;z-index:6999}
+  .mobile-delivery-strip input{min-width:0;padding:8px;border:1px solid #cdbcc2;border-radius:5px;font-size:13px}.mobile-delivery-strip button{padding:8px 10px;border:1px solid #023EBA;background:#CAF0F8;color:#03045E;border-radius:5px;font-weight:700}.mobile-delivery-strip small{grid-column:1/-1;color:#4f6f58;min-height:15px}.delivery-error{color:#b42318}
+  .shop-category-box{min-height:46px!important;padding:7px 10px!important;max-width:250px!important}.shop-category-box strong{font-size:13px!important}.shop-category-box span{font-size:11px!important}.quick-filter-box{min-width:150px!important;width:auto!important;padding:8px 10px!important}.quick-filter-box strong{font-size:13px!important}
+  #body .modal-back{display:inline-flex;align-items:center;gap:5px;min-height:36px;border:1px solid #d8c7cc;border-radius:7px;background:#fff;color:#5a2e40;padding:7px 10px;font-weight:700;margin:0 0 12px;cursor:pointer}
+  #body .gallery-nav{display:flex;align-items:center;justify-content:center;position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.94);font-size:31px;line-height:1;color:#5a2e40;box-shadow:0 2px 9px rgba(0,0,0,.18)}
+  #body .gallery-prev{left:8px}#body .gallery-next{right:8px}
+  #body .mobile-product-suggestions{margin-top:20px;border-top:1px solid #eaded8;padding-top:14px}.mobile-product-suggestions h3{font-size:18px;color:#5a2e40;margin:16px 0 9px}.suggestion-grid{display:grid;grid-auto-flow:column;grid-auto-columns:145px;gap:9px;overflow-x:auto;padding:2px 1px 8px}.suggestion-card{display:grid;grid-template-rows:130px auto auto;gap:5px;text-align:left;border:1px solid #eaded8;background:#fff;border-radius:7px;padding:7px;color:#2d2227;cursor:pointer}.suggestion-card img{width:100%;height:130px;object-fit:contain}.suggestion-card span{font-size:12px;line-height:1.25}.suggestion-card b{font-size:14px;color:#5a2e40}
+  /* Keep mobile cards readable: never inherit the narrow desktop action columns. */
+  .ad-slide{cursor:pointer}.ad-slide:focus-visible{outline:3px solid #00B4D8;outline-offset:-3px}
+  .top .toplink,.top .offer-toplink{color:#fff!important}
+  #accountTopLink{color:#fff!important;min-width:64px!important}
+  #accountTopLink small{font-size:9px!important;color:#fff!important;white-space:nowrap!important}
+  #accountTopLink small::before{content:'👤 ';font-size:14px;color:#fff}
+  .top button[onclick="cartView()"]{min-width:48px!important;color:#fff!important}
+  .top button[onclick="cartView()"] b{font-size:0!important;color:#fff!important;white-space:nowrap}
+  .top button[onclick="cartView()"] b::before{content:'🛒';font-size:20px;filter:brightness(0) invert(1)}
+  .top button[onclick="cartView()"] #count{display:inline-flex!important;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 3px;margin-left:2px;border-radius:10px;background:#fff!important;color:#5a2e40!important;font-size:10px!important;font-weight:800;vertical-align:top}
+  .top button[onclick="orders()"]{min-width:60px!important;color:#fff!important;text-align:center}
+  .top button[onclick="orders()"] small{display:none!important}
+  .top button[onclick="orders()"] b{font-size:0!important;color:#fff!important;white-space:nowrap}
+  .top button[onclick="orders()"] b::after{content:'Orders';font-size:11px;color:#fff;font-weight:800}
+  .account-popover{left:5px!important;right:5px!important;top:103px!important;max-height:calc(100dvh - 110px)!important;padding:10px!important}
+  .account-popover .account-menu-card{min-height:66px!important;padding:10px 34px 10px 10px!important}
+  #body .cartrow{grid-template-columns:86px minmax(0,1fr)!important;gap:11px!important;width:100%;box-sizing:border-box}
+  #body .cartrow>.mini{width:86px;height:106px!important}
+  #body .cartrow>div{min-width:0}
+  #body .cartrow h3{font-size:18px!important;line-height:1.25;margin:0 0 7px;overflow-wrap:anywhere}
+  #body .cartrow>button.gold{grid-column:1/-1!important;width:100%!important;min-height:46px!important;font-size:16px!important}
+  #body .cartrow>button.account-action{grid-column:1/-1!important;width:100%!important;min-height:44px!important;font-size:16px!important}
+  #body .cartrow>.order-product-link{width:86px!important;height:106px!important;grid-column:1!important}
+  #body .cartrow>.order-product-link img{width:80px!important;height:100px!important}
+  #body .cartrow .order-product-title{font-size:17px!important;line-height:1.3!important;text-align:left!important;white-space:normal!important;overflow-wrap:anywhere}
+  #body .cartrow[style*="1fr auto"]{grid-template-columns:minmax(0,1fr)!important}
+  #body .cartrow[style*="1fr auto"]>div:last-child{width:100%;margin-top:2px}
+  #body .cartrow[style*="1fr auto"]>div:last-child .account-action{width:100%!important;min-height:44px!important;font-size:16px!important}
+  #body .wish-card{grid-template-columns:86px minmax(0,1fr)!important;gap:11px!important}
+  #body .wish-card>.mini{width:86px;height:106px!important}
+  #body .wish-card .gold,#body .wish-card .remove-wish{grid-column:1/-1!important;width:100%!important;min-height:44px!important;font-size:15px!important}
+  #body .wishlist-section{clear:both}
+  #body .modal-back{position:sticky;top:0;z-index:20;background:#fff;margin-bottom:14px;box-shadow:0 2px 6px rgba(0,0,0,.08)}
 }
 </style>
 </head>
@@ -305,13 +353,14 @@ button:active{transform:translateY(1px)}
 <div class="top">
 <a class="logo" href="#" onclick="storeProfilePage();return false" aria-label="About Ashwini Clothing"><img class="header-original-logo" src="ashwini-transparent-logo.png" alt="Ashwini logo"><span class="brand-name">ASHWINI</span></a>
 <button class="deliver" type="button" onclick="openDelivery()" aria-label="Choose delivery location">Deliver to<br><b id="deliverLocation">India ▾</b></button>
-<div class="search"><select id="searchCat" aria-label="Category"><option>All</option><option>Western Dress</option><option>Co-ord Set</option><option>Skirt & Top</option><option>Kurta Set</option><option>Formal Ladies & Gents Pants</option><option>Sarara</option><option>Coat Set</option><option>Lehenga</option><option>Wedding Gown</option><option>Shirts</option><option>Party Wear</option></select><input id="q" placeholder="Search Ashwini clothing..." onkeydown="if(event.key==='Enter')load()"><button type="button" aria-label="Search">🔍</button></div>
+<div class="search"><select id="searchCat" aria-label="Category"><option>All</option><option>Western Dress</option><option>Co-ord Set</option><option>Skirt & Top</option><option>Kurta Set</option><option>Formal Ladies & Gents Pants</option><option>Sarara</option><option>Coat Set</option><option>Lehenga</option><option>Wedding Gown</option><option>Shirts</option><option>Party Wear</option></select><input id="q" placeholder="Search Ashwini clothing..." onkeydown="if(event.key==='Enter')load()"><button class="search-action" type="button" onclick="startVoiceSearch()" aria-label="Search by voice" title="Search by voice">🎙️</button><label class="search-action search-photo" for="photoSearchInput" aria-label="Search by photo" title="Search by product photo">📷</label><input id="photoSearchInput" type="file" accept="image/*" capture="environment" onchange="searchByPhoto(this)"><button class="search-submit" type="button" aria-label="Search">🔍</button></div>
 <div class="account-wrap"><button id="accountTopLink" class="toplink" onclick="auth()"><small>Hello, sign in</small><b>Account & Lists</b><span aria-hidden="true" style="margin-left:4px;font-size:13px">▾</span></button><div id="accountPopover" class="account-popover" aria-label="Account and Lists menu"></div></div>
 <button class="toplink" onclick="orders()"><small>Returns</small><b>& Orders</b></button>
 <button id="admin" class="toplink" style="display:none" onclick="dashboard()"><b>👑 Admin</b></button><button class="toplink offer-toplink" onclick="offersPanel()"><b>🎁 Offers</b></button><button class="toplink" onclick="cartView()"><b>🛒 Cart <span id="count">0</span></b></button>
 </div>
 <div class="nav"><span class="all" data-category="All" onclick="cat('All')">☰ All</span><span data-category="All" onclick="cat('All')">New Arrivals</span><span data-category="Western Dress" onclick="cat('Western Dress')">Western Dress</span><span data-category="Co-ord Set" onclick="cat('Co-ord Set')">Co-ord Set</span><span data-category="Skirt & Top" onclick="cat('Skirt & Top')">Skirt & Top</span><span data-category="Kurta Set" onclick="cat('Kurta Set')">Kurta Set</span><span data-category="Formal Ladies & Gents Pants" onclick="cat('Formal Ladies & Gents Pants')">Formal Ladies & Gents Pants</span><span data-category="Sarara" onclick="cat('Sarara')">Sarara</span><span data-category="Coat Set" onclick="cat('Coat Set')">Coat Set</span><span data-category="Lehenga" onclick="cat('Lehenga')">Lehenga</span><span data-category="Wedding Gown" onclick="cat('Wedding Gown')">Wedding Gown</span><span data-category="Shirts" onclick="cat('Shirts')">Shirts</span><span data-category="Party Wear" onclick="cat('Party Wear')">Party Wear</span></div>
 </header>
+<section class="mobile-delivery-strip" aria-label="Check delivery on mobile"><span>📍 Deliver to</span><input id="mobileDeliveryPin" maxlength="6" inputmode="numeric" placeholder="Enter PIN" onkeydown="if(event.key==='Enter')checkMobileDeliveryPin()"><button type="button" onclick="checkMobileDeliveryPin()">Check</button><small id="mobileDeliveryResult">Enter PIN to see delivery date.</small></section>
 
 <section class="ad-carousel" aria-label="Ashwini Clothing promotions">
   <div class="ad-track" id="adTrack"></div>
