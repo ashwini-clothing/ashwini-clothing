@@ -58,25 +58,21 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
-// Ensure the configured Store Admin can always sign in after Render restarts or a
-// database is recreated.  The previous implementation assigned a random password
-// to a newly-created admin, which made password sign-in impossible.
+// Ensure the configured Store Admin exists even when Render Free restarts/recreates
+// the local SQLite database. This only creates/promotes the designated admin account;
+// it does not reset customers, products, orders, or other data.
 try{
- const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
- const bootstrapAdminPassword=String(process.env.ADMIN_PASSWORD||'');
- if(bootstrapAdminEmail && bootstrapAdminPassword.length>=8){
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail))throw new Error('ADMIN_EMAIL is invalid');
-  const hash=bcrypt.hashSync(bootstrapAdminPassword,12);
-  const existingAdmin=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
-  if(existingAdmin){
-   db.prepare("UPDATE users SET password_hash=?,role='admin' WHERE id=?").run(hash,existingAdmin.id);
-   db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(existingAdmin.id);
-  }else{
+ const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'parishdevi5@gmail.com').trim().toLowerCase();
+ if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail)){
+  const existingAdmin=db.prepare("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
+  if(existingAdmin && existingAdmin.role!=='admin'){
+   db.prepare("UPDATE users SET role='admin' WHERE id=?").run(existingAdmin.id);
+  }else if(!existingAdmin){
+   const tempPassword=crypto.randomBytes(32).toString('hex');
+   const hash=bcrypt.hashSync(tempPassword,12);
    db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'admin')")
      .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
   }
- }else if(bootstrapAdminEmail){
-  console.warn('[Ashwini Admin Bootstrap] ADMIN_PASSWORD must be set to an 8+ character secret before the admin account can be created or recovered.');
  }
 }catch(e){console.error('[Ashwini Admin Bootstrap]',e.message)}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
@@ -92,12 +88,7 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS product_reviews (id INTEGER PRIMARY KEY 
 try{db.exec(`CREATE TABLE IF NOT EXISTS offers (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT DEFAULT '', coupon_code TEXT DEFAULT '', discount_percent REAL DEFAULT 0, banner_url TEXT DEFAULT '', button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', start_at TEXT DEFAULT '', end_at TEXT DEFAULT '', active INTEGER DEFAULT 1, show_popup INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS homepage_slides (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT DEFAULT '', offer_text TEXT DEFAULT '', image_url TEXT NOT NULL, button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE homepage_slides ADD COLUMN offer_text TEXT DEFAULT ''")}catch{}
-for(const q of ["ALTER TABLE homepage_slides ADD COLUMN title_color TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN title_size INTEGER DEFAULT 0","ALTER TABLE homepage_slides ADD COLUMN offer_color TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN offer_size INTEGER DEFAULT 0","ALTER TABLE homepage_slides ADD COLUMN button_background TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN button_color TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN button_border TEXT DEFAULT ''"]){try{db.exec(q)}catch{}}
-try{db.exec(`CREATE TABLE IF NOT EXISTS site_appearance (id INTEGER PRIMARY KEY CHECK(id=1), button_bg TEXT NOT NULL DEFAULT '#CAF0F8', button_text TEXT NOT NULL DEFAULT '#03045E', button_border TEXT NOT NULL DEFAULT '#023EBA', button_font_size INTEGER NOT NULL DEFAULT 15, header_bg TEXT NOT NULL DEFAULT '#321c29', header_text TEXT NOT NULL DEFAULT '#ffffff', nav_bg TEXT NOT NULL DEFAULT '#5a2e40', nav_text TEXT NOT NULL DEFAULT '#ffffff', search_bg TEXT NOT NULL DEFAULT '#ffffff', search_button_bg TEXT NOT NULL DEFAULT '#c9a86a', search_button_text TEXT NOT NULL DEFAULT '#03045E', shop_now_bg TEXT NOT NULL DEFAULT '#CAF0F8', shop_now_text TEXT NOT NULL DEFAULT '#03045E', shop_now_border TEXT NOT NULL DEFAULT '#023EBA', shop_category_bg TEXT NOT NULL DEFAULT '#CAF0F8', shop_category_text TEXT NOT NULL DEFAULT '#03045E', shop_category_border TEXT NOT NULL DEFAULT '#023EBA', quick_filter_bg TEXT NOT NULL DEFAULT '#CAF0F8', quick_filter_text TEXT NOT NULL DEFAULT '#03045E', quick_filter_border TEXT NOT NULL DEFAULT '#023EBA', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
-for(const q of ["ALTER TABLE site_appearance ADD COLUMN shop_now_bg TEXT NOT NULL DEFAULT '#CAF0F8'","ALTER TABLE site_appearance ADD COLUMN shop_now_text TEXT NOT NULL DEFAULT '#03045E'","ALTER TABLE site_appearance ADD COLUMN shop_now_border TEXT NOT NULL DEFAULT '#023EBA'","ALTER TABLE site_appearance ADD COLUMN shop_category_bg TEXT NOT NULL DEFAULT '#CAF0F8'","ALTER TABLE site_appearance ADD COLUMN shop_category_text TEXT NOT NULL DEFAULT '#03045E'","ALTER TABLE site_appearance ADD COLUMN shop_category_border TEXT NOT NULL DEFAULT '#023EBA'","ALTER TABLE site_appearance ADD COLUMN quick_filter_bg TEXT NOT NULL DEFAULT '#CAF0F8'","ALTER TABLE site_appearance ADD COLUMN quick_filter_text TEXT NOT NULL DEFAULT '#03045E'","ALTER TABLE site_appearance ADD COLUMN quick_filter_border TEXT NOT NULL DEFAULT '#023EBA'"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS shop_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, icon TEXT DEFAULT '👗', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS quick_filters (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL UNIQUE, filter_type TEXT NOT NULL DEFAULT 'IN_STOCK', active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
-try{const defaults=[['In stock','IN_STOCK',0],['4 Stars & above','RATING_4',1]];const add=db.prepare('INSERT INTO quick_filters(label,filter_type,active,sort_order) VALUES(?,?,1,?)');for(const [label,type,order] of defaults){if(!db.prepare('SELECT id FROM quick_filters WHERE label=?').get(label))add.run(label,type,order)}}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_highlights (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, value TEXT NOT NULL, active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{ const defaults=[['Fabric','Premium Feel',0],['Fit','Comfort Fit',1],['Delivery','Fast Dispatch',2]]; const add=db.prepare('INSERT INTO product_highlights(label,value,active,sort_order) VALUES(?,?,?,?)'); for(const [label,value,order] of defaults){const row=db.prepare('SELECT id FROM product_highlights WHERE label=? ORDER BY id LIMIT 1').get(label); if(!row)add.run(label,value,1,order);} }catch{}
 try{
@@ -116,13 +107,10 @@ try{
 }catch{}
 
 try{db.exec(`CREATE TABLE IF NOT EXISTS offer_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, offer_id INTEGER, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TEXT DEFAULT '', FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(offer_id) REFERENCES offers(id) ON DELETE SET NULL)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, reason TEXT NOT NULL, request_type TEXT NOT NULL DEFAULT 'REPLACEMENT', replacement_size TEXT DEFAULT '', replacement_color TEXT DEFAULT '', pickup_at TEXT DEFAULT '', admin_note TEXT DEFAULT '', replacement_order_id INTEGER DEFAULT NULL, refund_id TEXT DEFAULT '', refund_amount REAL DEFAULT 0, refund_status TEXT DEFAULT '', refund_created_at TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'REQUESTED', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, reason TEXT NOT NULL, request_type TEXT NOT NULL DEFAULT 'REPLACEMENT', replacement_size TEXT DEFAULT '', replacement_color TEXT DEFAULT '', pickup_at TEXT DEFAULT '', admin_note TEXT DEFAULT '', replacement_order_id INTEGER DEFAULT NULL, status TEXT NOT NULL DEFAULT 'REQUESTED', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(return_id) REFERENCES returns(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
-// A Razorpay attempt is kept separate from a real order.  This means a cancelled
-// or failed payment can never appear in My Orders or the admin dashboard.
-try{db.exec(`CREATE TABLE IF NOT EXISTS payment_checkout_intents (razorpay_order_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, total REAL NOT NULL, address TEXT NOT NULL, customer_phone TEXT DEFAULT '', items_json TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
-for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL","ALTER TABLE returns ADD COLUMN refund_id TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN refund_amount REAL DEFAULT 0","ALTER TABLE returns ADD COLUMN refund_status TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN refund_created_at TEXT DEFAULT ''"]){try{db.exec(q)}catch{}}
+for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_help_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL DEFAULT '', customer_email TEXT NOT NULL DEFAULT '', message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT)`)}catch{}
@@ -137,21 +125,10 @@ try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_name TEXT NOT NULL DE
 try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!'")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_state_settings (state TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_settings (id INTEGER PRIMARY KEY CHECK(id=1), dispatch_city TEXT NOT NULL DEFAULT 'Jandli, Ambala Cantt', dispatch_state TEXT NOT NULL DEFAULT 'Haryana', dispatch_pincode TEXT NOT NULL DEFAULT '134003', same_city_min INTEGER NOT NULL DEFAULT 1, same_city_max INTEGER NOT NULL DEFAULT 2, same_state_min INTEGER NOT NULL DEFAULT 2, same_state_max INTEGER NOT NULL DEFAULT 4, nearby_min INTEGER NOT NULL DEFAULT 3, nearby_max INTEGER NOT NULL DEFAULT 5, rest_min INTEGER NOT NULL DEFAULT 5, rest_max INTEGER NOT NULL DEFAULT 8, remote_min INTEGER NOT NULL DEFAULT 7, remote_max INTEGER NOT NULL DEFAULT 10, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, block_type TEXT NOT NULL CHECK(block_type IN ('PIN','CITY','STATE')), block_value TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(block_type,block_value))`)}catch{}
-try{db.prepare(`INSERT OR IGNORE INTO delivery_settings(id) VALUES(1)`).run()}catch{}
 try{db.prepare("INSERT OR IGNORE INTO cod_settings(id,enabled) VALUES(1,1)").run()}catch{}
-try{db.prepare("INSERT OR IGNORE INTO site_appearance(id) VALUES(1)").run()}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO store_profile(id,about_title,history,address,city,state,pincode,email,phone,logo_data) VALUES(1,?,?,?,?,?,?,?,?,?)`).run('About Ashwini Clothing','Welcome to Ashwini Clothing. Our story and company information can be updated by the store admin.','','','','','ashwiniweb88@gmail.com','', '')}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, user_id INTEGER, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(question_id) REFERENCES product_questions(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 db.exec(fs.readFileSync(path.join(__dirname,"seed.sql"),"utf8"));
-// Remove only the old, locally-created Razorpay placeholders made before the
-// payment gateway could start. Restore their stock before removing them.
-try{
- const abandoned=db.prepare("SELECT id FROM orders WHERE payment_method='RAZORPAY' AND payment_status='PENDING' AND status='PAYMENT_PENDING' AND COALESCE(razorpay_order_id,'')=''").all();
- const clearAbandoned=db.transaction(()=>{const items=db.prepare('SELECT product_id,quantity FROM order_items WHERE order_id=?');const restore=db.prepare('UPDATE products SET stock=stock+? WHERE id=?');for(const row of abandoned){for(const item of items.all(row.id))restore.run(item.quantity,item.product_id);db.prepare('DELETE FROM order_events WHERE order_id=?').run(row.id);db.prepare('DELETE FROM order_items WHERE order_id=?').run(row.id);db.prepare('DELETE FROM orders WHERE id=?').run(row.id);}});
- if(abandoned.length)clearAbandoned();
-}catch(e){console.error('[Ashwini Razorpay cleanup]',e.message)}
 // Keep the Ashwini product photo path correct even if an older database already exists.
 db.prepare("UPDATE products SET image=? WHERE id=?").run('/new-model-dress-clean.jpg',100);
 const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET
@@ -239,11 +216,7 @@ async function sendEmail(to,subject,text,html){
 }
 function adminEmail(){return process.env.ADMIN_EMAIL||db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com'}
 async function notifyEmail(to,subject,details){
- const shopUrl=/^https:\/\//i.test(String(process.env.STORE_URL||''))?String(process.env.STORE_URL).trim():'https://ashwiniweb.com';
- const escapeHtml=v=>String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
- const text=`Ashwini Clothing\n\n${details}\n\nShop: ${shopUrl}\n\nFor help, contact ${adminEmail()}.`;
- const html=`<div style="font-family:Arial,sans-serif;line-height:1.6;color:#2d2030;max-width:620px;margin:auto"><h2 style="margin:0 0 16px;color:#5a2e40">Ashwini Clothing</h2><p style="white-space:pre-line">${escapeHtml(details)}</p><p style="margin:24px 0"><a href="${escapeHtml(shopUrl)}" style="display:inline-block;background:#CAF0F8;color:#03045E;border:1px solid #023EBA;border-radius:7px;padding:12px 22px;font-weight:700;text-decoration:none">Shop Now</a></p><p style="font-size:13px;color:#695c62">For help, contact <a href="mailto:${escapeHtml(adminEmail())}">${escapeHtml(adminEmail())}</a>.</p></div>`;
- const result=await sendEmail(to,subject,text,html);
+ const result=await sendEmail(to,subject,`Ashwini Clothing\n\n${details}\n\nFor help, contact ${adminEmail()}.`);
  if(!result.sent)console.warn(`[Ashwini Email] ${to} was not notified: ${result.error||'unknown error'}`);
  return result;
 }
@@ -258,10 +231,6 @@ app.get('/api/admin/email-status',auth,admin,(req,res)=>{
  res.json({provider,configured,admin_email:adminEmail(),from:process.env.EMAIL_FROM||'Ashwini Clothing <onboarding@resend.dev>'});
 });
 app.get("/api/store-profile",(req,res)=>{const x=db.prepare("SELECT * FROM store_profile WHERE id=1").get()||{};const {whatsapp_number,...safe}=x;res.json(safe)});
-const appearanceKeys=['button_bg','button_text','button_border','header_bg','header_text','nav_bg','nav_text','search_bg','search_button_bg','search_button_text','shop_now_bg','shop_now_text','shop_now_border','shop_category_bg','shop_category_text','shop_category_border','quick_filter_bg','quick_filter_text','quick_filter_border'];
-function appearanceColor(value,fallback){const x=String(value||fallback).trim();if(!/^#[0-9a-fA-F]{6}$/.test(x))throw Error('Choose a valid colour');return x}
-app.get('/api/appearance',(req,res)=>res.json(db.prepare('SELECT * FROM site_appearance WHERE id=1').get()||{}));
-app.patch('/api/admin/appearance',auth,admin,(req,res)=>{try{const b=req.body||{},current=db.prepare('SELECT * FROM site_appearance WHERE id=1').get()||{};const colors={};for(const key of appearanceKeys)colors[key]=appearanceColor(b[key],current[key]);const size=Math.max(11,Math.min(24,Number(b.button_font_size||current.button_font_size||15)));if(!Number.isFinite(size))throw Error('Enter a valid button text size');db.prepare(`UPDATE site_appearance SET button_bg=?,button_text=?,button_border=?,button_font_size=?,header_bg=?,header_text=?,nav_bg=?,nav_text=?,search_bg=?,search_button_bg=?,search_button_text=?,shop_now_bg=?,shop_now_text=?,shop_now_border=?,shop_category_bg=?,shop_category_text=?,shop_category_border=?,quick_filter_bg=?,quick_filter_text=?,quick_filter_border=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(colors.button_bg,colors.button_text,colors.button_border,Math.round(size),colors.header_bg,colors.header_text,colors.nav_bg,colors.nav_text,colors.search_bg,colors.search_button_bg,colors.search_button_text,colors.shop_now_bg,colors.shop_now_text,colors.shop_now_border,colors.shop_category_bg,colors.shop_category_text,colors.shop_category_border,colors.quick_filter_bg,colors.quick_filter_text,colors.quick_filter_border);res.json(db.prepare('SELECT * FROM site_appearance WHERE id=1').get())}catch(e){res.status(400).json({error:e.message})}});
 app.get("/api/whatsapp-help",(req,res)=>{res.redirect(302,"/");});
 
 function currentHelpCustomer(req){
@@ -333,38 +302,12 @@ app.get("/api/pincode/:pin",async(req,res)=>{
  }catch{}
  return res.status(404).json({error:"PIN code location could not be found. Please check the 6-digit PIN."});
 });
-app.get('/api/delivery-estimate/:pin',async(req,res)=>{
- const pin=String(req.params.pin||'').trim();if(!/^\d{6}$/.test(pin))return res.status(400).json({error:'Enter a valid 6-digit PIN code'});
- const settings=db.prepare('SELECT * FROM delivery_settings WHERE id=1').get();let place=null;
- try{const r=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{headers:{accept:'application/json'}});if(r.ok){const data=await r.json(),po=data?.[0]?.PostOffice?.[0];if(po)place={city:po.Block||po.District||po.Division||'',district:po.District||'',state:po.State||''}}}catch{}
- if(!place)return res.status(404).json({error:'PIN code location could not be found. Please check the 6-digit PIN.'});
- const cityText=`${place.city} ${place.district}`.toLowerCase(),state=String(place.state||'').toLowerCase(),baseState=String(settings.dispatch_state||'').toLowerCase();
- const blocked=db.prepare("SELECT * FROM delivery_blocks WHERE active=1 ORDER BY CASE block_type WHEN 'PIN' THEN 0 WHEN 'CITY' THEN 1 ELSE 2 END").all().find(x=>x.block_type==='PIN'?x.block_value===pin:x.block_type==='CITY'?cityText.includes(String(x.block_value||'').toLowerCase()):state===String(x.block_value||'').toLowerCase());
- if(blocked)return res.json({pin,city:place.city||place.district,state:place.state,deliverable:false,message:'Delivery is not available for your area.',blockType:blocked.block_type});
- const nearby=['punjab','chandigarh','delhi','himachal pradesh','jammu and kashmir','rajasthan','uttarakhand','uttar pradesh'];
- let min=settings.rest_min,max=settings.rest_max,zone='Across India';
- if(pin===settings.dispatch_pincode||cityText.includes('ambala')||cityText.includes('jandli')){min=settings.same_city_min;max=settings.same_city_max;zone='Jandli / Ambala Cantt'}
- else if(state===baseState){min=settings.same_state_min;max=settings.same_state_max;zone='Haryana'}
- else if(nearby.includes(state)){min=settings.nearby_min;max=settings.nearby_max;zone='Nearby state'}
- else if(['assam','arunachal pradesh','manipur','meghalaya','mizoram','nagaland','sikkim','tripura','andaman and nicobar islands','lakshadweep'].includes(state)){min=settings.remote_min;max=settings.remote_max;zone='Remote area'}
- const from=new Date(),to=new Date();from.setDate(from.getDate()+Number(min));to.setDate(to.getDate()+Number(max));
- res.json({pin,city:place.city||place.district,state:place.state,deliverable:true,zone,minDays:Number(min),maxDays:Number(max),from:from.toISOString(),to:to.toISOString(),dispatch:{city:settings.dispatch_city,pincode:settings.dispatch_pincode}});
-});
-app.get('/api/admin/delivery-settings',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM delivery_settings WHERE id=1').get()));
-app.patch('/api/admin/delivery-settings',auth,admin,(req,res)=>{try{const b=req.body||{},days=['same_city_min','same_city_max','same_state_min','same_state_max','nearby_min','nearby_max','rest_min','rest_max','remote_min','remote_max'];const n={};for(const key of days){n[key]=Math.max(0,Math.min(30,Number(b[key])));if(!Number.isFinite(n[key]))throw Error('Enter valid delivery days')}for(const pair of [['same_city_min','same_city_max'],['same_state_min','same_state_max'],['nearby_min','nearby_max'],['rest_min','rest_max'],['remote_min','remote_max']])if(n[pair[0]]>n[pair[1]])throw Error('Minimum delivery day cannot exceed maximum day');const pin=String(b.dispatch_pincode||'').trim();if(!/^\d{6}$/.test(pin))throw Error('Enter a valid 6-digit dispatch PIN code');db.prepare(`UPDATE delivery_settings SET dispatch_city=?,dispatch_state=?,dispatch_pincode=?,same_city_min=?,same_city_max=?,same_state_min=?,same_state_max=?,nearby_min=?,nearby_max=?,rest_min=?,rest_max=?,remote_min=?,remote_max=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.dispatch_city||'Jandli, Ambala Cantt').trim(),String(b.dispatch_state||'Haryana').trim(),pin,n.same_city_min,n.same_city_max,n.same_state_min,n.same_state_max,n.nearby_min,n.nearby_max,n.rest_min,n.rest_max,n.remote_min,n.remote_max);res.json(db.prepare('SELECT * FROM delivery_settings WHERE id=1').get())}catch(e){res.status(400).json({error:e.message})}});
-app.get('/api/admin/delivery-blocks',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM delivery_blocks ORDER BY active DESC,block_type,block_value').all()));
-app.post('/api/admin/delivery-blocks',auth,admin,(req,res)=>{try{const b=req.body||{},type=String(b.block_type||'').toUpperCase(),value=String(b.block_value||'').trim();if(!['PIN','CITY','STATE'].includes(type))throw Error('Choose PIN code, city or state');if(type==='PIN'&&!/^\d{6}$/.test(value))throw Error('Enter a valid 6-digit PIN code');if(type!=='PIN'&&!value)throw Error('Enter an area name');const r=db.prepare('INSERT INTO delivery_blocks(block_type,block_value,note,active) VALUES(?,?,?,?)').run(type,type==='PIN'?value:value.toLowerCase(),String(b.note||'').trim().slice(0,160),b.active===false?0:1);res.json(db.prepare('SELECT * FROM delivery_blocks WHERE id=?').get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
-app.patch('/api/admin/delivery-blocks/:id',auth,admin,(req,res)=>{try{const active=req.body?.active===false||String(req.body?.active).toLowerCase()==='false'?0:1;db.prepare('UPDATE delivery_blocks SET active=? WHERE id=?').run(active,Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
-app.delete('/api/admin/delivery-blocks/:id',auth,admin,(req,res)=>{try{db.prepare('DELETE FROM delivery_blocks WHERE id=?').run(Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 
 app.post("/api/coupons/check",auth,(req,res)=>{try{const code=String(req.body?.code||'').trim().toUpperCase();if(code==='NEW2026'){const first=db.prepare("SELECT COUNT(*) n FROM orders WHERE user_id=?").get(req.user.id).n===0;if(!first)throw Error('Coupon already used or not available for this account');return res.json({ok:true,discount_percent:30,code})}const now=new Date().toISOString();const o=db.prepare("SELECT * FROM offers WHERE active=1 AND coupon_code=? AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY id DESC LIMIT 1").get(code,now,now);if(!o)throw Error('Coupon not recognised or expired');res.json({ok:true,discount_percent:Number(o.discount_percent||0),code:o.coupon_code,title:o.title})}catch(e){res.status(400).json({error:e.message})}});
 app.get("/api/slides",(req,res)=>{res.json(db.prepare("SELECT * FROM homepage_slides WHERE active=1 ORDER BY sort_order,id").all())});
 app.get("/api/admin/slides",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM homepage_slides ORDER BY sort_order,id").all()));
-function slideStyle(b,key){const value=String(b[key]||'').trim();if(value&&!/^#[0-9a-fA-F]{6}$/.test(value))throw Error('Choose valid slide colours');return value}
-function slideSize(value){const n=Number(value||0);if(!Number.isFinite(n)||n<0||n>90)throw Error('Slide text size must be between 0 and 90');return Math.round(n)}
-function slideValues(b){return [String(b.title||'').slice(0,120),String(b.image_url||'').trim(),String(b.button_text||'Shop Now').slice(0,60),String(b.button_action||''),b.active===false?0:1,Math.max(0,Number(b.sort_order||0)),String(b.offer_text||'').slice(0,160),slideStyle(b,'title_color'),slideSize(b.title_size),slideStyle(b,'offer_color'),slideSize(b.offer_size),slideStyle(b,'button_background'),slideStyle(b,'button_color'),slideStyle(b,'button_border')]}
-app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b),r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text,title_color,title_size,offer_color,offer_size,button_background,button_color,button_border) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...v);res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
-app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b);db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=?,title_color=?,title_size=?,offer_color=?,offer_size=?,button_background=?,button_color=?,button_border=? WHERE id=?").run(...v,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text) VALUES(?,?,?,?,?,?,?)").run(String(b.title||''),String(b.image_url).trim(),String(b.button_text||'Shop Now'),String(b.button_action||''),b.active===false?0:1,Number(b.sort_order||0),String(b.offer_text||''));res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
+app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=? WHERE id=?").run(String(b.title||''),String(b.image_url).trim(),String(b.button_text||'Shop Now'),String(b.button_action||''),b.active?1:0,Number(b.sort_order||0),String(b.offer_text||''),req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/slides/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM homepage_slides WHERE id=?").run(req.params.id);res.json({ok:true})});
 app.get("/api/categories",(req,res)=>{res.json(db.prepare("SELECT * FROM shop_categories WHERE active=1 ORDER BY sort_order,id").all())});
 app.get("/api/product-highlights",(req,res)=>res.json(db.prepare("SELECT * FROM product_highlights WHERE active=1 ORDER BY sort_order,id").all()));
@@ -376,12 +319,6 @@ app.get("/api/admin/categories",auth,admin,(req,res)=>res.json(db.prepare("SELEC
 app.post("/api/admin/categories",auth,admin,(req,res)=>{try{const b=req.body||{};const name=String(b.name||'').trim();if(!name)throw Error('Category name is required');const r=db.prepare("INSERT INTO shop_categories(name,icon,active,sort_order) VALUES(?,?,?,?)").run(name,String(b.icon||'👗'),b.active===false?0:1,Number(b.sort_order||0));res.json(db.prepare("SELECT * FROM shop_categories WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
 app.patch("/api/admin/categories/:id",auth,admin,(req,res)=>{try{const b=req.body||{};const name=String(b.name||'').trim();if(!name)throw Error('Category name is required');db.prepare("UPDATE shop_categories SET name=?,icon=?,active=?,sort_order=? WHERE id=?").run(name,String(b.icon||'👗'),b.active?1:0,Number(b.sort_order||0),req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/categories/:id",auth,admin,(req,res)=>{try{db.prepare("DELETE FROM shop_categories WHERE id=?").run(req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
-
-app.get('/api/quick-filters',(req,res)=>res.json(db.prepare('SELECT * FROM quick_filters WHERE active=1 ORDER BY sort_order,id').all()));
-app.get('/api/admin/quick-filters',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM quick_filters ORDER BY sort_order,id').all()));
-app.post('/api/admin/quick-filters',auth,admin,(req,res)=>{try{const b=req.body||{},label=String(b.label||'').trim(),filterType=String(b.filter_type||'').trim();if(!label)throw Error('Filter name is required');if(!['IN_STOCK','RATING_4'].includes(filterType))throw Error('Choose a valid filter type');const r=db.prepare('INSERT INTO quick_filters(label,filter_type,active,sort_order) VALUES(?,?,?,?)').run(label,filterType,b.active===false?0:1,Number(b.sort_order||0));res.json(db.prepare('SELECT * FROM quick_filters WHERE id=?').get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
-app.patch('/api/admin/quick-filters/:id',auth,admin,(req,res)=>{try{const b=req.body||{},label=String(b.label||'').trim(),filterType=String(b.filter_type||'').trim();if(!label)throw Error('Filter name is required');if(!['IN_STOCK','RATING_4'].includes(filterType))throw Error('Choose a valid filter type');db.prepare('UPDATE quick_filters SET label=?,filter_type=?,active=?,sort_order=? WHERE id=?').run(label,filterType,b.active?1:0,Number(b.sort_order||0),Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
-app.delete('/api/admin/quick-filters/:id',auth,admin,(req,res)=>{try{db.prepare('DELETE FROM quick_filters WHERE id=?').run(Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 
 function offerIsCurrentlyActive(o){
  if(!o || Number(o.active)!==1) return false;
@@ -442,17 +379,80 @@ app.post("/api/admin/offers/:id/send",auth,admin,(req,res)=>{
  }catch(e){res.status(400).json({error:e.message})}
 });
 app.get("/api/products",(req,res)=>{
- const {q="",category="All",sort="featured",filters=""}=req.query;
+ const {q="",category="All",sort="featured"}=req.query;
  let rows=db.prepare(`SELECT * FROM products
  WHERE (?='' OR name LIKE ? OR category LIKE ?)
  AND (?='All' OR lower(trim(category))=lower(trim(?)))`).all(q,`%${q}%`,`%${q}%`,category,category);
- const selected=String(filters).split(',').map(x=>x.trim()).filter(Boolean);
- if(selected.includes('IN_STOCK'))rows=rows.filter(x=>Number(x.stock)>0);
- if(selected.includes('RATING_4'))rows=rows.filter(x=>Number(x.rating)>=4);
  if(sort==="low")rows.sort((a,b)=>a.price-b.price);
  if(sort==="high")rows.sort((a,b)=>b.price-a.price);
  if(sort==="rating")rows.sort((a,b)=>b.rating-a.rating);
  res.json(rows);
+});
+
+function visualSearchOutputText(response){
+ for(const item of response?.output||[]){
+  for(const part of item?.content||[]){
+   if(part?.type==='output_text'&&part.text)return part.text;
+  }
+ }
+ return '';
+}
+function visualSearchJson(text){
+ const cleaned=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+ try{return JSON.parse(cleaned)}catch{}
+ const match=cleaned.match(/\{[\s\S]*\}/);
+ if(match)try{return JSON.parse(match[0])}catch{}
+ throw Error('AI returned an unreadable result. Please try another photo.');
+}
+function productVisualScore(product,analysis){
+ const haystack=[product.name,product.category,product.description,product.badge_text,product.offer_text,product.emoji]
+  .filter(Boolean).join(' ').toLowerCase();
+ const weighted=[
+  [analysis.garment_type,8],[analysis.category,7],[analysis.gender,3],[analysis.style,4],
+  [analysis.pattern,4],[analysis.occasion,3],...((analysis.colors||[]).map(x=>[x,5])),
+  ...((analysis.keywords||[]).map(x=>[x,2]))
+ ];
+ let score=0,matched=[];
+ for(const [raw,weight] of weighted){
+  const term=String(raw||'').trim().toLowerCase();
+  if(term&&haystack.includes(term)){score+=weight;matched.push(term)}
+ }
+ return {score,matched:[...new Set(matched)].slice(0,6)};
+}
+
+app.post('/api/visual-search',async(req,res)=>{
+ try{
+  const imageData=String(req.body?.imageData||'');
+  if(!/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(imageData))
+   return res.status(400).json({error:'Please upload a JPG, PNG or WebP photo.'});
+  if(imageData.length>18_000_000)
+   return res.status(413).json({error:'Photo is too large. Please choose a photo under 12 MB.'});
+  if(!process.env.OPENAI_API_KEY)
+   return res.status(503).json({error:'AI photo search is not configured yet. Add OPENAI_API_KEY on the server.'});
+
+  const categories=db.prepare('SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND trim(category)<>\'\'').all().map(x=>x.category);
+  const prompt=`Analyze this clothing/product photo for an Indian fashion store. Return ONLY valid JSON with these keys: category (best matching broad category), garment_type, colors (array), style, pattern, gender, occasion, keywords (array of concise searchable words), confidence (number 0 to 1), summary (maximum 12 words). Use these store categories when suitable: ${categories.join(', ')}. Do not identify people or infer sensitive traits.`;
+  const aiResponse=await fetch('https://api.openai.com/v1/responses',{
+   method:'POST',
+   headers:{'Authorization':`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},
+   body:JSON.stringify({
+    model:process.env.OPENAI_VISION_MODEL||'gpt-5.4',store:false,max_output_tokens:500,
+    input:[{role:'user',content:[{type:'input_text',text:prompt},{type:'input_image',image_url:imageData,detail:'low'}]}]
+   })
+  });
+  const aiBody=await aiResponse.json().catch(()=>({}));
+  if(!aiResponse.ok)throw Error(aiBody?.error?.message||'AI photo analysis failed.');
+  const analysis=visualSearchJson(visualSearchOutputText(aiBody));
+  const products=db.prepare('SELECT * FROM products').all();
+  let ranked=products.map(product=>({product,...productVisualScore(product,analysis)})).sort((a,b)=>b.score-a.score);
+  const positive=ranked.filter(x=>x.score>0);
+  if(positive.length)ranked=positive;
+  const results=ranked.slice(0,12).map(x=>({...x.product,visual_score:x.score,visual_matches:x.matched}));
+  res.json({analysis,results,count:results.length});
+ }catch(e){
+  console.error('Visual search error:',e.message);
+  res.status(502).json({error:e.message||'AI photo search failed. Please try again.'});
+ }
 });
 function makeOtp(){return String(crypto.randomInt(100000,1000000))}
 function hashOtp(otp){return crypto.createHash("sha256").update(String(otp)).digest("hex")}
@@ -471,74 +471,6 @@ function issueOtp(u, kind){
  console.log(`[Ashwini ${kind.toUpperCase()} OTP] ${u.email || u.phone}: ${otp}`);
  return otp;
 }
-// MSG91 OTP Widget configuration for the customer-facing mobile OTP flow.
-// The widget token is intended for client-side use; the account AuthKey stays server-side.
-app.get("/api/auth/msg91-config",(req,res)=>{
- const widgetId=String(process.env.MSG91_WIDGET_ID||"").trim();
- const tokenAuth=String(process.env.MSG91_WIDGET_TOKEN||"").trim();
- if(!widgetId||!tokenAuth)return res.status(503).json({error:"MSG91 OTP is not configured. Add MSG91_WIDGET_ID and MSG91_WIDGET_TOKEN in Render."});
- res.json({widgetId,tokenAuth});
-});
-async function verifyMsg91AccessToken(accessToken){
- const authkey=String(process.env.MSG91_AUTHKEY||"").trim();
- if(!authkey)throw new Error("MSG91 server AuthKey is not configured.");
- const endpoint="https://control.msg91.com/api/v5/widget/verifyAccessToken",verifiedToken=String(accessToken||"").trim();
- let r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({authkey,"access-token":verifiedToken})});
- let text=await r.text();
- // Some MSG91 accounts accept the server integration payload as JSON instead
- // of a form. Retry only for that specific parsing response.
- if(/access-token field is required/i.test(text)){
-  r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authkey},body:JSON.stringify({"access-token":verifiedToken})});
-  text=await r.text();
- }
- let data={}; try{data=JSON.parse(text)}catch{}
- if(!r.ok||String(data.type||"").toLowerCase()==="error"||data.success===false)throw new Error(data.message||data.error||"MSG91 access token verification failed");
- return data;
-}
-app.post("/api/auth/verify-msg91-login",async(req,res)=>{
- try{
-  const identifier=String(req.body?.identifier||"").trim(), accessToken=String(req.body?.accessToken||"").trim();
-  const phone=normalizePhone(identifier);
-  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"MSG91 mobile verification requires a valid 10-digit mobile number."});
-  if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
-  const verification=await verifyMsg91AccessToken(accessToken);
-  const verifiedPhone=normalizePhone(verification.mobile||verification.phone||verification.identifier||verification.data?.mobile||verification.data?.phone||verification.data?.identifier);
-  if(verifiedPhone && verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the sign-in number."});
-  const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);
-  if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
-  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
-  clearOtpFailures(req,phone);
-  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
-  createSession(res,u.id);res.json({user:safe});
- }catch(e){console.error("[MSG91 login verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
-});
-app.post("/api/auth/request-msg91-registration",(req,res)=>{
- const phone=normalizePhone(req.body?.phone);
- if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit mobile number"});
- const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(phone);
- if(existing && existing.role==='customer' && String(existing.password_hash||''))return res.status(409).json({error:"This mobile number is already registered. Please sign in instead."});
- if(existing)db.prepare("UPDATE users SET otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(existing.id);
- else db.prepare("INSERT INTO users(name,email,password_hash,phone,otp_hash,otp_expires_at,role) VALUES(?,?,?,?,?,?,?)").run("Pending Buyer",`phone_${phone}@ashwini.local`,"",phone,"",0,"customer");
- res.json({ok:true});
-});
-app.post("/api/auth/register-msg91",async(req,res)=>{
- try{
-  const {name,email,password,phone,accessToken}=req.body||{};
-  const normalized=normalizePhone(phone);
-  if(!name||!email||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
-  if(String(password).length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
-  const verification=await verifyMsg91AccessToken(accessToken);
-  const verifiedPhone=normalizePhone(verification.mobile||verification.phone||verification.identifier||verification.data?.mobile||verification.data?.phone||verification.data?.identifier);
-  if(verifiedPhone && verifiedPhone!==normalized)return res.status(401).json({error:"The verified mobile number does not match the registration number."});
-  const u0=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
-  if(!u0)return res.status(400).json({error:"Please request a fresh OTP"});
-  if(u0.role==='admin')return res.status(409).json({error:"This mobile number is reserved for the store admin."});
-  const hash=await bcrypt.hash(password,12);
-  db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(String(name).trim(),String(email).trim().toLowerCase(),hash,u0.id);
-  const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);
-  createSession(res,u.id);res.json({user:u});
- }catch(e){console.error("[MSG91 registration verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
-});
 app.post("/api/auth/request-otp",(req,res)=>{
  const phone=normalizePhone(req.body?.phone);
  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit mobile number"});
@@ -641,48 +573,6 @@ app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
   if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
   res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
  }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
-});
-app.post("/api/auth/admin-login-start",async(req,res)=>{
- try{
-  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||"");
-  if(!identifier||!password)return res.status(400).json({error:"Enter admin mobile/email and password"});
-  const mobile=normalizePhone(identifier),email=identifier.toLowerCase();
-  let u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
-  // First mobile sign-in: the admin already proves ownership with the existing
-  // admin password, then this mobile is saved on the admin account for later use.
-  if(!u && /^\d{10}$/.test(mobile)){
-   const admins=db.prepare("SELECT * FROM users WHERE role='admin' ORDER BY id LIMIT 10").all();
-   u=admins.find(x=>bcrypt.compareSync(password,String(x.password_hash||'')))||null;
-   if(u){db.prepare('UPDATE users SET phone=? WHERE id=?').run(mobile,u.id);u={...u,phone:mobile};}
-  }
-  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
-  // A mobile admin sign-in uses the already configured MSG91 secure widget.
-  // Email sign-in stays on the existing email-OTP route below.
-  if(/^\d{10}$/.test(mobile))return res.json({ok:true,channel:"mobile",phone:mobile});
-  if(!otpGuard(req,res,u.email))return;
-  const otp=issueOtp(u,'login');
-  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
-  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
-  res.json({ok:true,email:u.email});
- }catch(e){console.error('[Ashwini Admin secure login]',e.message);res.status(503).json({error:"Admin OTP could not be delivered. Please check email configuration."});}
-});
-app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
- try{
-  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||""),accessToken=String(req.body?.accessToken||"").trim();
-  const phone=normalizePhone(identifier);
-  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit admin mobile number."});
-  if(!password)return res.status(400).json({error:"Admin password is required."});
-  if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
-  const verification=await verifyMsg91AccessToken(accessToken);
-  const verifiedPhone=normalizePhone(verification.mobile||verification.phone||verification.identifier||verification.data?.mobile||verification.data?.phone||verification.data?.identifier);
-  if(verifiedPhone&&verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the admin sign-in number."});
-  const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
-  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
-  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
-  clearOtpFailures(req,phone);
-  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
-  createSession(res,u.id);res.json({user:safe});
- }catch(e){console.error("[MSG91 admin login verification]",e.message);res.status(401).json({error:e.message||"MSG91 admin OTP verification failed."});}
 });
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
@@ -837,12 +727,12 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
   if(couponCode==="NEW2026"){if(!firstOrder)throw Error("NEW2026 is only available for a new customer"); total=Math.round(total*0.70);}
   else if(couponCode){const now=new Date().toISOString();const offer=db.prepare("SELECT discount_percent FROM offers WHERE active=1 AND coupon_code=? AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY id DESC LIMIT 1").get(couponCode,now,now);if(!offer)throw Error("Coupon not recognised or expired");const pct=Math.max(0,Math.min(100,Number(offer.discount_percent||0)));total=Math.round(total*(1-pct/100));}
 
-  const createOrder=db.transaction((payment={method:payment_method,status:payment_method==="COD"?"PLACED":"CONFIRMED",paymentStatus:"PENDING",razorpayOrderId:"",razorpayPaymentId:"",razorpaySignature:""})=>{
+  const createOrder=db.transaction(()=>{
    // Explicitly verify the parent row before the FK insert.
    const parent=db.prepare("SELECT id FROM users WHERE id=?").get(currentUser.id);
    if(!parent)throw Error("Customer account was not found. Please sign in again.");
-   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,razorpay_order_id,razorpay_payment_id,razorpay_signature) VALUES(?,?,?,?,?,?,?,?,?,?)")
-    .run(parent.id,total,payment.status,payment.paymentStatus,payment.method,address,customerPhone,payment.razorpayOrderId,payment.razorpayPaymentId,payment.razorpaySignature);
+   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone) VALUES(?,?,?,?,?,?,?)")
+    .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone);
    const add=db.prepare("INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)");
    const dec=db.prepare("UPDATE products SET stock=stock-? WHERE id=?");
    for(const x of out){
@@ -852,40 +742,22 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
    return Number(r.lastInsertRowid);
   });
 
-  if(payment_method==="COD"){
-   const orderId=createOrder();
-   return res.json({ok:true,mode:"COD",orderId,total});
-  }
-  if(!razorpay)return res.status(503).json({error:"Order not placed because the payment transaction could not be started. Please try again later."});
-  const rp=await razorpay.orders.create({amount:total*100,currency:"INR",receipt:`ASHWINI-${currentUser.id}-${Date.now()}`});
-  const now=Date.now();
-  const intentItems=out.map(x=>({product_id:x.p.id,size:x.size,quantity:x.qty,unit_price:x.p.price}));
-  db.prepare('DELETE FROM payment_checkout_intents WHERE expires_at<?').run(now);
-  db.prepare('INSERT OR REPLACE INTO payment_checkout_intents(razorpay_order_id,user_id,total,address,customer_phone,items_json,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)').run(rp.id,currentUser.id,total,address,customerPhone,JSON.stringify(intentItems),now,now+30*60*1000);
-  res.json({ok:true,mode:"RAZORPAY",total,razorpayOrderId:rp.id,keyId:process.env.RAZORPAY_KEY_ID});
+  const orderId=createOrder();
+  if(payment_method==="COD")return res.json({ok:true,mode:"COD",orderId,total});
+  if(!razorpay)return res.status(503).json({error:"Razorpay not configured. Add keys in .env"});
+  const rp=await razorpay.orders.create({amount:total*100,currency:"INR",receipt:`ASHWINI-${orderId}`});
+  db.prepare("UPDATE orders SET razorpay_order_id=? WHERE id=?").run(rp.id,orderId);
+  res.json({ok:true,mode:"RAZORPAY",orderId,total,razorpayOrderId:rp.id,keyId:process.env.RAZORPAY_KEY_ID});
  }catch(e){console.error('[Ashwini checkout]',e);res.status(400).json({error:e.message||"Order could not be created"})}
 });
 app.post("/api/checkout/verify",auth,(req,res)=>{
- try{
- const {razorpay_order_id,razorpay_payment_id,razorpay_signature}=req.body||{};
- const intent=db.prepare('SELECT * FROM payment_checkout_intents WHERE razorpay_order_id=? AND user_id=?').get(razorpay_order_id,req.user.id);
- if(!intent || Number(intent.expires_at)<Date.now())return res.status(400).json({error:"Order not placed because the payment transaction was not completed. Please try again."});
- const expected=crypto.createHmac("sha256",process.env.RAZORPAY_KEY_SECRET||"").update(razorpay_order_id+"|"+razorpay_payment_id).digest("hex");
- if(expected!==razorpay_signature){db.prepare('DELETE FROM payment_checkout_intents WHERE razorpay_order_id=?').run(razorpay_order_id);return res.status(400).json({error:"Order not placed because the payment transaction was not completed."});}
- const intentItems=JSON.parse(intent.items_json||'[]');
- if(!Array.isArray(intentItems)||!intentItems.length)throw Error('Order items are missing. Please try again.');
- const createPaidOrder=db.transaction(()=>{
-  const parent=db.prepare('SELECT id FROM users WHERE id=?').get(intent.user_id);if(!parent)throw Error('Customer account was not found. Please sign in again.');
-  for(const item of intentItems){const product=db.prepare('SELECT stock FROM products WHERE id=?').get(item.product_id);if(!product||Number(product.stock)<Number(item.quantity))throw Error('One or more items are no longer in stock. No order was placed.');}
-  const order=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,razorpay_order_id,razorpay_payment_id,razorpay_signature) VALUES(?,?,?,?,?,?,?,?,?,?)").run(intent.user_id,intent.total,'CONFIRMED','PAID','RAZORPAY',intent.address,intent.customer_phone,razorpay_order_id,razorpay_payment_id,razorpay_signature);
-  const add=db.prepare('INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)');const dec=db.prepare('UPDATE products SET stock=stock-? WHERE id=?');
-  for(const item of intentItems){add.run(order.lastInsertRowid,item.product_id,item.size,item.quantity,item.unit_price);dec.run(item.quantity,item.product_id);}
-  db.prepare('DELETE FROM payment_checkout_intents WHERE razorpay_order_id=?').run(razorpay_order_id);
-  return Number(order.lastInsertRowid);
- });
- const orderId=createPaidOrder();
- res.json({ok:true,orderId});
- }catch(e){console.error('[Ashwini payment verify]',e);res.status(400).json({error:e.message||'Order not placed because the payment transaction was not completed.'});}
+ const {orderId,razorpay_order_id,razorpay_payment_id,razorpay_signature}=req.body;
+ const o=db.prepare("SELECT * FROM orders WHERE id=? AND user_id=?").get(orderId,req.user.id);
+ if(!o||o.razorpay_order_id!==razorpay_order_id)return res.status(400).json({error:"Order mismatch"});
+ const expected=crypto.createHmac("sha256",process.env.RAZORPAY_KEY_SECRET||"").update(o.razorpay_order_id+"|"+razorpay_payment_id).digest("hex");
+ if(expected!==razorpay_signature)return res.status(400).json({error:"Payment verification failed"});
+ db.prepare("UPDATE orders SET payment_status='PAID',status='CONFIRMED',razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
+ res.json({ok:true});
 });
 
 app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
@@ -894,24 +766,7 @@ app.get('/api/return-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.
 app.get('/api/order-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM order_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/returns',auth,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.status AS order_status,o.created_at AS order_date,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id WHERE r.user_id=? ORDER BY r.id DESC`).all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.patch('/api/returns/:id/cancel',auth,async(req,res)=>{try{const r=db.prepare(`SELECT r.*,u.name AS customer_name,u.email AS customer_email,o.id AS order_id FROM returns r JOIN users u ON u.id=r.user_id JOIN orders o ON o.id=r.order_id WHERE r.id=? AND r.user_id=?`).get(req.params.id,req.user.id);if(!r)return res.status(404).json({error:'Return request not found'});const cancellable=['REQUESTED','APPROVED','PICKUP_SCHEDULED'];if(!cancellable.includes(String(r.status)))return res.status(400).json({error:'This return can no longer be cancelled because the pickup/inspection process has started'});db.prepare(`UPDATE returns SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(r.id);addReturnEvent(r.id,r.user_id,'CANCELLED','Return request cancelled','Your return request #'+r.id+' for Order #'+r.order_id+' was cancelled by you.');const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';await Promise.all([sendReturnEmail(adminEmail,`Ashwini Return #${r.id} Cancelled`,`Customer: ${r.customer_name} (${r.customer_email})\nOrder: #${r.order_id}\nThe customer cancelled the return request.`),sendReturnEmail(r.customer_email,`Ashwini Clothing Return Cancelled - Order #${r.order_id}`,`Your return request #${r.id} has been cancelled successfully. Your order remains delivered.`)]);res.json({ok:true,return:db.prepare('SELECT * FROM returns WHERE id=?').get(r.id)})}catch(e){console.error('[Ashwini return cancel]',e);res.status(400).json({error:e.message})}});
-// Customers only see replacement/exchange choices. An admin can separately open a
-// return for one delivered, paid Razorpay order when a refund is required.
-app.post('/api/admin/returns',auth,admin,async(req,res)=>{try{
- const orderId=Number(req.body?.order_id),reason=String(req.body?.reason||'Admin-approved return').trim().slice(0,1000);
- if(!Number.isInteger(orderId)||orderId<1)return res.status(400).json({error:'Choose a valid customer order'});
- const o=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(orderId);
- if(!o)return res.status(404).json({error:'Order not found'});
- if(String(o.status||'').toUpperCase()!=='DELIVERED')return res.status(400).json({error:'Only a delivered order can be opened for return'});
- if(String(o.payment_method||'').toUpperCase()!=='RAZORPAY'||String(o.payment_status||'').toUpperCase()!=='PAID'||!o.razorpay_payment_id)return res.status(400).json({error:'Admin refund is available only for a paid Razorpay order'});
- const existing=db.prepare("SELECT id FROM returns WHERE order_id=? AND status NOT IN ('REJECTED','CANCELLED')").get(orderId);
- if(existing)return res.status(409).json({error:`This order already has an active return request (#${existing.id})`});
- const created=db.prepare("INSERT INTO returns(order_id,user_id,reason,request_type,admin_note,status) VALUES(?,?,?,?,?,?)").run(o.id,o.user_id,reason,'ADMIN_RETURN','Return opened by store admin','APPROVED');
- const returnId=Number(created.lastInsertRowid);
- addReturnEvent(returnId,o.user_id,'APPROVED','Return opened by Ashwini',`Ashwini Clothing approved a return for Order #${o.id}. Reason: ${reason}. We will share pickup details shortly.`);
- await Promise.all([sendReturnEmail(o.customer_email,`Ashwini Clothing Return Approved - Order #${o.id}`,`Hello ${o.customer_name||'Customer'},\n\nAshwini Clothing has opened a return for your delivered order.\nReason: ${reason}\n\nWe will notify you once pickup is scheduled.`),sendReturnEmail(adminEmail(),`Admin Return Opened - Order #${o.id}`,`Return #${returnId} was opened for ${o.customer_name||'Customer'} (${o.customer_email||''}).\nReason: ${reason}`)]);
- res.status(201).json({ok:true,id:returnId});
-}catch(e){console.error('[Ashwini admin return open]',e);res.status(400).json({error:e.message||'Could not open the customer return'})}});
-app.get('/api/admin/returns',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.created_at AS order_date,o.updated_at AS order_updated_at,o.status AS order_status,o.payment_method,o.payment_status,o.razorpay_payment_id,u.name AS customer_name,u.email AS customer_email,u.phone AS customer_phone,ro.id AS replacement_order_id,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 WHEN 'PICKUP_SCHEDULED' THEN 2 WHEN 'COMPLETED' THEN 3 ELSE 4 END, r.id DESC`).all())}catch(e){res.status(400).json({error:e.message})}});
+app.get('/api/admin/returns',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT r.*,o.total,o.created_at AS order_date,o.updated_at AS order_updated_at,o.status AS order_status,u.name AS customer_name,u.email AS customer_email,u.phone AS customer_phone,ro.id AS replacement_order_id,ro.status AS replacement_order_status,ro.address AS replacement_address FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 WHEN 'PICKUP_SCHEDULED' THEN 2 WHEN 'COMPLETED' THEN 3 ELSE 4 END, r.id DESC`).all())}catch(e){res.status(400).json({error:e.message})}});
 function createReplacementOrderForReturn(returnRow){
  const existing=db.prepare('SELECT id FROM orders WHERE replacement_for_return_id=? ORDER BY id DESC LIMIT 1').get(returnRow.id);
  if(existing?.id)return existing.id;
@@ -961,32 +816,6 @@ app.patch('/api/admin/returns/:id',auth,admin,async(req,res)=>{try{
  await Promise.all(mailTasks);
  res.json({ok:true,return:db.prepare('SELECT * FROM returns WHERE id=?').get(req.params.id),replacement_order_id:replacementOrderId});
 }catch(e){console.error('[Ashwini return update]',e);res.status(400).json({error:e.message})}});
-
-// Only an admin can start a refund, and only after the returned item has been
-// received and inspected. The secret Razorpay key remains on the server.
-app.post('/api/admin/returns/:id/refund',auth,admin,async(req,res)=>{try{
- const returnId=Number(req.params.id),requestedAmount=Number(req.body?.amount||0);
- if(!Number.isInteger(returnId)||returnId<1)return res.status(400).json({error:'Invalid return request'});
- if(!razorpay)return res.status(503).json({error:'Razorpay is not configured. Add the Razorpay keys before issuing a refund.'});
- const r=db.prepare(`SELECT r.*,o.total,o.payment_method,o.payment_status,o.razorpay_payment_id,o.id AS order_id,u.name AS customer_name,u.email AS customer_email FROM returns r JOIN orders o ON o.id=r.order_id JOIN users u ON u.id=r.user_id WHERE r.id=?`).get(returnId);
- if(!r)return res.status(404).json({error:'Return request not found'});
- if(String(r.payment_method||'').toUpperCase()!=='RAZORPAY'||String(r.payment_status||'').toUpperCase()!=='PAID'||!r.razorpay_payment_id)return res.status(400).json({error:'Only a paid Razorpay order can be refunded from this screen.'});
- if(!['RECEIVED','INSPECTION_PASSED','COMPLETED'].includes(String(r.status||'')))return res.status(400).json({error:'Refund can be issued after the returned item is received and passes inspection.'});
- if(['PROCESSING','PROCESSED'].includes(String(r.refund_status||'')))return res.status(409).json({error:'A refund has already been started for this return request.'});
- const amount=requestedAmount>0?requestedAmount:Number(r.total);
- if(!Number.isFinite(amount)||amount<=0||amount>Number(r.total))return res.status(400).json({error:'Refund amount must be between ₹1 and the order total.'});
- const lock=db.prepare("UPDATE returns SET refund_status='PROCESSING',updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(refund_status,'') NOT IN ('PROCESSING','PROCESSED')").run(returnId);
- if(!lock.changes)return res.status(409).json({error:'A refund is already being processed for this return request.'});
- try{
-  const refund=await razorpay.payments.refund(r.razorpay_payment_id,{amount:Math.round(amount*100),notes:{ashwini_return_id:String(returnId),ashwini_order_id:String(r.order_id)}});
-  const isFull=Math.round(amount*100)>=Math.round(Number(r.total)*100);
-  db.prepare("UPDATE returns SET refund_id=?,refund_amount=?,refund_status='PROCESSED',refund_created_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(refund.id||''),amount,returnId);
-  db.prepare("UPDATE orders SET payment_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(isFull?'REFUNDED':'PARTIALLY_REFUNDED',r.order_id);
-  addReturnEvent(returnId,r.user_id,'REFUND_PROCESSED','Razorpay refund initiated',`A ${isFull?'full':'partial'} refund of ₹${amount.toLocaleString('en-IN')} was initiated to the original payment method. Refund reference: ${refund.id||'pending'}.`);
-  await Promise.all([sendReturnEmail(r.customer_email,`Ashwini Clothing Refund Initiated - Order #${r.order_id}`,`Hello ${r.customer_name||'Customer'},\n\nYour refund of ₹${amount.toLocaleString('en-IN')} has been initiated to your original payment method. Razorpay refund reference: ${refund.id||'pending'}.\n\nYou can track the return status in Your Orders.`),sendReturnEmail(db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com',`Ashwini Refund Initiated - Return #${returnId}`,`Order #${r.order_id}\nCustomer: ${r.customer_name||''} (${r.customer_email||''})\nAmount: ₹${amount}\nRazorpay refund: ${refund.id||'pending'}`)]);
-  res.json({ok:true,refund_id:refund.id||'',amount,status:refund.status||'processed'});
- }catch(e){db.prepare("UPDATE returns SET refund_status='FAILED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(returnId);throw e}
-}catch(e){console.error('[Ashwini Razorpay refund]',e);res.status(400).json({error:e?.error?.description||e.message||'Refund could not be initiated'})}});
 
 app.post('/api/returns',auth,async(req,res)=>{try{const orderId=Number(req.body?.order_id),reason=String(req.body?.reason||'').trim(),requestType=String(req.body?.request_type||'REPLACEMENT').trim().toUpperCase(),replacementSize=String(req.body?.replacement_size||'').trim().slice(0,20),replacementColor=String(req.body?.replacement_color||'').trim().slice(0,40);if(!Number.isInteger(orderId)||!reason)return res.status(400).json({error:'Order and return reason are required'});if(!['REPLACEMENT','EXCHANGE'].includes(requestType))return res.status(400).json({error:'Invalid return option'});const o=db.prepare('SELECT id,status,total FROM orders WHERE id=? AND user_id=?').get(orderId,req.user.id);if(!o)return res.status(404).json({error:'Order not found'});if(o.status!=='DELIVERED')return res.status(400).json({error:'Return can be requested after delivery'});const deliveredAt=Date.parse(String(o.updated_at||o.created_at||''));if(Number.isFinite(deliveredAt)&&Date.now()-deliveredAt>4*24*60*60*1000)return res.status(400).json({error:'The 4-day return period has expired'});const existing=db.prepare("SELECT id FROM returns WHERE order_id=? AND user_id=? AND status NOT IN ('REJECTED','CANCELLED')").get(orderId,req.user.id);if(existing)return res.status(400).json({error:'A return request already exists for this order'});const r=db.prepare('INSERT INTO returns(order_id,user_id,reason,request_type,replacement_size,replacement_color) VALUES(?,?,?,?,?,?)').run(orderId,req.user.id,reason,requestType,replacementSize,replacementColor);addReturnEvent(r.lastInsertRowid,req.user.id,'REQUESTED','Return request submitted',`Your return request #${r.lastInsertRowid} for Order #${orderId} was submitted and is awaiting admin review.`);const u=db.prepare('SELECT name,email FROM users WHERE id=?').get(req.user.id);const adminEmail=db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com';await sendReturnEmail(adminEmail,`New Ashwini Return Request #${r.lastInsertRowid}`,`Customer: ${u?.name||'Customer'} (${u?.email||''})\nOrder: #${orderId}\nReason: ${reason}\nOption: ${requestType}${replacementSize?`\nRequested size: ${replacementSize}`:''}${replacementColor?`\nRequested colour: ${replacementColor}`:''}`);res.json({ok:true,id:r.lastInsertRowid});}catch(e){console.error('[Ashwini return request]',e);res.status(400).json({error:e.message})}});
 app.get("/api/orders",auth,(req,res)=>{

@@ -14,16 +14,6 @@ services:
         value: resend
       - key: ADMIN_EMAIL
         value: ashwiniweb88@gmail.com
-      - key: ADMIN_PASSWORD
-        sync: false
-      - key: JWT_SECRET
-        sync: false
-      - key: MSG91_WIDGET_ID
-        value: 3668776a6531353432363138
-      - key: MSG91_WIDGET_TOKEN
-        sync: false
-      - key: MSG91_AUTHKEY
-        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM

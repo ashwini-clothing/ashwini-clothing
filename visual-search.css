@@ -1,0 +1,6 @@
+.visual-search-loading,.visual-search-empty{grid-column:1/-1;min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:28px;text-align:center;background:#fff;border:1px solid #d8edf3;border-radius:10px;color:#03045e}
+.visual-search-loading span{width:38px;height:38px;border:4px solid #caf0f8;border-top-color:#0077b6;border-radius:50%;animation:visual-search-spin .8s linear infinite}
+.visual-search-loading small,.visual-search-empty small{color:#52616b}
+.visual-search-empty .gold{margin-top:8px}
+@keyframes visual-search-spin{to{transform:rotate(360deg)}}
+@media(max-width:600px){.visual-search-loading,.visual-search-empty{min-height:150px;padding:20px 12px;border-radius:6px}}

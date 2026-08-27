@@ -1,0 +1,10 @@
+ASHWINI CLOTHING V54 - ADMIN EMAIL OTP LOGIN FIX
+
+- Added secure admin Email OTP request/verification endpoints.
+- Admin OTP works only for users with role=admin.
+- Existing admin email/password login is preserved.
+- Admin password login now rejects non-admin accounts in the admin UI.
+- Existing customer OTP, orders, cart, wishlist, products, returns and help features were not changed.
+- No database file was replaced or reset by this patch.
+- Requires the existing EMAIL_PROVIDER/SMTP or RESEND environment configuration for real production email delivery.
+- In non-production, the existing demo OTP behavior remains available.
