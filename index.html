@@ -428,8 +428,8 @@ button:active{transform:translateY(1px)}
 <button class="deliver" type="button" onclick="openDelivery()" aria-label="Choose delivery location">Deliver to<br><b id="deliverLocation">India ▾</b></button>
 <div class="search"><select id="searchCat" aria-label="Category"><option>All</option><option>Western Dress</option><option>Co-ord Set</option><option>Skirt & Top</option><option>Kurta Set</option><option>Formal Ladies & Gents Pants</option><option>Sarara</option><option>Coat Set</option><option>Lehenga</option><option>Wedding Gown</option><option>Shirts</option><option>Party Wear</option></select><span class="mobile-search-lens" aria-hidden="true">⌕</span><input id="q" placeholder="Search Ashwini clothing..." onkeydown="if(event.key==='Enter')load()"><label class="search-action search-photo" for="photoSearchInput" aria-label="Search by photo" title="Search by product photo">⌾</label><input id="photoSearchInput" type="file" accept="image/*" capture="environment" onchange="searchByPhoto(this)"><button class="search-action" type="button" onclick="startVoiceSearch()" aria-label="Search by voice" title="Search by voice">🎙</button><button class="search-submit" type="button" aria-label="Search">🔍</button></div>
 <div class="account-wrap"><button id="accountTopLink" class="toplink" onclick="auth()"><i class="mobile-account-icon" aria-hidden="true" style="display:none"></i><span class="mobile-account-copy" aria-hidden="true"><strong>Account</strong><em>Sign in</em></span><small>Hello, sign in</small><b>Account & Lists</b><span class="desktop-account-caret" aria-hidden="true" style="margin-left:4px;font-size:13px">▾</span></button><div id="accountPopover" class="account-popover" aria-label="Account and Lists menu"></div></div>
-<button class="toplink offer-toplink" onclick="offersPanel()" aria-label="Offers"><b>🎁 Offers</b></button>
-<button class="toplink" onclick="orders()"><small>Returns</small><b>& Orders</b></button>
+<button class="toplink offer-toplink" onclick="offersPanel()" aria-label="Offers"><span class="mobile-offers-icon" aria-hidden="true">🎁</span><span class="mobile-offers-copy">Offers</span><b class="desktop-offers-copy">🎁 Offers</b></button>
+<button class="toplink" onclick="orders()"><span class="mobile-orders-copy">Orders</span><small>Returns</small><b>& Orders</b></button>
 <button id="admin" class="toplink" style="display:none" onclick="dashboard()"><b>👑 Admin</b></button><button class="toplink" onclick="cartView()"><b><i class="mobile-cart-icon" aria-hidden="true" style="display:none">🛒</i><span class="desktop-cart-copy">🛒 Cart </span><span id="count">0</span></b></button>
 </div>
 <div class="nav"><span class="all" data-category="All" onclick="cat('All')">☰ All</span><span data-category="All" onclick="cat('All')">New Arrivals</span><span data-category="Western Dress" onclick="cat('Western Dress')">Western Dress</span><span data-category="Co-ord Set" onclick="cat('Co-ord Set')">Co-ord Set</span><span data-category="Skirt & Top" onclick="cat('Skirt & Top')">Skirt & Top</span><span data-category="Kurta Set" onclick="cat('Kurta Set')">Kurta Set</span><span data-category="Formal Ladies & Gents Pants" onclick="cat('Formal Ladies & Gents Pants')">Formal Ladies & Gents Pants</span><span data-category="Sarara" onclick="cat('Sarara')">Sarara</span><span data-category="Coat Set" onclick="cat('Coat Set')">Coat Set</span><span data-category="Lehenga" onclick="cat('Lehenga')">Lehenga</span><span data-category="Wedding Gown" onclick="cat('Wedding Gown')">Wedding Gown</span><span data-category="Shirts" onclick="cat('Shirts')">Shirts</span><span data-category="Party Wear" onclick="cat('Party Wear')">Party Wear</span></div>
@@ -465,7 +465,7 @@ button:active{transform:translateY(1px)}
   window.addEventListener('DOMContentLoaded', function () {
     var mobileCss = document.createElement('link');
     mobileCss.rel = 'stylesheet';
-  mobileCss.href = '/mobile-rebuild-v3.css?v=20260827-header-footer-v59';
+  mobileCss.href = '/mobile-rebuild-v3.css?v=20260827-header-footer-v60';
     document.head.appendChild(mobileCss);
   });
 </script>
@@ -568,4 +568,101 @@ button:active{transform:translateY(1px)}
 </style>
 <style>
 .inventory-launch{position:relative;display:flex;align-items:center;width:100%;margin:0 0 12px;padding:14px 16px;border:1px solid #023EBA;border-radius:10px;background:#CAF0F8;color:#03045E;font-size:19px;font-weight:800;text-align:left;cursor:pointer;box-shadow:0 6px 16px rgba(3,4,94,.12);transition:transform .18s ease,box-shadow .18s ease,background .18s ease}.admin-launch-stack{margin:20px 0 12px}.inventory-launch span{position:absolute;left:50%;transform:translateX(-50%);font-size:34px;line-height:1;color:#023EBA}.inventory-launch:hover{transform:translateY(-2px);background:#b7e8f2;box-shadow:0 10px 22px rgba(3,4,94,.2)}.inventory-launch:focus-visible{outline:3px solid #00B4D8;outline-offset:3px}.admin-toolbar button,#body button{transition:transform .18s ease,box-shadow .18s ease,background .18s ease,border-color .18s ease,color .18s ease}.admin-toolbar button:hover,#body button:hover{transform:translateY(-2px);background:#eafaff;border-color:#023EBA;box-shadow:0 6px 14px rgba(3,4,94,.16)}#body .gold:hover{filter:none!important;background:#00B4D8!important;color:#fff!important;border-color:#0077B6!important;box-shadow:0 8px 18px rgba(0,119,182,.34)!important}#body .admin-actions button:not(.gold):hover{background:#dff6fb!important;color:#03045E!important;border-color:#0077B6!important;box-shadow:0 8px 18px rgba(0,119,182,.25)!important}.admin-toolbar button:active,#body button:active{transform:translateY(0) scale(.98)}#body input[type="color"]{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}#body input[type="color"]:hover{transform:translateY(-2px);border-color:#0077B6!important;box-shadow:0 6px 14px rgba(0,119,182,.28)}.premium-colour-picker{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center}.premium-colour-picker input[type="color"]{width:46px!important;height:36px!important;padding:2px!important;border-radius:9px!important;background:#fff!important}.premium-swatches{display:flex;flex-wrap:wrap;gap:6px}.premium-swatch{width:24px;height:24px;border:2px solid rgba(255,255,255,.9);border-radius:50%;padding:0!important;box-shadow:0 2px 7px rgba(0,0,0,.25),inset 0 1px 1px rgba(255,255,255,.75)!important}.premium-swatch:hover{transform:translateY(-3px) scale(1.15)!important;border-color:#023EBA!important;box-shadow:0 5px 12px rgba(3,4,94,.4),0 0 10px currentColor!important}.premium-swatch.gold-plate{background:linear-gradient(135deg,#fff4a5 0%,#d4a017 42%,#fff0a0 68%,#a96b05 100%)}.premium-swatch.rose-gold-plate{background:linear-gradient(135deg,#ffe0d5 0%,#c77d66 45%,#ffe3d8 70%,#8f473e 100%)}.premium-swatch.diamond-plate{background:linear-gradient(135deg,#fff 0%,#aeeaff 32%,#fff 55%,#79b8d0 100%)}.premium-swatch.royal-plate{background:linear-gradient(135deg,#809cff,#273b9c 45%,#9ed8ff 100%)}.premium-swatch.emerald-plate{background:linear-gradient(135deg,#baffdd 0%,#097c55 44%,#baffdd 100%)}.premium-swatch.midnight-plate{background:linear-gradient(135deg,#596275 0%,#101827 47%,#6b7280 100%)}.premium-swatch.pearl-plate{background:linear-gradient(135deg,#fff 0%,#d7dce3 48%,#fff 100%)}
+</style>
+
+
+<style id="ashwini-mobile-v60-final-override">
+/* V60 FINAL OVERRIDE — placed last so legacy mobile rules cannot hide/overlap header actions. */
+@media (max-width:600px){
+  body header .top{
+    display:grid!important;
+    grid-template-columns:minmax(132px,1fr) 74px 44px 52px 42px!important;
+    grid-template-areas:"brand account offers orders cart" "search search search search search"!important;
+    column-gap:2px!important;
+    row-gap:8px!important;
+    align-items:center!important;
+  }
+  body header .top .logo{grid-area:brand!important;min-width:0!important;margin:0!important;}
+  body header .top .account-wrap{grid-area:account!important;min-width:0!important;width:74px!important;justify-self:end!important;}
+  body header .top #accountTopLink{
+    width:74px!important;min-width:74px!important;max-width:74px!important;height:38px!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;
+    padding:0!important;margin:0!important;transform:none!important;overflow:visible!important;
+  }
+  body header .top #accountTopLink::before,
+  body header .top #accountTopLink::after{content:none!important;display:none!important;}
+  body header .top #accountTopLink > small,
+  body header .top #accountTopLink > b,
+  body header .top #accountTopLink > .desktop-account-caret{display:none!important;}
+  body header .top #accountTopLink > span.mobile-account-copy{
+    display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;
+    min-width:0!important;color:#fff!important;font-style:normal!important;line-height:1!important;
+  }
+  body header .top #accountTopLink .mobile-account-copy strong{display:block!important;font-size:10px!important;line-height:1.05!important;white-space:nowrap!important;}
+  body header .top #accountTopLink .mobile-account-copy em{display:block!important;font-size:9px!important;line-height:1.05!important;font-style:normal!important;white-space:nowrap!important;color:#fff!important;}
+  body header .top #accountTopLink .mobile-account-icon{display:block!important;width:15px!important;height:17px!important;flex:0 0 15px!important;position:relative!important;}
+  body header .top #accountTopLink .mobile-account-icon::before{content:""!important;display:block!important;position:absolute!important;top:0!important;left:4px!important;width:7px!important;height:7px!important;border-radius:50%!important;background:#fff!important;}
+  body header .top #accountTopLink .mobile-account-icon::after{content:""!important;display:block!important;position:absolute!important;left:0!important;bottom:0!important;width:15px!important;height:8px!important;border-radius:9px 9px 2px 2px!important;background:#fff!important;}
+
+  body header .top > .offer-toplink{
+    grid-area:offers!important;display:flex!important;visibility:visible!important;opacity:1!important;
+    width:44px!important;min-width:44px!important;max-width:44px!important;height:38px!important;
+    flex-direction:column!important;align-items:center!important;justify-content:center!important;
+    padding:0!important;margin:0!important;border:0!important;background:transparent!important;color:#fff!important;overflow:visible!important;
+  }
+  body header .top > .offer-toplink .desktop-offers-copy{display:none!important;}
+  body header .top > .offer-toplink .mobile-offers-icon{display:block!important;font-size:17px!important;line-height:17px!important;}
+  body header .top > .offer-toplink .mobile-offers-copy{display:block!important;font-size:8px!important;line-height:10px!important;font-weight:700!important;color:#fff!important;white-space:nowrap!important;}
+
+  body header .top > button[onclick="orders()"]{
+    grid-area:orders!important;display:flex!important;width:52px!important;min-width:52px!important;max-width:52px!important;height:38px!important;
+    align-items:center!important;justify-content:center!important;padding:0!important;margin:0!important;background:transparent!important;border:0!important;color:#fff!important;font-size:0!important;overflow:visible!important;
+  }
+  body header .top > button[onclick="orders()"]::before,
+  body header .top > button[onclick="orders()"]::after{content:none!important;display:none!important;}
+  body header .top > button[onclick="orders()"] > small,
+  body header .top > button[onclick="orders()"] > b{display:none!important;}
+  body header .top > button[onclick="orders()"] > .mobile-orders-copy{display:block!important;font-size:11px!important;line-height:1!important;font-weight:800!important;color:#fff!important;white-space:nowrap!important;}
+
+  body header .top > button[onclick="cartView()"]{grid-area:cart!important;width:42px!important;min-width:42px!important;max-width:42px!important;margin:0!important;padding:0!important;}
+  body header .top .search{grid-area:search!important;}
+
+  /* Real compact phone controls above products. */
+  body .wrap{
+    display:grid!important;
+    grid-template-columns:minmax(0,180px) minmax(0,140px)!important;
+    justify-content:start!important;column-gap:8px!important;row-gap:0!important;align-items:start!important;
+    padding-left:10px!important;padding-right:10px!important;
+  }
+  body .shop-category-section,
+  body .quick-filter-section{
+    display:block!important;width:100%!important;min-width:0!important;max-width:none!important;
+    margin:0!important;padding:8px 0!important;box-sizing:border-box!important;
+  }
+  body .shop-category-box,
+  body .quick-filter-box{
+    width:100%!important;min-width:0!important;max-width:none!important;height:38px!important;min-height:38px!important;
+    padding:3px 7px!important;margin:0!important;border-width:1.5px!important;border-radius:8px!important;gap:4px!important;box-sizing:border-box!important;
+  }
+  body .shop-category-box strong,
+  body .quick-filter-box strong{font-size:10.5px!important;line-height:1!important;white-space:nowrap!important;}
+  body .shop-category-box span{font-size:7.5px!important;line-height:1!important;white-space:normal!important;}
+  body .shop-category-box b,
+  body .quick-filter-box b{font-size:14px!important;line-height:1!important;flex:0 0 auto!important;}
+  body .product-area{grid-column:1 / -1!important;width:100%!important;}
+}
+@media (max-width:380px){
+  body header .top{grid-template-columns:minmax(112px,1fr) 68px 40px 48px 38px!important;column-gap:1px!important;}
+  body header .top .account-wrap,
+  body header .top #accountTopLink{width:68px!important;min-width:68px!important;max-width:68px!important;}
+  body header .top #accountTopLink .mobile-account-copy strong{font-size:9px!important;}
+  body header .top #accountTopLink .mobile-account-copy em{font-size:8px!important;}
+  body header .top > .offer-toplink{width:40px!important;min-width:40px!important;max-width:40px!important;}
+  body header .top > button[onclick="orders()"]{width:48px!important;min-width:48px!important;max-width:48px!important;}
+  body header .top > button[onclick="cartView()"]{width:38px!important;min-width:38px!important;max-width:38px!important;}
+  body .wrap{grid-template-columns:minmax(0,168px) minmax(0,128px)!important;column-gap:7px!important;padding-left:8px!important;padding-right:8px!important;}
+  body .shop-category-box strong,
+  body .quick-filter-box strong{font-size:9.5px!important;}
+  body .shop-category-box span{font-size:7px!important;}
+}
 </style>
