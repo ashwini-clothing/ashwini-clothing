@@ -1,0 +1,13 @@
+ASHWINI CLOTHING - MOBILE SIZE FIX (2026-08-27)
+
+Only mobile sizing was adjusted. Desktop layout and JavaScript/application logic were not changed.
+
+Changes:
+- Reduced mobile homepage banner/slider from 390px to 320px.
+- Reduced banner to 295px on screens 380px and below.
+- Balanced mobile header columns for 360-412px phones.
+- Made delivery/pincode row more compact and flexible.
+- Reduced product card image height from 180px to 168px.
+- Reduced product image height to 158px on screens 380px and below.
+- Kept two product cards per row.
+- Updated mobile CSS cache version in index.html.

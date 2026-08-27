@@ -654,3 +654,89 @@
     line-height:1!important;
   }
 }
+
+/* === 2026-08-27 MOBILE SIZE BALANCE FIX ===
+   Mobile-only final overrides. Desktop and application logic are unchanged. */
+@media (max-width:600px) {
+  /* Keep the compact two-row header usable on 360-412px phones. */
+  body header .top {
+    grid-template-columns:minmax(0,1fr) 42px 58px 42px!important;
+    column-gap:4px!important;
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+  body header .top > button[onclick="orders()"] {
+    width:58px!important;
+    min-width:58px!important;
+    font-size:0!important;
+  }
+  body header .top > button[onclick="orders()"]::before {
+    font-size:12px!important;
+  }
+
+  /* Delivery row: flexible middle column prevents horizontal squeeze/overflow. */
+  body .mobile-delivery-strip {
+    grid-template-columns:96px minmax(0,1fr) 76px!important;
+    gap:6px!important;
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+
+  /* Banner was 390px high; reduce it to a phone-friendly proportion. */
+  body .ad-carousel,
+  body .ad-track {
+    height:320px!important;
+    min-height:320px!important;
+  }
+  body .ad-slide {
+    height:320px!important;
+    min-height:320px!important;
+  }
+
+  /* Product cards stay two per row, with less oversized imagery. */
+  body .product-area #grid .pic,
+  body .product-area #grid .product img,
+  body .product-area #grid .product-card img {
+    height:168px!important;
+    max-height:168px!important;
+  }
+}
+
+/* Extra tuning for the smallest common phones (320-380px CSS width). */
+@media (max-width:380px) {
+  body header .top {
+    grid-template-columns:minmax(0,1fr) 40px 54px 40px!important;
+    column-gap:2px!important;
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+  body header #accountTopLink {
+    width:40px!important;
+    min-width:40px!important;
+  }
+  body header .top > button[onclick="orders()"] {
+    width:54px!important;
+    min-width:54px!important;
+  }
+  body header .top > button[onclick="orders()"]::before {
+    font-size:11px!important;
+  }
+  body .mobile-delivery-strip {
+    grid-template-columns:88px minmax(0,1fr) 70px!important;
+    gap:5px!important;
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+  body .ad-carousel,
+  body .ad-track,
+  body .ad-slide {
+    height:295px!important;
+    min-height:295px!important;
+  }
+  body .product-area #grid .pic,
+  body .product-area #grid .product img,
+  body .product-area #grid .product-card img {
+    height:158px!important;
+    max-height:158px!important;
+  }
+}
