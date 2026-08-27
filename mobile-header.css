@@ -21,21 +21,22 @@
   body header .top > button[onclick="cartView()"] {
     position: relative !important; display: flex !important; flex-direction: column !important;
     align-items: center !important; justify-content: center !important; width: 100% !important;
-    min-width: 0 !important; height: 38px !important; padding: 1px !important; overflow: visible !important;
+    min-width: 0 !important; height: 42px !important; padding: 1px !important; overflow: visible !important;
     color: #fff !important; background: transparent !important; border: 0 !important; text-align: center !important;
   }
-  body header #accountTopLink::before, body header #accountTopLink::after,
+  body header #accountTopLink::before,
   body header #accountTopLink b::before, body header #accountTopLink b::after,
-  body header .top > button[onclick="orders()"]::before, body header .top > button[onclick="orders()"]::after,
+  body header .top > button[onclick="orders()"]::before,
   body header .top > button[onclick="cartView()"]::before, body header .top > button[onclick="cartView()"]::after,
   body header .top > button[onclick="cartView()"] b::before, body header .top > button[onclick="cartView()"] b::after { content: none !important; display: none !important; }
   body header #accountTopLink small, body header #accountTopLink b, body header #accountTopLink > span,
   body header .top > button[onclick="orders()"] small, body header .top > button[onclick="orders()"] b { display: none !important; }
-  body header .mobile-account-icon { display: block !important; position: relative !important; width: 20px !important; height: 21px !important; flex: 0 0 21px !important; }
-  body header .mobile-account-icon::before { content: "" !important; display: block !important; position: absolute !important; top: 0 !important; left: 6px !important; width: 9px !important; height: 9px !important; border-radius: 50% !important; background: #fff !important; }
-  body header .mobile-account-icon::after { content: "" !important; display: block !important; position: absolute !important; bottom: 0 !important; left: 1px !important; width: 19px !important; height: 10px !important; border-radius: 12px 12px 3px 3px !important; background: #fff !important; }
-  body header .top > button[onclick="orders()"]::before { content: "📦" !important; display: block !important; font-size: 19px !important; line-height: 23px !important; }
-  body header .top > button[onclick="orders()"]::after { content: "Orders" !important; display: block !important; font-size: 9px !important; line-height: 10px !important; font-weight: 700 !important; }
+  body header #accountTopLink .mobile-account-icon { display: block !important; position: relative !important; width: 20px !important; height: 20px !important; flex: 0 0 20px !important; transform: none !important; }
+  body header #accountTopLink .mobile-account-icon::before { content: "" !important; display: block !important; position: absolute !important; top: 0 !important; left: 6px !important; width: 9px !important; height: 9px !important; border-radius: 50% !important; background: #fff !important; transform: none !important; }
+  body header #accountTopLink .mobile-account-icon::after { content: "" !important; display: block !important; position: absolute !important; bottom: 0 !important; left: 1px !important; width: 19px !important; height: 9px !important; border-radius: 12px 12px 3px 3px !important; background: #fff !important; transform: none !important; }
+  body header #accountTopLink::after { content: "My Account" !important; display: block !important; margin-top: 1px !important; color: #fff !important; font-size: 8px !important; line-height: 8px !important; font-weight: 700 !important; white-space: normal !important; }
+  body header .top > button[onclick="orders()"]::before { content: none !important; display: none !important; }
+  body header .top > button[onclick="orders()"]::after { content: "My Orders" !important; display: block !important; color: #fff !important; font-size: 9px !important; line-height: 11px !important; font-weight: 700 !important; white-space: normal !important; }
   body header .top > button[onclick="cartView()"] b { position: relative !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 0 !important; }
   body header .desktop-cart-copy { display: none !important; }
   body header .mobile-cart-icon { display: block !important; font-style: normal !important; font-size: 21px !important; line-height: 24px !important; filter: brightness(0) invert(1) !important; }
