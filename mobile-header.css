@@ -1,0 +1,77 @@
+/* Ashwini phone header: the single authoritative mobile implementation. */
+@media (max-width: 600px) {
+  body header { position: sticky; top: 0; z-index: 7000; box-shadow: 0 2px 7px rgba(0,0,0,.22); }
+  body header .top {
+    display: grid !important;
+    grid-template-columns: 68px minmax(75px,1fr) 44px 48px 44px !important;
+    grid-template-areas: "brand brand account orders cart" "offers search search search search" !important;
+    gap: 7px !important;
+    align-items: center !important;
+    min-height: 0 !important;
+    padding: 8px 10px !important;
+  }
+  body header .top .logo { grid-area: brand !important; width: 100% !important; min-width: 0 !important; height: 38px !important; margin: 0 !important; gap: 6px !important; overflow: visible !important; }
+  body header .top .logo img { flex: 0 0 34px !important; width: 34px !important; height: 34px !important; object-fit: contain !important; }
+  body header .top .logo .brand-name { width: auto !important; max-width: none !important; min-width: 0 !important; overflow: visible !important; text-overflow: clip !important; white-space: nowrap !important; font-size: 18px !important; letter-spacing: .8px !important; }
+  body header .deliver, body header #admin { display: none !important; }
+
+  body header .account-wrap { grid-area: account !important; min-width: 0 !important; }
+  body header #accountTopLink,
+  body header .top > button[onclick="orders()"],
+  body header .top > button[onclick="cartView()"] {
+    position: relative !important; display: flex !important; flex-direction: column !important;
+    align-items: center !important; justify-content: center !important; width: 100% !important;
+    min-width: 0 !important; height: 38px !important; padding: 1px !important; overflow: visible !important;
+    color: #fff !important; background: transparent !important; border: 0 !important; text-align: center !important;
+  }
+  body header #accountTopLink::before, body header #accountTopLink::after,
+  body header #accountTopLink b::before, body header #accountTopLink b::after,
+  body header .top > button[onclick="orders()"]::before, body header .top > button[onclick="orders()"]::after,
+  body header .top > button[onclick="cartView()"]::before, body header .top > button[onclick="cartView()"]::after,
+  body header .top > button[onclick="cartView()"] b::before, body header .top > button[onclick="cartView()"] b::after { content: none !important; display: none !important; }
+  body header #accountTopLink small, body header #accountTopLink b, body header #accountTopLink > span,
+  body header .top > button[onclick="orders()"] small, body header .top > button[onclick="orders()"] b { display: none !important; }
+  body header .mobile-account-icon { display: block !important; position: relative !important; width: 20px !important; height: 21px !important; flex: 0 0 21px !important; }
+  body header .mobile-account-icon::before { content: "" !important; display: block !important; position: absolute !important; top: 0 !important; left: 6px !important; width: 9px !important; height: 9px !important; border-radius: 50% !important; background: #fff !important; }
+  body header .mobile-account-icon::after { content: "" !important; display: block !important; position: absolute !important; bottom: 0 !important; left: 1px !important; width: 19px !important; height: 10px !important; border-radius: 12px 12px 3px 3px !important; background: #fff !important; }
+  body header .top > button[onclick="orders()"]::before { content: "📦" !important; display: block !important; font-size: 19px !important; line-height: 23px !important; }
+  body header .top > button[onclick="orders()"]::after { content: "Orders" !important; display: block !important; font-size: 9px !important; line-height: 10px !important; font-weight: 700 !important; }
+  body header .top > button[onclick="cartView()"] b { position: relative !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 0 !important; }
+  body header .desktop-cart-copy { display: none !important; }
+  body header .mobile-cart-icon { display: block !important; font-style: normal !important; font-size: 21px !important; line-height: 24px !important; filter: brightness(0) invert(1) !important; }
+  body header #count { position: absolute !important; top: -7px !important; right: -11px !important; display: flex !important; align-items: center !important; justify-content: center !important; min-width: 18px !important; height: 18px !important; padding: 0 3px !important; margin: 0 !important; border-radius: 999px !important; background: #fff !important; color: #54213b !important; font-size: 10px !important; line-height: 18px !important; font-weight: 800 !important; box-sizing: border-box !important; }
+
+  body header .top .offer-toplink { grid-area: offers !important; display: flex !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; width: auto !important; min-width: 0 !important; height: 43px !important; padding: 0 8px !important; overflow: hidden !important; border: 1px solid rgba(255,255,255,.32) !important; border-radius: 22px !important; color: #fff !important; background: rgba(255,255,255,.1) !important; }
+  body header .top .offer-toplink b { display: block !important; font-size: 0 !important; animation: none !important; }
+  body header .top .offer-toplink b::after { content: "Offers" !important; display: block !important; font-size: 11px !important; line-height: 1 !important; font-weight: 800 !important; }
+  body header .top .search { grid-area: search !important; display: flex !important; width: 100% !important; min-width: 0 !important; height: 43px !important; margin: 0 !important; overflow: hidden !important; border-radius: 22px !important; }
+  body header .top .search select { flex: 0 0 47px !important; width: 47px !important; min-width: 47px !important; padding: 0 3px !important; font-size: 11px !important; }
+  body header .top .search input { flex: 1 1 auto !important; min-width: 0 !important; width: 1px !important; padding: 0 7px !important; font-size: 14px !important; }
+  body header .top .search .search-action, body header .top .search .search-submit { flex: 0 0 34px !important; width: 34px !important; min-width: 34px !important; height: 43px !important; padding: 0 !important; font-size: 16px !important; }
+  body header .mobile-search-lens { display: none !important; }
+
+  body header .nav { display: flex !important; gap: 6px !important; min-height: 0 !important; padding: 6px 9px 7px !important; overflow-x: auto !important; overflow-y: hidden !important; white-space: nowrap !important; scrollbar-width: none !important; -webkit-overflow-scrolling: touch !important; }
+  body header .nav::-webkit-scrollbar { display: none !important; }
+  body header .nav span { flex: 0 0 auto !important; padding: 6px 10px !important; border: 1px solid rgba(255,255,255,.2) !important; border-radius: 16px !important; font-size: 11px !important; line-height: 1 !important; }
+
+  body .mobile-delivery-strip { display: grid !important; grid-template-columns: auto minmax(78px,1fr) auto !important; align-items: center !important; gap: 6px !important; padding: 9px 10px !important; background: #fff !important; border-bottom: 1px solid #ece2db !important; }
+  body .mobile-delivery-strip > span { min-width: 0 !important; white-space: nowrap !important; font-size: 11px !important; }
+  body .mobile-delivery-strip > input { width: 100% !important; min-width: 0 !important; height: 38px !important; padding: 0 8px !important; box-sizing: border-box !important; font-size: 15px !important; }
+  body .mobile-delivery-strip > button { min-width: 0 !important; height: 38px !important; padding: 0 10px !important; white-space: nowrap !important; }
+  body .mobile-delivery-strip > small { grid-column: 1 / -1 !important; margin: 0 !important; font-size: 10px !important; line-height: 1.25 !important; }
+}
+
+@media (max-width: 350px) {
+  body header .top { grid-template-columns: 62px minmax(75px,1fr) 38px 43px 40px !important; gap: 5px !important; padding-inline: 7px !important; }
+  body header .top .logo .brand-name { font-size: 17px !important; letter-spacing: .35px !important; }
+  body header .top .logo img { flex-basis: 31px !important; width: 31px !important; height: 31px !important; }
+  body header .top .offer-toplink { padding-inline: 6px !important; }
+  body header .top .search select { flex-basis: 42px !important; width: 42px !important; min-width: 42px !important; }
+  body header .top .search .search-action, body header .top .search .search-submit { flex-basis: 31px !important; width: 31px !important; min-width: 31px !important; }
+  body header .top .search input { padding-inline: 5px !important; font-size: 13px !important; }
+  body .mobile-delivery-strip { grid-template-columns: auto minmax(68px,1fr) auto !important; padding-inline: 7px !important; gap: 5px !important; }
+  body .mobile-delivery-strip > span { font-size: 10px !important; }
+  body .mobile-delivery-strip > button { padding-inline: 8px !important; }
+}
+
+

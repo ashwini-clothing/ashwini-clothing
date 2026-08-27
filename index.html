@@ -137,20 +137,6 @@ button:active{transform:translateY(1px)}
   .modal .box{width:100%!important;max-width:none!important;height:100dvh!important;min-height:100dvh!important;max-height:100dvh!important;box-sizing:border-box!important;border-radius:0!important;padding:18px 20px 88px!important;overflow-y:auto!important}
   #body{width:100%!important;max-width:100%!important;box-sizing:border-box!important}
 
-  /* Compact, stable mobile header. */
-  .top{grid-template-columns:minmax(108px,1fr) 34px 42px 34px 40px!important;grid-template-areas:"brand account orders offer cart" "search search search search search"!important;gap:7px!important;padding:8px 10px!important}
-  .top .logo{grid-area:brand!important;min-width:0!important}
-  .top .account-wrap{grid-area:account!important;min-width:0!important}
-  .top button[onclick="orders()"]{grid-area:orders!important;min-width:0!important}
-  .top .offer-toplink{grid-area:offer!important;min-width:0!important}
-  .top button[onclick="cartView()"]{grid-area:cart!important;min-width:0!important}
-  .top .toplink:last-child{grid-area:unset!important}
-  .top .toplink{padding:2px!important;justify-content:center!important;text-align:center!important;white-space:nowrap!important;overflow:hidden!important}
-  .top .toplink small{display:none!important}.top .toplink b{font-size:0!important}.top #accountTopLink b:after{content:"👤";font-size:19px}.top button[onclick="orders()"] b:after{content:"📦";font-size:18px}.top .offer-toplink b:after{content:"🎁";font-size:18px}.top button[onclick="cartView()"] b{font-size:0!important}.top button[onclick="cartView()"] b:after{content:"🛒";font-size:19px}.top button[onclick="cartView()"] #count{display:inline-flex!important;font-size:10px!important;vertical-align:top!important}
-  .top .search{grid-area:search!important;width:100%!important;min-width:0!important;height:46px!important;border-radius:24px!important;overflow:hidden!important;display:flex!important}
-  .top .search select{max-width:58px!important;font-size:14px!important}.top .search input[type="text"],.top .search input:not([type]){min-width:0!important;flex:1!important;font-size:15px!important}.top .search .search-action,.top .search .search-submit{width:42px!important;min-width:42px!important;height:46px!important;padding:0!important}.top .mobile-search-lens{display:none!important}
-  .nav{padding:8px 10px!important;gap:8px!important;overflow-x:auto!important;white-space:nowrap!important}.nav button{flex:0 0 auto!important;padding:8px 13px!important;border-radius:20px!important}
-
   /* Product view and gallery. */
   #body .detail{display:block!important;width:100%!important;max-width:100%!important}
   #body .gallery{display:flex!important;flex-direction:column!important;width:100%!important;gap:10px!important}
@@ -459,39 +445,9 @@ button:active{transform:translateY(1px)}
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true" onclick="if(event.target===this)closeM()"><div class="box" onclick="event.stopPropagation()"><button type="button" id="modalClose" class="close" aria-label="Close">×</button><div id="body"></div></div></div><div class="toast" id="toast"></div>
 
 <script src="/app.js" defer></script>
-<script>
-  /* This runs after the legacy styles below and installs the clean mobile layout last. */
-  window.addEventListener('DOMContentLoaded', function () {
-    var mobileCss = document.createElement('link');
-    mobileCss.rel = 'stylesheet';
-  mobileCss.href = '/mobile-rebuild-v3.css?v=20260827-mobile-header-footer-v56';
-    document.head.appendChild(mobileCss);
-  });
-</script>
-
-</body></html><style id="ashwini-mobile-header-cart-fix">
-@media (max-width:600px){
-  /* Keep the original Cart icon/count and remove the extra cart icon added for mobile. */
-  .top button[onclick="cartView()"] b:after{content:none!important}
-  .top button[onclick="cartView()"] b{font-size:0!important;color:#fff!important}
-  .top button[onclick="cartView()"] b:first-letter{font-size:19px!important}
-  .top button[onclick="cartView()"] #count{color:#fff!important;background:#fff!important;color:#54213b!important;border-radius:999px!important;min-width:20px!important;height:20px!important;line-height:20px!important;text-align:center!important;font-weight:800!important}
-  /* The profile mark is deliberately monochrome white on the dark header. */
-  .top #accountTopLink:before{color:#fff!important;filter:grayscale(1) brightness(0) invert(1)!important}
-}
-</style><style id="ashwini-mobile-last-word">
+</body></html><style id="ashwini-mobile-last-word">
 @media (max-width:600px){
   /* Final phone-only layout: keep every screen inside the phone width. */
-  .top{display:grid!important;grid-template-columns:minmax(108px,1fr) 34px 42px 34px 40px!important;grid-template-areas:"brand account orders offer cart" "search search search search search"!important;gap:7px!important;padding:8px 10px!important;align-items:center!important}
-  .top .logo{grid-area:brand!important;min-width:0!important;gap:7px!important}.top .logo img{width:31px!important;height:31px!important}.top .brand-name{font-size:20px!important;letter-spacing:1.5px!important;white-space:nowrap!important}
-  .top .account-wrap{grid-area:account!important}.top #accountTopLink{width:34px!important;min-width:34px!important;padding:3px 0!important;text-align:center!important;display:block!important}.top #accountTopLink:before{content:""!important;display:block!important;width:10px!important;height:10px!important;margin:1px auto 2px!important;border-radius:50%!important;background:#fff!important;filter:none!important;font-size:0!important}.top #accountTopLink:after{content:""!important;display:block!important;width:18px!important;height:9px!important;margin:0 auto!important;border-radius:11px 11px 3px 3px!important;background:#fff!important}.top #accountTopLink small,.top #accountTopLink b,.top #accountTopLink>span{display:none!important}
-  .top button[onclick="orders()"]{grid-area:orders!important;width:42px!important;min-width:42px!important;padding:4px 0!important;font-size:0!important}.top button[onclick="orders()"]:before{content:"📦"!important;font-size:18px!important}.top button[onclick="orders()"] small,.top button[onclick="orders()"] b{display:none!important}
-  .top .offer-toplink{grid-area:offer!important;width:34px!important;min-width:34px!important;padding:4px 0!important;font-size:0!important}.top .offer-toplink b{font-size:0!important}.top .offer-toplink b:after{content:"🎁"!important;font-size:18px!important}
-  .top button[onclick="cartView()"],.top .toplink:last-child{grid-area:cart!important;width:40px!important;min-width:40px!important;padding:4px 0!important;font-size:0!important}.top button[onclick="cartView()"]:before,.top button[onclick="cartView()"] b:before{content:none!important}.top button[onclick="cartView()"] b{display:inline-flex!important;align-items:flex-start!important;justify-content:center!important;font-size:0!important;white-space:nowrap!important}.top button[onclick="cartView()"] b:after{content:"🛒"!important;font-size:19px!important;line-height:20px!important;filter:brightness(0) invert(1)!important}.top button[onclick="cartView()"] #count{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-width:19px!important;height:19px!important;padding:0 3px!important;margin-left:-5px!important;border-radius:999px!important;background:#fff!important;color:#54213b!important;font-size:10px!important;font-weight:800!important;line-height:19px!important;vertical-align:top!important}
-  .top .search{grid-area:search!important;width:100%!important;height:45px!important;border-radius:24px!important;overflow:hidden!important}.top .search select{width:61px!important;min-width:61px!important}.top .search input[type="text"]{min-width:0!important;font-size:16px!important}.top .search-action,.top .search-submit{width:43px!important;min-width:43px!important;height:45px!important;font-size:19px!important}.top .mobile-search-lens{display:none!important}
-  .nav{padding:8px 10px!important;gap:8px!important;overflow-x:auto!important;white-space:nowrap!important}.nav button{flex:0 0 auto!important;border-radius:20px!important;padding:9px 13px!important}
-  .mobile-delivery-strip{display:flex!important;align-items:center!important;gap:8px!important;padding:11px 12px!important}.mobile-delivery-strip input{min-width:0!important;flex:1!important;height:39px!important}.mobile-delivery-strip button{height:39px!important;white-space:nowrap!important}
-
   #modal .box,#modal .sheet{width:100%!important;max-width:none!important;min-height:100dvh!important;max-height:100dvh!important;height:100dvh!important;border-radius:0!important;margin:0!important;padding:21px 20px 38px!important;overflow-y:auto!important}.close{position:sticky!important;top:0!important;float:right!important;z-index:20!important}
   #body .cartrow{display:grid!important;grid-template-columns:92px minmax(0,1fr)!important;gap:12px!important;align-items:start!important;padding:15px 0!important}.cartrow .mini{width:92px!important;height:118px!important}.cartrow h3,.cartrow h4{font-size:18px!important;line-height:1.25!important;overflow-wrap:anywhere!important;margin:0 0 6px!important}.cartrow> b{grid-column:2!important;text-align:left!important;font-size:21px!important;margin-top:3px!important}.cartrow .cart-actions{grid-column:1 / -1!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:9px!important;width:100%!important}.cartrow .cart-actions .qty{grid-column:1 / -1!important;width:100%!important;justify-content:center!important}.cartrow .cart-actions button{min-height:46px!important;white-space:normal!important;font-size:16px!important;line-height:1.2!important;padding:9px!important}.cartrow .cart-actions .wishlist{grid-column:1 / -1!important}
   #body .wish-card{display:grid!important;grid-template-columns:96px minmax(0,1fr)!important;gap:12px!important}.wish-card .mini{width:96px!important;height:122px!important}.wish-card .gold{grid-column:1 / -1!important;width:100%!important;min-height:46px!important;white-space:normal!important}
@@ -524,22 +480,6 @@ button:active{transform:translateY(1px)}
 <style id="ashwini-mobile-header-product-final">
 /* Final phone-only correction: no duplicate cart and no cropped product photo. */
 @media (max-width:600px){
-  /* Remove all legacy pseudo-icons. Real icon elements below are the only mobile icons. */
-  .top #accountTopLink::before,.top #accountTopLink::after,
-  .top #accountTopLink b::before,.top #accountTopLink b::after,
-  .top #accountTopLink small::before,
-  .top button[onclick="cartView()"]::before,.top button[onclick="cartView()"]::after,
-  .top button[onclick="cartView()"] b::before,.top button[onclick="cartView()"] b::after{content:none!important;display:none!important}
-  .top #accountTopLink{display:flex!important;align-items:center!important;justify-content:center!important}
-  .top #accountTopLink small,.top #accountTopLink b,.top #accountTopLink>span{display:none!important}
-  .top #accountTopLink .mobile-account-icon{display:block!important;position:relative!important;width:22px!important;height:23px!important;flex:0 0 22px!important}
-  .top #accountTopLink .mobile-account-icon::before{content:""!important;display:block!important;position:absolute!important;top:0!important;left:7px!important;width:9px!important;height:9px!important;border-radius:50%!important;background:#fff!important}
-  .top #accountTopLink .mobile-account-icon::after{content:""!important;display:block!important;position:absolute!important;bottom:0!important;left:2px!important;width:19px!important;height:11px!important;border-radius:12px 12px 3px 3px!important;background:#fff!important}
-  .top button[onclick="cartView()"] b{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:0!important;font-size:0!important}
-  .top button[onclick="cartView()"] .desktop-cart-copy{display:none!important}
-  .top button[onclick="cartView()"] .mobile-cart-icon{display:inline-block!important;font-style:normal!important;font-size:20px!important;line-height:20px!important;filter:brightness(0) invert(1)!important}
-  .top button[onclick="cartView()"] #count{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-width:19px!important;height:19px!important;padding:0 3px!important;margin-left:-5px!important;border-radius:999px!important;background:#fff!important;color:#54213b!important;font-size:10px!important;font-weight:800!important;line-height:19px!important;vertical-align:top!important}
-
   /* Product photo: contain is forced after every older mobile rule, so the full garment is visible. */
   #modal .gallery-main,#body #modal .gallery-main{display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;height:min(48vh,340px)!important;min-height:0!important;overflow:hidden!important;background:#fff!important}
   #modal .gallery-main>img,#body #modal .gallery-main>img{display:block!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:contain!important;object-position:center center!important;transform:none!important;translate:none!important;scale:1!important}
@@ -568,3 +508,5 @@ button:active{transform:translateY(1px)}
 <style>
 .inventory-launch{position:relative;display:flex;align-items:center;width:100%;margin:0 0 12px;padding:14px 16px;border:1px solid #023EBA;border-radius:10px;background:#CAF0F8;color:#03045E;font-size:19px;font-weight:800;text-align:left;cursor:pointer;box-shadow:0 6px 16px rgba(3,4,94,.12);transition:transform .18s ease,box-shadow .18s ease,background .18s ease}.admin-launch-stack{margin:20px 0 12px}.inventory-launch span{position:absolute;left:50%;transform:translateX(-50%);font-size:34px;line-height:1;color:#023EBA}.inventory-launch:hover{transform:translateY(-2px);background:#b7e8f2;box-shadow:0 10px 22px rgba(3,4,94,.2)}.inventory-launch:focus-visible{outline:3px solid #00B4D8;outline-offset:3px}.admin-toolbar button,#body button{transition:transform .18s ease,box-shadow .18s ease,background .18s ease,border-color .18s ease,color .18s ease}.admin-toolbar button:hover,#body button:hover{transform:translateY(-2px);background:#eafaff;border-color:#023EBA;box-shadow:0 6px 14px rgba(3,4,94,.16)}#body .gold:hover{filter:none!important;background:#00B4D8!important;color:#fff!important;border-color:#0077B6!important;box-shadow:0 8px 18px rgba(0,119,182,.34)!important}#body .admin-actions button:not(.gold):hover{background:#dff6fb!important;color:#03045E!important;border-color:#0077B6!important;box-shadow:0 8px 18px rgba(0,119,182,.25)!important}.admin-toolbar button:active,#body button:active{transform:translateY(0) scale(.98)}#body input[type="color"]{cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}#body input[type="color"]:hover{transform:translateY(-2px);border-color:#0077B6!important;box-shadow:0 6px 14px rgba(0,119,182,.28)}.premium-colour-picker{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center}.premium-colour-picker input[type="color"]{width:46px!important;height:36px!important;padding:2px!important;border-radius:9px!important;background:#fff!important}.premium-swatches{display:flex;flex-wrap:wrap;gap:6px}.premium-swatch{width:24px;height:24px;border:2px solid rgba(255,255,255,.9);border-radius:50%;padding:0!important;box-shadow:0 2px 7px rgba(0,0,0,.25),inset 0 1px 1px rgba(255,255,255,.75)!important}.premium-swatch:hover{transform:translateY(-3px) scale(1.15)!important;border-color:#023EBA!important;box-shadow:0 5px 12px rgba(3,4,94,.4),0 0 10px currentColor!important}.premium-swatch.gold-plate{background:linear-gradient(135deg,#fff4a5 0%,#d4a017 42%,#fff0a0 68%,#a96b05 100%)}.premium-swatch.rose-gold-plate{background:linear-gradient(135deg,#ffe0d5 0%,#c77d66 45%,#ffe3d8 70%,#8f473e 100%)}.premium-swatch.diamond-plate{background:linear-gradient(135deg,#fff 0%,#aeeaff 32%,#fff 55%,#79b8d0 100%)}.premium-swatch.royal-plate{background:linear-gradient(135deg,#809cff,#273b9c 45%,#9ed8ff 100%)}.premium-swatch.emerald-plate{background:linear-gradient(135deg,#baffdd 0%,#097c55 44%,#baffdd 100%)}.premium-swatch.midnight-plate{background:linear-gradient(135deg,#596275 0%,#101827 47%,#6b7280 100%)}.premium-swatch.pearl-plate{background:linear-gradient(135deg,#fff 0%,#d7dce3 48%,#fff 100%)}
 </style>
+<link rel="stylesheet" href="/mobile-rebuild-v3.css?v=20260827-layout-v57">
+<link rel="stylesheet" href="/mobile-header.css?v=20260827-header-v62">
