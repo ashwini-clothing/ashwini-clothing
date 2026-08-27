@@ -1228,3 +1228,55 @@
   body .quick-filter-box strong{font-size:9.5px!important;}
   body .shop-category-box span{font-size:7px!important;}
 }
+
+
+/* V61: mobile Offers moved from top header to the LEFT of search bar.
+   Same existing Offers button/function; desktop remains unchanged. */
+@media (max-width:600px){
+  body header .top{
+    grid-template-columns:minmax(145px,1fr) 68px 54px 42px!important;
+    grid-template-areas:
+      "brand account orders cart"
+      "offers search search search"!important;
+    column-gap:3px!important;
+    row-gap:7px!important;
+  }
+  body header .top > .offer-toplink{
+    grid-area:offers!important;
+    display:flex!important;
+    width:58px!important;
+    min-width:58px!important;
+    max-width:58px!important;
+    height:42px!important;
+    justify-self:start!important;
+    border-radius:8px!important;
+    background:rgba(255,255,255,.12)!important;
+  }
+  body header .top > .offer-toplink .mobile-offers-icon{
+    font-size:15px!important;
+    line-height:15px!important;
+  }
+  body header .top > .offer-toplink .mobile-offers-copy{
+    font-size:8px!important;
+    line-height:9px!important;
+  }
+  body header .top .search{
+    grid-area:search!important;
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+  }
+}
+@media (max-width:380px){
+  body header .top{
+    grid-template-columns:minmax(135px,1fr) 64px 48px 38px!important;
+    column-gap:2px!important;
+  }
+  body header .top .account-wrap,
+  body header .top #accountTopLink{
+    width:64px!important;min-width:64px!important;max-width:64px!important;
+  }
+  body header .top > .offer-toplink{
+    width:54px!important;min-width:54px!important;max-width:54px!important;
+  }
+}
