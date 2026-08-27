@@ -1021,3 +1021,113 @@
   body .shop-category-box,
   body .quick-filter-box {padding:4px 6px!important;}
 }
+
+
+/* V59: mobile header actions + truly compact category/filter controls */
+@media (max-width:600px){
+  /* Brand + Account + Offers + Orders + Cart all fit on one row. */
+  body header .top{
+    display:grid!important;
+    grid-template-columns:minmax(118px,1fr) 68px 42px 54px 42px!important;
+    grid-template-areas:"brand account offers orders cart" "search search search search search"!important;
+    column-gap:3px!important;
+    row-gap:8px!important;
+    align-items:center!important;
+  }
+  body header .top .logo{grid-area:brand!important;min-width:0!important;}
+  body header .top .account-wrap{grid-area:account!important;min-width:0!important;}
+  body header #accountTopLink{width:68px!important;min-width:68px!important;max-width:68px!important;padding:0 2px!important;gap:3px!important;}
+  body header #accountTopLink .mobile-account-copy strong{font-size:9px!important;line-height:1.05!important;}
+  body header #accountTopLink .mobile-account-copy em{font-size:8px!important;line-height:1.05!important;}
+
+  /* The real existing Offers action is visible between Account and Orders. */
+  body header .top > .offer-toplink{
+    grid-area:offers!important;
+    display:flex!important;
+    visibility:visible!important;
+    opacity:1!important;
+    width:42px!important;
+    min-width:42px!important;
+    max-width:42px!important;
+    height:38px!important;
+    padding:0!important;
+    margin:0!important;
+    align-items:center!important;
+    justify-content:center!important;
+    overflow:visible!important;
+    background:transparent!important;
+    border:0!important;
+    color:#fff!important;
+    font-size:0!important;
+  }
+  body header .top > .offer-toplink b{display:block!important;font-size:0!important;line-height:1!important;}
+  body header .top > .offer-toplink b::before{content:"🎁"!important;font-size:20px!important;line-height:1!important;}
+  body header .top > .offer-toplink b::after{content:"Offers"!important;display:block!important;margin-top:2px!important;font-size:7px!important;color:#fff!important;font-weight:700!important;}
+
+  body header .top > button[onclick="orders()"]{
+    grid-area:orders!important;
+    width:54px!important;min-width:54px!important;max-width:54px!important;
+    padding:0!important;margin:0!important;height:38px!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;
+  }
+  body header .top > button[onclick="orders()"]::before{font-size:11px!important;line-height:1!important;}
+  body header .top > button[onclick="cartView()"]{grid-area:cart!important;width:42px!important;min-width:42px!important;max-width:42px!important;padding:0!important;margin:0!important;}
+  body header .top .search{grid-area:search!important;}
+
+  /* These two controls are compact phone buttons, side by side. */
+  body .wrap{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+    column-gap:8px!important;
+    align-items:start!important;
+  }
+  body .shop-category-section,
+  body .quick-filter-section{
+    width:100%!important;
+    min-width:0!important;
+    margin:0!important;
+    padding:8px 0!important;
+    display:block!important;
+  }
+  body .shop-category-box,
+  body .quick-filter-box{
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    min-height:42px!important;
+    height:42px!important;
+    margin:0!important;
+    padding:4px 8px!important;
+    gap:4px!important;
+    border-width:1.5px!important;
+    border-radius:8px!important;
+    box-sizing:border-box!important;
+  }
+  body .shop-category-box strong,
+  body .quick-filter-box strong{font-size:11px!important;line-height:1.05!important;white-space:nowrap!important;}
+  body .shop-category-box span{font-size:8.5px!important;line-height:1.05!important;white-space:normal!important;}
+  body .shop-category-box b,
+  body .quick-filter-box b{font-size:16px!important;line-height:1!important;flex:0 0 auto!important;}
+
+  /* Product area continues full-width under both buttons. */
+  body .product-area{grid-column:1 / -1!important;width:100%!important;}
+
+  body .shop-category-dropdown,
+  body .quick-filter-dropdown{
+    width:min(280px,calc(100vw - 24px))!important;
+    max-width:calc(100vw - 24px)!important;
+  }
+}
+@media (max-width:380px){
+  body header .top{
+    grid-template-columns:minmax(105px,1fr) 62px 38px 48px 38px!important;
+    column-gap:2px!important;
+  }
+  body header #accountTopLink{width:62px!important;min-width:62px!important;max-width:62px!important;}
+  body header .top > .offer-toplink{width:38px!important;min-width:38px!important;max-width:38px!important;}
+  body header .top > button[onclick="orders()"]{width:48px!important;min-width:48px!important;max-width:48px!important;}
+  body header .top > button[onclick="cartView()"]{width:38px!important;min-width:38px!important;max-width:38px!important;}
+  body .shop-category-box strong,
+  body .quick-filter-box strong{font-size:10px!important;}
+  body .shop-category-box span{font-size:7.5px!important;}
+}
