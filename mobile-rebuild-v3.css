@@ -934,3 +934,90 @@
   body footer.footer {padding:11px 8px 10px!important;}
   body footer.footer p {font-size:9.5px!important;}
 }
+
+/* === V58 MOBILE HEADER POSITION + COMPACT FILTER BUTTONS === */
+@media (max-width:600px) {
+  /* Bring Account / Sign in closer to Orders without changing click behavior. */
+  body header .top {
+    grid-template-columns:minmax(0,1fr) 80px 54px 42px!important;
+    column-gap:1px!important;
+  }
+  body header #accountTopLink {
+    width:80px!important;
+    min-width:80px!important;
+    justify-self:end!important;
+    transform:translateX(5px)!important;
+  }
+  body header .top > button[onclick="orders()"] {
+    margin-left:0!important;
+  }
+
+  /* The two controls above the footer should look like phone-size buttons, not desktop-width bars. */
+  body .shop-category-section,
+  body .quick-filter-section {
+    display:inline-flex!important;
+    vertical-align:top!important;
+    width:calc(50% - 6px)!important;
+    box-sizing:border-box!important;
+    padding:7px 4px!important;
+    margin:0!important;
+  }
+  body .shop-category-section {
+    margin-left:4px!important;
+  }
+  body .quick-filter-section {
+    margin-right:4px!important;
+  }
+  body .shop-category-box,
+  body .quick-filter-box {
+    width:100%!important;
+    max-width:none!important;
+    min-width:0!important;
+    min-height:42px!important;
+    height:42px!important;
+    padding:5px 8px!important;
+    gap:5px!important;
+    border-radius:8px!important;
+    align-items:center!important;
+    box-sizing:border-box!important;
+  }
+  body .shop-category-box strong,
+  body .quick-filter-box strong {
+    font-size:12px!important;
+    line-height:1.1!important;
+    white-space:nowrap!important;
+  }
+  body .shop-category-box span {
+    font-size:9px!important;
+    line-height:1.05!important;
+    white-space:normal!important;
+  }
+  body .shop-category-box b,
+  body .quick-filter-box b {
+    font-size:17px!important;
+    line-height:1!important;
+    flex:0 0 auto!important;
+  }
+  body .shop-category-dropdown,
+  body .quick-filter-dropdown {
+    width:calc(100vw - 20px)!important;
+    max-width:calc(100vw - 20px)!important;
+  }
+}
+
+@media (max-width:380px) {
+  body header .top {
+    grid-template-columns:minmax(0,1fr) 74px 52px 40px!important;
+    column-gap:0!important;
+  }
+  body header #accountTopLink {
+    width:74px!important;
+    min-width:74px!important;
+    transform:translateX(4px)!important;
+  }
+  body .shop-category-box strong,
+  body .quick-filter-box strong {font-size:11px!important;}
+  body .shop-category-box span {font-size:8px!important;}
+  body .shop-category-box,
+  body .quick-filter-box {padding:4px 6px!important;}
+}
