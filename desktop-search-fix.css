@@ -1,0 +1,20 @@
+/* Desktop-only search correction. Mobile layout is intentionally untouched. */
+@media (min-width: 601px) {
+  body header .search #photoUploadInput,
+  body header .search .search-lens-action,
+  body header .lens-source-menu {
+    display: none !important;
+  }
+
+  body header .search .search-submit svg {
+    display: block !important;
+    width: 20px !important;
+    height: 20px !important;
+    margin: auto !important;
+    fill: none !important;
+    stroke: currentColor !important;
+    stroke-width: 2 !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+  }
+}
