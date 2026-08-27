@@ -24,6 +24,7 @@
     min-width: 0 !important; height: 42px !important; padding: 1px !important; overflow: visible !important;
     color: #fff !important; background: transparent !important; border: 0 !important; text-align: center !important;
   }
+  body header #accountTopLink { flex-direction: row !important; gap: 3px !important; }
   body header #accountTopLink::before,
   body header #accountTopLink b::before, body header #accountTopLink b::after,
   body header .top > button[onclick="orders()"]::before,
@@ -31,10 +32,10 @@
   body header .top > button[onclick="cartView()"] b::before, body header .top > button[onclick="cartView()"] b::after { content: none !important; display: none !important; }
   body header #accountTopLink small, body header #accountTopLink b, body header #accountTopLink > span,
   body header .top > button[onclick="orders()"] small, body header .top > button[onclick="orders()"] b { display: none !important; }
-  body header #accountTopLink .mobile-account-icon { display: block !important; position: relative !important; width: 20px !important; height: 20px !important; flex: 0 0 20px !important; transform: none !important; }
-  body header #accountTopLink .mobile-account-icon::before { content: "" !important; display: block !important; position: absolute !important; top: 0 !important; left: 6px !important; width: 9px !important; height: 9px !important; border-radius: 50% !important; background: #fff !important; transform: none !important; }
-  body header #accountTopLink .mobile-account-icon::after { content: "" !important; display: block !important; position: absolute !important; bottom: 0 !important; left: 1px !important; width: 19px !important; height: 9px !important; border-radius: 12px 12px 3px 3px !important; background: #fff !important; transform: none !important; }
-  body header #accountTopLink::after { content: "My Account" !important; display: block !important; margin-top: 1px !important; color: #fff !important; font-size: 8px !important; line-height: 8px !important; font-weight: 700 !important; white-space: normal !important; }
+  body header #accountTopLink .mobile-account-icon { display: block !important; position: relative !important; width: 16px !important; height: 18px !important; flex: 0 0 16px !important; transform: none !important; }
+  body header #accountTopLink .mobile-account-icon::before { content: "" !important; display: block !important; position: absolute !important; top: 0 !important; left: 5px !important; width: 7px !important; height: 7px !important; border-radius: 50% !important; background: #fff !important; transform: none !important; }
+  body header #accountTopLink .mobile-account-icon::after { content: "" !important; display: block !important; position: absolute !important; bottom: 0 !important; left: 1px !important; width: 15px !important; height: 8px !important; border-radius: 10px 10px 3px 3px !important; background: #fff !important; transform: none !important; }
+  body header #accountTopLink::after { content: "My Account" !important; display: block !important; margin: 0 !important; color: #fff !important; font-size: 8px !important; line-height: 8px !important; font-weight: 700 !important; white-space: normal !important; text-align: left !important; }
   body header .top > button[onclick="orders()"]::before { content: none !important; display: none !important; }
   body header .top > button[onclick="orders()"]::after { content: "My Orders" !important; display: block !important; color: #fff !important; font-size: 9px !important; line-height: 11px !important; font-weight: 700 !important; white-space: normal !important; }
   body header .top > button[onclick="cartView()"] b { position: relative !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 0 !important; }
@@ -42,9 +43,9 @@
   body header .mobile-cart-icon { display: block !important; font-style: normal !important; font-size: 21px !important; line-height: 24px !important; filter: brightness(0) invert(1) !important; }
   body header #count { position: absolute !important; top: -7px !important; right: -11px !important; display: flex !important; align-items: center !important; justify-content: center !important; min-width: 18px !important; height: 18px !important; padding: 0 3px !important; margin: 0 !important; border-radius: 999px !important; background: #fff !important; color: #54213b !important; font-size: 10px !important; line-height: 18px !important; font-weight: 800 !important; box-sizing: border-box !important; }
 
-  body header .top .offer-toplink { grid-area: offers !important; display: flex !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; width: auto !important; min-width: 0 !important; height: 43px !important; padding: 0 8px !important; overflow: hidden !important; border: 1px solid rgba(255,255,255,.32) !important; border-radius: 22px !important; color: #fff !important; background: rgba(255,255,255,.1) !important; }
+  body header .top .offer-toplink { grid-area: offers !important; display: flex !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; width: auto !important; min-width: 0 !important; height: 43px !important; padding: 0 8px !important; overflow: hidden !important; border: 1px solid #d49b00 !important; border-radius: 22px !important; color: #3f2800 !important; background: #ffd54a !important; }
   body header .top .offer-toplink b { display: block !important; font-size: 0 !important; animation: none !important; }
-  body header .top .offer-toplink b::after { content: "Offers" !important; display: block !important; font-size: 11px !important; line-height: 1 !important; font-weight: 800 !important; }
+  body header .top .offer-toplink b::after { content: "Offers" !important; display: block !important; color: #3f2800 !important; font-size: 11px !important; line-height: 1 !important; font-weight: 800 !important; }
   body header .top .search { grid-area: search !important; display: flex !important; width: 100% !important; min-width: 0 !important; height: 43px !important; margin: 0 !important; overflow: hidden !important; border-radius: 22px !important; }
   body header .top .search select { flex: 0 0 47px !important; width: 47px !important; min-width: 47px !important; padding: 0 3px !important; font-size: 11px !important; }
   body header .top .search input { flex: 1 1 auto !important; min-width: 0 !important; width: 1px !important; padding: 0 7px !important; font-size: 14px !important; }
@@ -63,7 +64,7 @@
 }
 
 @media (max-width: 350px) {
-  body header .top { grid-template-columns: 62px minmax(75px,1fr) 38px 43px 40px !important; gap: 5px !important; padding-inline: 7px !important; }
+  body header .top { grid-template-columns: 62px minmax(69px,1fr) 44px 43px 40px !important; gap: 5px !important; padding-inline: 7px !important; }
   body header .top .logo .brand-name { font-size: 17px !important; letter-spacing: .35px !important; }
   body header .top .logo img { flex-basis: 31px !important; width: 31px !important; height: 31px !important; }
   body header .top .offer-toplink { padding-inline: 6px !important; }
