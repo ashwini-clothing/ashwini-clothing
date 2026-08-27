@@ -1,4 +1,5 @@
 /* Ashwini phone header: the single authoritative mobile implementation. */
+.search-lens-action { display: none; }
 @media (max-width: 600px) {
   body header { position: sticky; top: 0; z-index: 7000; box-shadow: 0 2px 7px rgba(0,0,0,.22); }
   body header .top {
@@ -46,11 +47,14 @@
   body header .top .offer-toplink { grid-area: offers !important; display: flex !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; width: auto !important; min-width: 0 !important; height: 43px !important; padding: 0 8px !important; overflow: hidden !important; border: 1px solid #d49b00 !important; border-radius: 22px !important; color: #3f2800 !important; background: #ffd54a !important; }
   body header .top .offer-toplink b { display: block !important; font-size: 0 !important; animation: none !important; }
   body header .top .offer-toplink b::after { content: "Offers" !important; display: block !important; color: #3f2800 !important; font-size: 11px !important; line-height: 1 !important; font-weight: 800 !important; }
-  body header .top .search { grid-area: search !important; display: flex !important; width: 100% !important; min-width: 0 !important; height: 43px !important; margin: 0 !important; overflow: hidden !important; border-radius: 22px !important; }
-  body header .top .search select { flex: 0 0 47px !important; width: 47px !important; min-width: 47px !important; padding: 0 3px !important; font-size: 11px !important; }
+  body header .top .search { grid-area: search !important; display: flex !important; width: 100% !important; min-width: 0 !important; height: 43px !important; margin: 0 !important; overflow: hidden !important; border: 1px solid #c8b9b1 !important; border-radius: 5px !important; background: #fff !important; box-shadow: none !important; }
+  body header .top .search select { display: block !important; flex: 0 0 43px !important; width: 43px !important; min-width: 43px !important; padding: 0 3px !important; border: 0 !important; border-right: 1px solid #ddd2cc !important; background: #f4eee9 !important; font-size: 11px !important; }
   body header .top .search input { flex: 1 1 auto !important; min-width: 0 !important; width: 1px !important; padding: 0 7px !important; font-size: 14px !important; }
-  body header .top .search .search-action, body header .top .search .search-submit { flex: 0 0 34px !important; width: 34px !important; min-width: 34px !important; height: 43px !important; padding: 0 !important; font-size: 16px !important; }
-  body header .mobile-search-lens { display: none !important; }
+  body header .top .search .search-lens-action, body header .top .search .search-submit { display: flex !important; flex: 0 0 34px !important; width: 34px !important; min-width: 34px !important; height: 43px !important; padding: 0 !important; align-items: center !important; justify-content: center !important; border: 0 !important; border-left: 1px solid #ece4dd !important; border-radius: 0 !important; background: #fff !important; color: #111 !important; }
+  body header .top .search .search-lens-action svg { display: block !important; width: 20px !important; height: 20px !important; fill: none !important; stroke: currentColor !important; stroke-width: 1.8 !important; stroke-linecap: round !important; stroke-linejoin: round !important; }
+  body header .top .search .search-lens-action .lens-dot { fill: currentColor !important; stroke: none !important; }
+  body header .top .search .search-submit { background: #d6af63 !important; font-size: 16px !important; }
+  body header .top .search #photoSearchInput, body header .top .search .search-photo, body header .top .search button[onclick*="startVoiceSearch"], body header .mobile-search-lens { display: none !important; }
 
   body header .nav { display: flex !important; gap: 6px !important; min-height: 0 !important; padding: 6px 9px 7px !important; overflow-x: auto !important; overflow-y: hidden !important; white-space: nowrap !important; scrollbar-width: none !important; -webkit-overflow-scrolling: touch !important; }
   body header .nav::-webkit-scrollbar { display: none !important; }
@@ -68,8 +72,8 @@
   body header .top .logo .brand-name { font-size: 17px !important; letter-spacing: .35px !important; }
   body header .top .logo img { flex-basis: 31px !important; width: 31px !important; height: 31px !important; }
   body header .top .offer-toplink { padding-inline: 6px !important; }
-  body header .top .search select { flex-basis: 42px !important; width: 42px !important; min-width: 42px !important; }
-  body header .top .search .search-action, body header .top .search .search-submit { flex-basis: 31px !important; width: 31px !important; min-width: 31px !important; }
+  body header .top .search select { flex-basis: 40px !important; width: 40px !important; min-width: 40px !important; }
+  body header .top .search .search-lens-action, body header .top .search .search-submit { flex-basis: 32px !important; width: 32px !important; min-width: 32px !important; }
   body header .top .search input { padding-inline: 5px !important; font-size: 13px !important; }
   body .mobile-delivery-strip { grid-template-columns: auto minmax(68px,1fr) auto !important; padding-inline: 7px !important; gap: 5px !important; }
   body .mobile-delivery-strip > span { font-size: 10px !important; }
