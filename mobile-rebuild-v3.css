@@ -740,3 +740,71 @@
     max-height:158px!important;
   }
 }
+
+/* V56 mobile header account label + compact account icon + phone footer */
+@media (max-width:600px) {
+  body header .top {
+    grid-template-columns:minmax(0,1fr) 76px 58px 42px!important;
+    column-gap:4px!important;
+  }
+  body header #accountTopLink {
+    width:76px!important;
+    min-width:76px!important;
+    height:38px!important;
+    padding:2px 1px!important;
+    display:grid!important;
+    grid-template-columns:18px minmax(0,1fr)!important;
+    grid-template-rows:1fr!important;
+    align-items:center!important;
+    justify-content:center!important;
+    column-gap:3px!important;
+    overflow:visible!important;
+  }
+  body header #accountTopLink .mobile-account-icon {
+    display:block!important;
+    position:relative!important;
+    width:16px!important;
+    height:17px!important;
+    flex:0 0 16px!important;
+  }
+  body header #accountTopLink .mobile-account-icon::before {
+    width:7px!important;height:7px!important;left:5px!important;top:0!important;
+  }
+  body header #accountTopLink .mobile-account-icon::after {
+    width:14px!important;height:8px!important;left:1px!important;bottom:0!important;
+  }
+  body header #accountTopLink::after {
+    content:"Account\A Sign in"!important;
+    white-space:pre!important;
+    display:block!important;
+    position:static!important;
+    width:auto!important;height:auto!important;
+    margin:0!important;
+    background:none!important;
+    border-radius:0!important;
+    color:#fff!important;
+    font-size:9px!important;
+    line-height:1.05!important;
+    font-weight:700!important;
+    text-align:left!important;
+  }
+  body .footer {
+    padding:22px 14px 18px!important;
+    margin:0!important;
+    text-align:center!important;
+    box-sizing:border-box!important;
+  }
+  body .footer h2 {font-size:21px!important;margin:0 0 7px!important;line-height:1.2!important;}
+  body .footer p {font-size:12px!important;line-height:1.45!important;margin:6px auto!important;max-width:330px!important;overflow-wrap:anywhere!important;}
+  body .footer small {display:block!important;font-size:10px!important;line-height:1.35!important;margin-top:9px!important;}
+}
+@media (max-width:380px) {
+  body header .top {grid-template-columns:minmax(0,1fr) 70px 54px 40px!important;column-gap:2px!important;}
+  body header #accountTopLink {width:70px!important;min-width:70px!important;grid-template-columns:16px minmax(0,1fr)!important;column-gap:2px!important;}
+  body header #accountTopLink .mobile-account-icon {width:14px!important;height:16px!important;}
+  body header #accountTopLink .mobile-account-icon::before {width:6px!important;height:6px!important;left:4px!important;}
+  body header #accountTopLink .mobile-account-icon::after {width:13px!important;height:7px!important;left:0!important;}
+  body header #accountTopLink::after {font-size:8.5px!important;}
+  body .footer {padding:19px 10px 16px!important;}
+  body .footer p {font-size:11px!important;}
+}
