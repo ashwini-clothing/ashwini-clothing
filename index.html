@@ -427,7 +427,7 @@ button:active{transform:translateY(1px)}
 <a class="logo" href="#" onclick="storeProfilePage();return false" aria-label="About Ashwini Clothing"><img class="header-original-logo" src="ashwini-transparent-logo.png" alt="Ashwini logo"><span class="brand-name">ASHWINI</span></a>
 <button class="deliver" type="button" onclick="openDelivery()" aria-label="Choose delivery location">Deliver to<br><b id="deliverLocation">India ▾</b></button>
 <div class="search"><select id="searchCat" aria-label="Category"><option>All</option><option>Western Dress</option><option>Co-ord Set</option><option>Skirt & Top</option><option>Kurta Set</option><option>Formal Ladies & Gents Pants</option><option>Sarara</option><option>Coat Set</option><option>Lehenga</option><option>Wedding Gown</option><option>Shirts</option><option>Party Wear</option></select><span class="mobile-search-lens" aria-hidden="true">⌕</span><input id="q" placeholder="Search Ashwini clothing..." onkeydown="if(event.key==='Enter')load()"><label class="search-action search-photo" for="photoSearchInput" aria-label="Search by photo" title="Search by product photo">⌾</label><input id="photoSearchInput" type="file" accept="image/*" capture="environment" onchange="searchByPhoto(this)"><button class="search-action" type="button" onclick="startVoiceSearch()" aria-label="Search by voice" title="Search by voice">🎙</button><button class="search-submit" type="button" aria-label="Search">🔍</button></div>
-<div class="account-wrap"><button id="accountTopLink" class="toplink" onclick="auth()"><i class="mobile-account-icon" aria-hidden="true" style="display:none"></i><small>Hello, sign in</small><b>Account & Lists</b><span aria-hidden="true" style="margin-left:4px;font-size:13px">▾</span></button><div id="accountPopover" class="account-popover" aria-label="Account and Lists menu"></div></div>
+<div class="account-wrap"><button id="accountTopLink" class="toplink" onclick="auth()"><i class="mobile-account-icon" aria-hidden="true" style="display:none"></i><span class="mobile-account-copy" aria-hidden="true"><strong>Account</strong><em>Sign in</em></span><small>Hello, sign in</small><b>Account & Lists</b><span class="desktop-account-caret" aria-hidden="true" style="margin-left:4px;font-size:13px">▾</span></button><div id="accountPopover" class="account-popover" aria-label="Account and Lists menu"></div></div>
 <button class="toplink" onclick="orders()"><small>Returns</small><b>& Orders</b></button>
 <button id="admin" class="toplink" style="display:none" onclick="dashboard()"><b>👑 Admin</b></button><button class="toplink offer-toplink" onclick="offersPanel()"><b>🎁 Offers</b></button><button class="toplink" onclick="cartView()"><b><i class="mobile-cart-icon" aria-hidden="true" style="display:none">🛒</i><span class="desktop-cart-copy">🛒 Cart </span><span id="count">0</span></b></button>
 </div>
@@ -464,7 +464,7 @@ button:active{transform:translateY(1px)}
   window.addEventListener('DOMContentLoaded', function () {
     var mobileCss = document.createElement('link');
     mobileCss.rel = 'stylesheet';
-  mobileCss.href = '/mobile-rebuild-v3.css?v=20260827-mobile-header-footer-v56';
+  mobileCss.href = '/mobile-rebuild-v3.css?v=20260827-account-footer-v57';
     document.head.appendChild(mobileCss);
   });
 </script>
