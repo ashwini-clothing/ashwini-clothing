@@ -79,6 +79,32 @@ async function visualSearchImageData(file){
  canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
  return canvas.toDataURL('image/jpeg',.84);
 }
+async function visualDescriptor(source){
+ const img=await new Promise((resolve,reject)=>{const x=new Image();x.crossOrigin='anonymous';x.onload=()=>resolve(x);x.onerror=()=>reject(Error('Image unavailable'));x.src=source});
+ const canvas=document.createElement('canvas');canvas.width=40;canvas.height=40;
+ const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,40,40);
+ const data=ctx.getImageData(0,0,40,40).data,hist=Array(12).fill(0);let r=0,g=0,b=0,n=0;
+ for(let i=0;i<data.length;i+=4){
+  if(data[i+3]<100)continue;
+  const rr=data[i],gg=data[i+1],bb=data[i+2],max=Math.max(rr,gg,bb),min=Math.min(rr,gg,bb),delta=max-min;
+  if(max>244&&min>235)continue;
+  r+=rr;g+=gg;b+=bb;n++;
+  if(delta>12){let h;if(max===rr)h=((gg-bb)/delta+6)%6;else if(max===gg)h=(bb-rr)/delta+2;else h=(rr-gg)/delta+4;hist[Math.min(11,Math.floor(h*2))]++}
+ }
+ const hs=hist.reduce((a,x)=>a+x,0)||1;
+ return {rgb:n?[r/n,g/n,b/n]:[220,220,220],hist:hist.map(x=>x/hs),aspect:img.naturalWidth/Math.max(1,img.naturalHeight)};
+}
+function descriptorSimilarity(a,b){
+ const colorDistance=Math.sqrt(a.rgb.reduce((s,x,i)=>s+(x-b.rgb[i])**2,0))/441.7;
+ const dot=a.hist.reduce((s,x,i)=>s+x*b.hist[i],0),ma=Math.sqrt(a.hist.reduce((s,x)=>s+x*x,0)),mb=Math.sqrt(b.hist.reduce((s,x)=>s+x*x,0));
+ const hue=ma&&mb?dot/(ma*mb):0,aspect=Math.max(0,1-Math.abs(Math.log(Math.max(.1,a.aspect)/Math.max(.1,b.aspect)))/2);
+ return Math.round(100*Math.max(0,.64*hue+.27*(1-colorDistance)+.09*aspect));
+}
+async function freeVisualSearch(imageData){
+ const uploaded=await visualDescriptor(imageData),products=await api('/api/products');
+ const scored=await Promise.all(products.map(async p=>{if(!p.image)return {...p,visual_score:0};try{return {...p,visual_score:descriptorSimilarity(uploaded,await visualDescriptor(new URL(p.image,location.href).href))}}catch{return {...p,visual_score:0}}}));
+ return scored.sort((a,b)=>b.visual_score-a.visual_score||Number(b.rating||0)-Number(a.rating||0)).slice(0,12);
+}
 window.searchByPhoto=async function(input){
  const file=input?.files?.[0]||input;
  if(!file)return;
@@ -90,13 +116,21 @@ window.searchByPhoto=async function(input){
   if(grid)grid.innerHTML='<div class="visual-search-loading"><span></span><b>AI photo ko analyze kar raha hai…</b><small>Matching products dhoondhe ja rahe hain</small></div>';
   document.getElementById('products')?.scrollIntoView({behavior:'smooth',block:'start'});
   const imageData=await visualSearchImageData(file);
-  const data=await api('/api/visual-search',{method:'POST',body:{imageData}});
-  const products=Array.isArray(data.results)?data.results:[];
-  const summary=String(data.analysis?.summary||data.analysis?.garment_type||'Related products');
-  if(title)title.textContent='AI Match: '+summary;
+  let products=[],summary='',usedFree=false;
+  try{
+   const data=await api('/api/visual-search',{method:'POST',body:{imageData}});
+   products=Array.isArray(data.results)?data.results:[];
+   summary=String(data.analysis?.summary||data.analysis?.garment_type||'Related products');
+  }catch(aiError){
+   usedFree=true;
+   if(count)count.textContent='(free matching…)';
+   if(grid)grid.innerHTML='<div class="visual-search-loading free"><span></span><b>Free visual matching chal rahi hai…</b><small>Koi API credit use nahi hoga</small></div>';
+   products=await freeVisualSearch(imageData);
+  }
+  if(title)title.textContent=usedFree?'Free Visual Match':'AI Match: '+summary;
   if(count)count.textContent=`(${products.length} results)`;
   if(grid)grid.innerHTML=products.length?products.map(productCard).join(''):'<div class="visual-search-empty"><b>No close product match found.</b><small>Try a clear, front-facing product photo.</small></div>';
-  toast('✓ AI matching complete');
+  toast(usedFree?'✓ Free matching complete':'✓ AI matching complete');
  }catch(e){
   if(title)title.textContent='AI Visual Search';
   if(count)count.textContent='';
