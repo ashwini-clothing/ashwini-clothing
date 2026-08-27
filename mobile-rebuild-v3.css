@@ -81,6 +81,83 @@
   .chat-widget, .whatsapp-widget { width:56px!important; height:56px!important; right:12px!important; bottom:86px!important; }
 }
 
+/* Mobile header and product-card polish — appended last so it wins over legacy rules. */
+@media (max-width:600px) {
+  /* Keep account as one clear white person icon—never let the desktop words overlap it. */
+  body header #accountTopLink {
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:42px!important;
+    height:46px!important;
+    min-width:42px!important;
+    padding:0!important;
+    overflow:hidden!important;
+  }
+  body header #accountTopLink small,
+  body header #accountTopLink b,
+  body header #accountTopLink span { display:none!important; }
+  body header #accountTopLink .mobile-account-icon {
+    display:block!important;
+    position:relative!important;
+    width:23px!important;
+    height:23px!important;
+    margin:0!important;
+    filter:none!important;
+    font-size:0!important;
+  }
+
+  /* Show a short readable Orders label instead of the two desktop header lines. */
+  body header .top > button[onclick="orders()"] {
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:62px!important;
+    height:46px!important;
+    min-width:62px!important;
+    padding:0!important;
+    overflow:hidden!important;
+    white-space:nowrap!important;
+  }
+  body header .top > button[onclick="orders()"] > small,
+  body header .top > button[onclick="orders()"] > b { display:none!important; }
+  body header .top > button[onclick="orders()"]::before {
+    content:"Orders"!important;
+    display:block!important;
+    color:#fff!important;
+    font-size:13px!important;
+    line-height:1!important;
+    letter-spacing:0!important;
+    font-weight:800!important;
+  }
+
+  /* Search stays one clean pill: no divider lines around the camera / microphone controls. */
+  body header .top .search,
+  body header .search { overflow:hidden!important; }
+  body header .top .search button,
+  body header .search button {
+    border-left:0!important;
+    border-right:0!important;
+    box-shadow:none!important;
+    outline:0!important;
+  }
+
+  /* Five compact size choices on one row in every mobile product card. */
+  body .product-area #grid .sizes,
+  body .product-area #grid .sizebox {
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    gap:3px!important;
+  }
+  body .product-area #grid .sizes button,
+  body .product-area #grid .sizebox button {
+    height:32px!important;
+    min-width:0!important;
+    padding:0!important;
+    font-size:12px!important;
+    line-height:1!important;
+  }
+}
+
 /* --------------------------------------------------------------------------
    MOBILE HOME ONLY — compact marketplace layout
    This final block deliberately overrides older mobile experiments.  It is
@@ -493,4 +570,87 @@
   body .product-area #grid .sizes, body .product-area #grid .sizebox { display:grid!important; grid-template-columns:repeat(3,minmax(0,1fr))!important; gap:4px!important; }
   body .product-area #grid .sizes button, body .product-area #grid .sizebox button { width:100%!important; min-width:0!important; height:29px!important; padding:0!important; font-size:11px!important; }
   body .product-area #grid button { min-height:34px!important; padding:6px!important; font-size:12px!important; }
+}
+
+/* Phone-only final correction: keep the compact header and size choices clean. */
+@media (max-width:600px) {
+  /* One white account icon only; desktop account words must not overlap it. */
+  body header #accountTopLink {
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:42px!important;
+    height:46px!important;
+    min-width:42px!important;
+    padding:0!important;
+    overflow:hidden!important;
+  }
+  body header #accountTopLink > :not(.mobile-account-icon),
+  body header #accountTopLink small,
+  body header #accountTopLink b,
+  body header #accountTopLink span { display:none!important; }
+  body header #accountTopLink .mobile-account-icon {
+    display:block!important;
+    width:23px!important;
+    height:23px!important;
+    margin:0!important;
+    filter:brightness(0) invert(1)!important;
+    color:#fff!important;
+  }
+
+  /* Orders stays a single readable label instead of overlapping desktop text. */
+  body header .top > button[onclick="orders()"] {
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    width:62px!important;
+    height:46px!important;
+    min-width:62px!important;
+    padding:0!important;
+    overflow:hidden!important;
+    white-space:nowrap!important;
+    font-size:0!important;
+  }
+  body header .top > button[onclick="orders()"] > small,
+  body header .top > button[onclick="orders()"] > b,
+  body header .top > button[onclick="orders()"] > span { display:none!important; }
+  body header .top > button[onclick="orders()"]::after { content:none!important; display:none!important; }
+  body header .top > button[onclick="orders()"]::before {
+    content:"Orders"!important;
+    display:block!important;
+    color:#fff!important;
+    font-size:13px!important;
+    line-height:1!important;
+    letter-spacing:0!important;
+    font-weight:800!important;
+  }
+
+  /* No separator lines around the camera, microphone or search controls. */
+  body header .top .search .search-action,
+  body header .top .search .search-submit,
+  body header .top .search .search-photo,
+  body header .top .search button {
+    border-left:0!important;
+    border-right:0!important;
+    box-shadow:none!important;
+    outline:0!important;
+  }
+
+  /* Compact mobile size options: five choices fit on a single row. */
+  body .product-area #grid .sizes,
+  body .product-area #grid .sizebox {
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    gap:3px!important;
+  }
+  body .product-area #grid .sizes button,
+  body .product-area #grid .sizebox button {
+    width:100%!important;
+    min-width:0!important;
+    height:30px!important;
+    min-height:30px!important;
+    padding:0!important;
+    font-size:11px!important;
+    line-height:1!important;
+  }
 }
