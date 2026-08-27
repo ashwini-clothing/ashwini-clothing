@@ -80,3 +80,88 @@
   #body button { min-height:42px!important; }
   .chat-widget, .whatsapp-widget { width:56px!important; height:56px!important; right:12px!important; bottom:86px!important; }
 }
+
+/* Final phone safety overrides.  These deliberately come last because the
+   older page contains several mobile rules from earlier versions. */
+@media (max-width:600px) {
+  header .top {
+    height:112px!important;
+    min-height:112px!important;
+    max-height:112px!important;
+    grid-template-rows:48px 46px!important;
+    align-content:start!important;
+    overflow:hidden!important;
+  }
+  header .top .search {
+    grid-template-columns:minmax(0,1fr) 42px 42px 42px!important;
+    min-width:0!important;
+    height:46px!important;
+  }
+  header .top .search select { display:none!important; }
+  header .top .search input#q { display:block!important; width:100%!important; min-width:0!important; }
+  header .top .search .search-photo { font-size:0!important; }
+  header .top .search .search-photo::after { content:"📷"!important; font-size:18px!important; }
+
+  /* A single simple white account icon, without the legacy emoji/globe. */
+  header .mobile-account-icon {
+    display:block!important;
+    width:20px!important;
+    height:20px!important;
+    border:0!important;
+    border-radius:0!important;
+    background:none!important;
+    background-image:none!important;
+    color:#fff!important;
+    overflow:visible!important;
+  }
+  header .mobile-account-icon::before {
+    content:"●"!important;
+    position:absolute!important;
+    left:6px!important;
+    top:-3px!important;
+    color:#fff!important;
+    font-size:13px!important;
+    line-height:13px!important;
+  }
+  header .mobile-account-icon::after {
+    content:""!important;
+    position:absolute!important;
+    left:1px!important;
+    bottom:0!important;
+    width:18px!important;
+    height:10px!important;
+    transform:none!important;
+    border:0!important;
+    border-radius:12px 12px 2px 2px!important;
+    background:#fff!important;
+  }
+  header #accountTopLink > :not(.mobile-account-icon) { display:none!important; }
+
+  /* Keep only the designed cart drawing and the white quantity badge. */
+  header button[onclick="cartView()"] > b { display:flex!important; align-items:center!important; justify-content:center!important; font-size:0!important; }
+  header button[onclick="cartView()"] > b::before,
+  header button[onclick="cartView()"] > b::after { content:none!important; display:none!important; }
+  header button[onclick="cartView()"] .desktop-cart-copy { display:none!important; }
+  header button[onclick="cartView()"] .mobile-cart-icon { display:block!important; }
+
+  /* The delivery message must always be on its own line. */
+  .mobile-delivery-strip {
+    grid-template-columns:104px minmax(0,1fr) 86px!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+  }
+  .mobile-delivery-strip input { width:100%!important; min-width:0!important; box-sizing:border-box!important; }
+  .mobile-delivery-strip small {
+    grid-column:1 / -1!important;
+    display:block!important;
+    min-height:18px!important;
+    white-space:normal!important;
+  }
+
+  /* A fixed card prevents the slide image and text from escaping the phone. */
+  .ad-track { height:390px!important; min-height:390px!important; aspect-ratio:auto!important; }
+  .ad-slide { grid-template-rows:48% 52%!important; overflow:hidden!important; }
+  .ad-copy-panel { min-height:0!important; overflow:hidden!important; }
+  .ad-image-panel { min-height:0!important; max-height:100%!important; }
+  .ad-image-panel img { width:100%!important; height:100%!important; object-fit:contain!important; }
+}
