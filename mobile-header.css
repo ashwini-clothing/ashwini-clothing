@@ -52,6 +52,7 @@
   body header .top .search input#q { display: block !important; flex: 1 1 auto !important; min-width: 0 !important; width: 1px !important; height: 42px !important; padding: 0 8px !important; border: 0 !important; border-radius: 0 !important; font-size: 14px !important; box-shadow: none !important; box-sizing: border-box !important; }
   body header .top .search .search-lens-action, body header .top .search .search-submit { display: flex !important; flex: 0 0 34px !important; width: 34px !important; min-width: 34px !important; height: 42px !important; padding: 0 !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; border: 0 !important; border-left: 1px solid #ece4dd !important; border-radius: 0 !important; background: #fff !important; color: #111 !important; box-shadow: none !important; box-sizing: border-box !important; }
   body header .top .search .search-lens-action svg { display: block !important; width: 20px !important; height: 20px !important; fill: none !important; stroke: currentColor !important; stroke-width: 1.8 !important; stroke-linecap: round !important; stroke-linejoin: round !important; }
+  body header .top .search .search-lens-action { border-left: 0 !important; }
   body header .top .search .search-lens-action .lens-dot { fill: currentColor !important; stroke: none !important; }
   body header .top .search .search-submit { background: #d6af63 !important; }
   body header .top .search .search-submit svg { display: block !important; width: 19px !important; height: 19px !important; fill: none !important; stroke: #2d2227 !important; stroke-width: 2 !important; stroke-linecap: round !important; }
@@ -60,6 +61,19 @@
   body header .nav { display: flex !important; gap: 6px !important; min-height: 0 !important; padding: 6px 9px 7px !important; overflow-x: auto !important; overflow-y: hidden !important; white-space: nowrap !important; scrollbar-width: none !important; -webkit-overflow-scrolling: touch !important; }
   body header .nav::-webkit-scrollbar { display: none !important; }
   body header .nav span { flex: 0 0 auto !important; padding: 6px 10px !important; border: 1px solid rgba(255,255,255,.2) !important; border-radius: 16px !important; font-size: 11px !important; line-height: 1 !important; }
+
+  body .ad-carousel .ad-arrow,
+  body .ad-carousel .ad-arrow.prev,
+  body .ad-carousel .ad-arrow.next {
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    padding: 4px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
 
   body .mobile-delivery-strip { display: grid !important; grid-template-columns: auto minmax(78px,1fr) auto !important; align-items: center !important; gap: 6px !important; padding: 9px 10px !important; background: #fff !important; border-bottom: 1px solid #ece2db !important; }
   body .mobile-delivery-strip > span { min-width: 0 !important; white-space: nowrap !important; font-size: 11px !important; }
