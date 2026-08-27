@@ -165,3 +165,141 @@
   .ad-image-panel { min-height:0!important; max-height:100%!important; }
   .ad-image-panel img { width:100%!important; height:100%!important; object-fit:contain!important; }
 }
+
+/* Mobile clean-layout reset. This is intentionally more specific than the
+   old desktop/mobile mixed rules embedded in index.html. */
+@media (max-width:600px) {
+  body header .top .search {
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 42px 42px 42px!important;
+    grid-template-rows:46px!important;
+    height:46px!important;
+    min-width:0!important;
+    overflow:hidden!important;
+  }
+  body header .top .search .mobile-search-lens,
+  body header .top .search select { display:none!important; }
+  body header .top .search input#q {
+    grid-column:1!important;
+    grid-row:1!important;
+    display:block!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    height:46px!important;
+    margin:0!important;
+    padding:0 13px!important;
+    box-sizing:border-box!important;
+  }
+  body header .top .search .search-photo { grid-column:2!important; grid-row:1!important; }
+  body header .top .search button[onclick*="startVoiceSearch"] { grid-column:3!important; grid-row:1!important; }
+  body header .top .search .search-submit { grid-column:4!important; grid-row:1!important; }
+  body header .top .search .search-action,
+  body header .top .search .search-submit {
+    display:flex!important;
+    width:42px!important;
+    min-width:42px!important;
+    height:46px!important;
+    margin:0!important;
+    padding:0!important;
+    box-sizing:border-box!important;
+  }
+
+  body .mobile-delivery-strip {
+    display:grid!important;
+    grid-template-columns:126px minmax(0,1fr) 88px!important;
+    grid-template-rows:44px auto!important;
+    align-items:center!important;
+    gap:7px!important;
+    width:100%!important;
+    padding:12px 14px 10px!important;
+    box-sizing:border-box!important;
+  }
+  body .mobile-delivery-strip > span { white-space:nowrap!important; font-size:16px!important; }
+  body .mobile-delivery-strip > input {
+    display:block!important;
+    width:100%!important;
+    min-width:0!important;
+    height:44px!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+  }
+  body .mobile-delivery-strip > button { width:88px!important; height:44px!important; padding:0!important; }
+  body .mobile-delivery-strip > small {
+    grid-column:1 / -1!important;
+    grid-row:2!important;
+    display:block!important;
+    width:100%!important;
+    padding:0!important;
+    white-space:normal!important;
+    font-size:13px!important;
+  }
+
+  /* One full-width product card per row prevents desktop columns and vertical buttons. */
+  body .products,
+  body .product-grid {
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr)!important;
+    gap:14px!important;
+    padding:12px!important;
+  }
+  body .products .product,
+  body .products .product-card,
+  body .product-grid .product,
+  body .product-grid .product-card {
+    display:block!important;
+    width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+  }
+  body .products .pic,
+  body .product-grid .pic,
+  body .products .product img,
+  body .products .product-card img,
+  body .product-grid .product img,
+  body .product-grid .product-card img { height:300px!important; max-height:300px!important; object-fit:cover!important; }
+  body .products .sizes,
+  body .product-grid .sizes,
+  body .products .sizebox,
+  body .product-grid .sizebox { display:flex!important; flex-wrap:nowrap!important; gap:6px!important; }
+  body .products .sizes button,
+  body .product-grid .sizes button,
+  body .products .sizebox button,
+  body .product-grid .sizebox button { flex:1 1 0!important; width:auto!important; min-width:0!important; }
+
+  /* Make the home banner a real phone card instead of a desktop grid. */
+  body .ad-carousel { min-height:0!important; height:410px!important; overflow:hidden!important; }
+  body .ad-track { height:410px!important; min-height:410px!important; }
+  body .ad-slide {
+    display:flex!important;
+    flex-direction:column!important;
+    min-width:100%!important;
+    height:410px!important;
+    min-height:410px!important;
+    overflow:hidden!important;
+  }
+  body .ad-copy-panel {
+    display:flex!important;
+    flex:0 0 48%!important;
+    width:100%!important;
+    min-height:0!important;
+    padding:26px 34px 8px!important;
+    box-sizing:border-box!important;
+  }
+  body .ad-image-panel {
+    display:flex!important;
+    flex:0 0 52%!important;
+    width:100%!important;
+    min-height:0!important;
+    padding:4px 34px 30px!important;
+    box-sizing:border-box!important;
+  }
+  body .ad-image-panel img {
+    display:block!important;
+    width:100%!important;
+    height:100%!important;
+    min-width:0!important;
+    min-height:0!important;
+    object-fit:contain!important;
+  }
+}
