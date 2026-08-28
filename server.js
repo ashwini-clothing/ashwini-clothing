@@ -58,21 +58,25 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
-// Ensure the configured Store Admin exists even when Render Free restarts/recreates
-// the local SQLite database. This only creates/promotes the designated admin account;
-// it does not reset customers, products, orders, or other data.
+// Ensure the configured Store Admin can always sign in after Render restarts or a
+// database is recreated.  The previous implementation assigned a random password
+// to a newly-created admin, which made password sign-in impossible.
 try{
- const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'parishdevi5@gmail.com').trim().toLowerCase();
- if(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail)){
-  const existingAdmin=db.prepare("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
-  if(existingAdmin && existingAdmin.role!=='admin'){
-   db.prepare("UPDATE users SET role='admin' WHERE id=?").run(existingAdmin.id);
-  }else if(!existingAdmin){
-   const tempPassword=crypto.randomBytes(32).toString('hex');
-   const hash=bcrypt.hashSync(tempPassword,12);
+ const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
+ const bootstrapAdminPassword=String(process.env.ADMIN_PASSWORD||'');
+ if(bootstrapAdminEmail && bootstrapAdminPassword.length>=8){
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail))throw new Error('ADMIN_EMAIL is invalid');
+  const hash=bcrypt.hashSync(bootstrapAdminPassword,12);
+  const existingAdmin=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
+  if(existingAdmin){
+   db.prepare("UPDATE users SET password_hash=?,role='admin' WHERE id=?").run(hash,existingAdmin.id);
+   db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(existingAdmin.id);
+  }else{
    db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'admin')")
      .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
   }
+ }else if(bootstrapAdminEmail){
+  console.warn('[Ashwini Admin Bootstrap] ADMIN_PASSWORD must be set to an 8+ character secret before the admin account can be created or recovered.');
  }
 }catch(e){console.error('[Ashwini Admin Bootstrap]',e.message)}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
@@ -88,7 +92,12 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS product_reviews (id INTEGER PRIMARY KEY 
 try{db.exec(`CREATE TABLE IF NOT EXISTS offers (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT DEFAULT '', coupon_code TEXT DEFAULT '', discount_percent REAL DEFAULT 0, banner_url TEXT DEFAULT '', button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', start_at TEXT DEFAULT '', end_at TEXT DEFAULT '', active INTEGER DEFAULT 1, show_popup INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS homepage_slides (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT DEFAULT '', offer_text TEXT DEFAULT '', image_url TEXT NOT NULL, button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE homepage_slides ADD COLUMN offer_text TEXT DEFAULT ''")}catch{}
+for(const q of ["ALTER TABLE homepage_slides ADD COLUMN title_color TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN title_size INTEGER DEFAULT 0","ALTER TABLE homepage_slides ADD COLUMN offer_color TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN offer_size INTEGER DEFAULT 0","ALTER TABLE homepage_slides ADD COLUMN button_background TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN button_color TEXT DEFAULT ''","ALTER TABLE homepage_slides ADD COLUMN button_border TEXT DEFAULT ''"]){try{db.exec(q)}catch{}}
+try{db.exec(`CREATE TABLE IF NOT EXISTS site_appearance (id INTEGER PRIMARY KEY CHECK(id=1), button_bg TEXT NOT NULL DEFAULT '#CAF0F8', button_text TEXT NOT NULL DEFAULT '#03045E', button_border TEXT NOT NULL DEFAULT '#023EBA', button_font_size INTEGER NOT NULL DEFAULT 15, header_bg TEXT NOT NULL DEFAULT '#321c29', header_text TEXT NOT NULL DEFAULT '#ffffff', nav_bg TEXT NOT NULL DEFAULT '#5a2e40', nav_text TEXT NOT NULL DEFAULT '#ffffff', search_bg TEXT NOT NULL DEFAULT '#ffffff', search_button_bg TEXT NOT NULL DEFAULT '#c9a86a', search_button_text TEXT NOT NULL DEFAULT '#03045E', shop_now_bg TEXT NOT NULL DEFAULT '#CAF0F8', shop_now_text TEXT NOT NULL DEFAULT '#03045E', shop_now_border TEXT NOT NULL DEFAULT '#023EBA', shop_category_bg TEXT NOT NULL DEFAULT '#CAF0F8', shop_category_text TEXT NOT NULL DEFAULT '#03045E', shop_category_border TEXT NOT NULL DEFAULT '#023EBA', quick_filter_bg TEXT NOT NULL DEFAULT '#CAF0F8', quick_filter_text TEXT NOT NULL DEFAULT '#03045E', quick_filter_border TEXT NOT NULL DEFAULT '#023EBA', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+for(const q of ["ALTER TABLE site_appearance ADD COLUMN shop_now_bg TEXT NOT NULL DEFAULT '#CAF0F8'","ALTER TABLE site_appearance ADD COLUMN shop_now_text TEXT NOT NULL DEFAULT '#03045E'","ALTER TABLE site_appearance ADD COLUMN shop_now_border TEXT NOT NULL DEFAULT '#023EBA'","ALTER TABLE site_appearance ADD COLUMN shop_category_bg TEXT NOT NULL DEFAULT '#CAF0F8'","ALTER TABLE site_appearance ADD COLUMN shop_category_text TEXT NOT NULL DEFAULT '#03045E'","ALTER TABLE site_appearance ADD COLUMN shop_category_border TEXT NOT NULL DEFAULT '#023EBA'","ALTER TABLE site_appearance ADD COLUMN quick_filter_bg TEXT NOT NULL DEFAULT '#CAF0F8'","ALTER TABLE site_appearance ADD COLUMN quick_filter_text TEXT NOT NULL DEFAULT '#03045E'","ALTER TABLE site_appearance ADD COLUMN quick_filter_border TEXT NOT NULL DEFAULT '#023EBA'"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS shop_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, icon TEXT DEFAULT '👗', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS quick_filters (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL UNIQUE, filter_type TEXT NOT NULL DEFAULT 'IN_STOCK', active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{const defaults=[['In stock','IN_STOCK',0],['4 Stars & above','RATING_4',1]];const add=db.prepare('INSERT INTO quick_filters(label,filter_type,active,sort_order) VALUES(?,?,1,?)');for(const [label,type,order] of defaults){if(!db.prepare('SELECT id FROM quick_filters WHERE label=?').get(label))add.run(label,type,order)}}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_highlights (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, value TEXT NOT NULL, active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{ const defaults=[['Fabric','Premium Feel',0],['Fit','Comfort Fit',1],['Delivery','Fast Dispatch',2]]; const add=db.prepare('INSERT INTO product_highlights(label,value,active,sort_order) VALUES(?,?,?,?)'); for(const [label,value,order] of defaults){const row=db.prepare('SELECT id FROM product_highlights WHERE label=? ORDER BY id LIMIT 1').get(label); if(!row)add.run(label,value,1,order);} }catch{}
 try{
@@ -125,19 +134,12 @@ try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_name TEXT NOT NULL DE
 try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!'")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_state_settings (state TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
-try{db.exec(`CREATE TABLE IF NOT EXISTS behavior_events (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- session_id TEXT NOT NULL,
- user_id INTEGER,
- event_type TEXT NOT NULL,
- product_id INTEGER,
- context_product_id INTEGER,
- metadata TEXT NOT NULL DEFAULT '{}',
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
- FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
-); CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at); CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);`)}catch(e){console.error('[Behavior table]',e.message)}
+try{db.exec(`CREATE TABLE IF NOT EXISTS behavior_events (id INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL,user_id INTEGER,event_type TEXT NOT NULL,product_id INTEGER,context_product_id INTEGER,metadata TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at); CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);`)}catch(e){console.error('[Behavior table]',e.message)}
+try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_settings (id INTEGER PRIMARY KEY CHECK(id=1), dispatch_city TEXT NOT NULL DEFAULT 'Jandli, Ambala Cantt', dispatch_state TEXT NOT NULL DEFAULT 'Haryana', dispatch_pincode TEXT NOT NULL DEFAULT '134003', same_city_min INTEGER NOT NULL DEFAULT 1, same_city_max INTEGER NOT NULL DEFAULT 2, same_state_min INTEGER NOT NULL DEFAULT 2, same_state_max INTEGER NOT NULL DEFAULT 4, nearby_min INTEGER NOT NULL DEFAULT 3, nearby_max INTEGER NOT NULL DEFAULT 5, rest_min INTEGER NOT NULL DEFAULT 5, rest_max INTEGER NOT NULL DEFAULT 8, remote_min INTEGER NOT NULL DEFAULT 7, remote_max INTEGER NOT NULL DEFAULT 10, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, block_type TEXT NOT NULL CHECK(block_type IN ('PIN','CITY','STATE')), block_value TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(block_type,block_value))`)}catch{}
+try{db.prepare(`INSERT OR IGNORE INTO delivery_settings(id) VALUES(1)`).run()}catch{}
 try{db.prepare("INSERT OR IGNORE INTO cod_settings(id,enabled) VALUES(1,1)").run()}catch{}
+try{db.prepare("INSERT OR IGNORE INTO site_appearance(id) VALUES(1)").run()}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO store_profile(id,about_title,history,address,city,state,pincode,email,phone,logo_data) VALUES(1,?,?,?,?,?,?,?,?,?)`).run('About Ashwini Clothing','Welcome to Ashwini Clothing. Our story and company information can be updated by the store admin.','','','','','ashwiniweb88@gmail.com','', '')}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, user_id INTEGER, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(question_id) REFERENCES product_questions(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 db.exec(fs.readFileSync(path.join(__dirname,"seed.sql"),"utf8"));
@@ -244,6 +246,10 @@ app.get('/api/admin/email-status',auth,admin,(req,res)=>{
  res.json({provider,configured,admin_email:adminEmail(),from:process.env.EMAIL_FROM||'Ashwini Clothing <onboarding@resend.dev>'});
 });
 app.get("/api/store-profile",(req,res)=>{const x=db.prepare("SELECT * FROM store_profile WHERE id=1").get()||{};const {whatsapp_number,...safe}=x;res.json(safe)});
+const appearanceKeys=['button_bg','button_text','button_border','header_bg','header_text','nav_bg','nav_text','search_bg','search_button_bg','search_button_text','shop_now_bg','shop_now_text','shop_now_border','shop_category_bg','shop_category_text','shop_category_border','quick_filter_bg','quick_filter_text','quick_filter_border'];
+function appearanceColor(value,fallback){const x=String(value||fallback).trim();if(!/^#[0-9a-fA-F]{6}$/.test(x))throw Error('Choose a valid colour');return x}
+app.get('/api/appearance',(req,res)=>res.json(db.prepare('SELECT * FROM site_appearance WHERE id=1').get()||{}));
+app.patch('/api/admin/appearance',auth,admin,(req,res)=>{try{const b=req.body||{},current=db.prepare('SELECT * FROM site_appearance WHERE id=1').get()||{};const colors={};for(const key of appearanceKeys)colors[key]=appearanceColor(b[key],current[key]);const size=Math.max(11,Math.min(24,Number(b.button_font_size||current.button_font_size||15)));if(!Number.isFinite(size))throw Error('Enter a valid button text size');db.prepare(`UPDATE site_appearance SET button_bg=?,button_text=?,button_border=?,button_font_size=?,header_bg=?,header_text=?,nav_bg=?,nav_text=?,search_bg=?,search_button_bg=?,search_button_text=?,shop_now_bg=?,shop_now_text=?,shop_now_border=?,shop_category_bg=?,shop_category_text=?,shop_category_border=?,quick_filter_bg=?,quick_filter_text=?,quick_filter_border=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(colors.button_bg,colors.button_text,colors.button_border,Math.round(size),colors.header_bg,colors.header_text,colors.nav_bg,colors.nav_text,colors.search_bg,colors.search_button_bg,colors.search_button_text,colors.shop_now_bg,colors.shop_now_text,colors.shop_now_border,colors.shop_category_bg,colors.shop_category_text,colors.shop_category_border,colors.quick_filter_bg,colors.quick_filter_text,colors.quick_filter_border);res.json(db.prepare('SELECT * FROM site_appearance WHERE id=1').get())}catch(e){res.status(400).json({error:e.message})}});
 app.get("/api/whatsapp-help",(req,res)=>{res.redirect(302,"/");});
 
 function currentHelpCustomer(req){
@@ -315,12 +321,38 @@ app.get("/api/pincode/:pin",async(req,res)=>{
  }catch{}
  return res.status(404).json({error:"PIN code location could not be found. Please check the 6-digit PIN."});
 });
+app.get('/api/delivery-estimate/:pin',async(req,res)=>{
+ const pin=String(req.params.pin||'').trim();if(!/^\d{6}$/.test(pin))return res.status(400).json({error:'Enter a valid 6-digit PIN code'});
+ const settings=db.prepare('SELECT * FROM delivery_settings WHERE id=1').get();let place=null;
+ try{const r=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{headers:{accept:'application/json'}});if(r.ok){const data=await r.json(),po=data?.[0]?.PostOffice?.[0];if(po)place={city:po.Block||po.District||po.Division||'',district:po.District||'',state:po.State||''}}}catch{}
+ if(!place)return res.status(404).json({error:'PIN code location could not be found. Please check the 6-digit PIN.'});
+ const cityText=`${place.city} ${place.district}`.toLowerCase(),state=String(place.state||'').toLowerCase(),baseState=String(settings.dispatch_state||'').toLowerCase();
+ const blocked=db.prepare("SELECT * FROM delivery_blocks WHERE active=1 ORDER BY CASE block_type WHEN 'PIN' THEN 0 WHEN 'CITY' THEN 1 ELSE 2 END").all().find(x=>x.block_type==='PIN'?x.block_value===pin:x.block_type==='CITY'?cityText.includes(String(x.block_value||'').toLowerCase()):state===String(x.block_value||'').toLowerCase());
+ if(blocked)return res.json({pin,city:place.city||place.district,state:place.state,deliverable:false,message:'Delivery is not available for your area.',blockType:blocked.block_type});
+ const nearby=['punjab','chandigarh','delhi','himachal pradesh','jammu and kashmir','rajasthan','uttarakhand','uttar pradesh'];
+ let min=settings.rest_min,max=settings.rest_max,zone='Across India';
+ if(pin===settings.dispatch_pincode||cityText.includes('ambala')||cityText.includes('jandli')){min=settings.same_city_min;max=settings.same_city_max;zone='Jandli / Ambala Cantt'}
+ else if(state===baseState){min=settings.same_state_min;max=settings.same_state_max;zone='Haryana'}
+ else if(nearby.includes(state)){min=settings.nearby_min;max=settings.nearby_max;zone='Nearby state'}
+ else if(['assam','arunachal pradesh','manipur','meghalaya','mizoram','nagaland','sikkim','tripura','andaman and nicobar islands','lakshadweep'].includes(state)){min=settings.remote_min;max=settings.remote_max;zone='Remote area'}
+ const from=new Date(),to=new Date();from.setDate(from.getDate()+Number(min));to.setDate(to.getDate()+Number(max));
+ res.json({pin,city:place.city||place.district,state:place.state,deliverable:true,zone,minDays:Number(min),maxDays:Number(max),from:from.toISOString(),to:to.toISOString(),dispatch:{city:settings.dispatch_city,pincode:settings.dispatch_pincode}});
+});
+app.get('/api/admin/delivery-settings',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM delivery_settings WHERE id=1').get()));
+app.patch('/api/admin/delivery-settings',auth,admin,(req,res)=>{try{const b=req.body||{},days=['same_city_min','same_city_max','same_state_min','same_state_max','nearby_min','nearby_max','rest_min','rest_max','remote_min','remote_max'];const n={};for(const key of days){n[key]=Math.max(0,Math.min(30,Number(b[key])));if(!Number.isFinite(n[key]))throw Error('Enter valid delivery days')}for(const pair of [['same_city_min','same_city_max'],['same_state_min','same_state_max'],['nearby_min','nearby_max'],['rest_min','rest_max'],['remote_min','remote_max']])if(n[pair[0]]>n[pair[1]])throw Error('Minimum delivery day cannot exceed maximum day');const pin=String(b.dispatch_pincode||'').trim();if(!/^\d{6}$/.test(pin))throw Error('Enter a valid 6-digit dispatch PIN code');db.prepare(`UPDATE delivery_settings SET dispatch_city=?,dispatch_state=?,dispatch_pincode=?,same_city_min=?,same_city_max=?,same_state_min=?,same_state_max=?,nearby_min=?,nearby_max=?,rest_min=?,rest_max=?,remote_min=?,remote_max=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.dispatch_city||'Jandli, Ambala Cantt').trim(),String(b.dispatch_state||'Haryana').trim(),pin,n.same_city_min,n.same_city_max,n.same_state_min,n.same_state_max,n.nearby_min,n.nearby_max,n.rest_min,n.rest_max,n.remote_min,n.remote_max);res.json(db.prepare('SELECT * FROM delivery_settings WHERE id=1').get())}catch(e){res.status(400).json({error:e.message})}});
+app.get('/api/admin/delivery-blocks',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM delivery_blocks ORDER BY active DESC,block_type,block_value').all()));
+app.post('/api/admin/delivery-blocks',auth,admin,(req,res)=>{try{const b=req.body||{},type=String(b.block_type||'').toUpperCase(),value=String(b.block_value||'').trim();if(!['PIN','CITY','STATE'].includes(type))throw Error('Choose PIN code, city or state');if(type==='PIN'&&!/^\d{6}$/.test(value))throw Error('Enter a valid 6-digit PIN code');if(type!=='PIN'&&!value)throw Error('Enter an area name');const r=db.prepare('INSERT INTO delivery_blocks(block_type,block_value,note,active) VALUES(?,?,?,?)').run(type,type==='PIN'?value:value.toLowerCase(),String(b.note||'').trim().slice(0,160),b.active===false?0:1);res.json(db.prepare('SELECT * FROM delivery_blocks WHERE id=?').get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
+app.patch('/api/admin/delivery-blocks/:id',auth,admin,(req,res)=>{try{const active=req.body?.active===false||String(req.body?.active).toLowerCase()==='false'?0:1;db.prepare('UPDATE delivery_blocks SET active=? WHERE id=?').run(active,Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+app.delete('/api/admin/delivery-blocks/:id',auth,admin,(req,res)=>{try{db.prepare('DELETE FROM delivery_blocks WHERE id=?').run(Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 
 app.post("/api/coupons/check",auth,(req,res)=>{try{const code=String(req.body?.code||'').trim().toUpperCase();if(code==='NEW2026'){const first=db.prepare("SELECT COUNT(*) n FROM orders WHERE user_id=?").get(req.user.id).n===0;if(!first)throw Error('Coupon already used or not available for this account');return res.json({ok:true,discount_percent:30,code})}const now=new Date().toISOString();const o=db.prepare("SELECT * FROM offers WHERE active=1 AND coupon_code=? AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY id DESC LIMIT 1").get(code,now,now);if(!o)throw Error('Coupon not recognised or expired');res.json({ok:true,discount_percent:Number(o.discount_percent||0),code:o.coupon_code,title:o.title})}catch(e){res.status(400).json({error:e.message})}});
 app.get("/api/slides",(req,res)=>{res.json(db.prepare("SELECT * FROM homepage_slides WHERE active=1 ORDER BY sort_order,id").all())});
 app.get("/api/admin/slides",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM homepage_slides ORDER BY sort_order,id").all()));
-app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text) VALUES(?,?,?,?,?,?,?)").run(String(b.title||''),String(b.image_url).trim(),String(b.button_text||'Shop Now'),String(b.button_action||''),b.active===false?0:1,Number(b.sort_order||0),String(b.offer_text||''));res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
-app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=? WHERE id=?").run(String(b.title||''),String(b.image_url).trim(),String(b.button_text||'Shop Now'),String(b.button_action||''),b.active?1:0,Number(b.sort_order||0),String(b.offer_text||''),req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+function slideStyle(b,key){const value=String(b[key]||'').trim();if(value&&!/^#[0-9a-fA-F]{6}$/.test(value))throw Error('Choose valid slide colours');return value}
+function slideSize(value){const n=Number(value||0);if(!Number.isFinite(n)||n<0||n>90)throw Error('Slide text size must be between 0 and 90');return Math.round(n)}
+function slideValues(b){return [String(b.title||'').slice(0,120),String(b.image_url||'').trim(),String(b.button_text||'Shop Now').slice(0,60),String(b.button_action||''),b.active===false?0:1,Math.max(0,Number(b.sort_order||0)),String(b.offer_text||'').slice(0,160),slideStyle(b,'title_color'),slideSize(b.title_size),slideStyle(b,'offer_color'),slideSize(b.offer_size),slideStyle(b,'button_background'),slideStyle(b,'button_color'),slideStyle(b,'button_border')]}
+app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b),r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text,title_color,title_size,offer_color,offer_size,button_background,button_color,button_border) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...v);res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
+app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b);db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=?,title_color=?,title_size=?,offer_color=?,offer_size=?,button_background=?,button_color=?,button_border=? WHERE id=?").run(...v,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/slides/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM homepage_slides WHERE id=?").run(req.params.id);res.json({ok:true})});
 app.get("/api/categories",(req,res)=>{res.json(db.prepare("SELECT * FROM shop_categories WHERE active=1 ORDER BY sort_order,id").all())});
 app.get("/api/product-highlights",(req,res)=>res.json(db.prepare("SELECT * FROM product_highlights WHERE active=1 ORDER BY sort_order,id").all()));
@@ -332,6 +364,12 @@ app.get("/api/admin/categories",auth,admin,(req,res)=>res.json(db.prepare("SELEC
 app.post("/api/admin/categories",auth,admin,(req,res)=>{try{const b=req.body||{};const name=String(b.name||'').trim();if(!name)throw Error('Category name is required');const r=db.prepare("INSERT INTO shop_categories(name,icon,active,sort_order) VALUES(?,?,?,?)").run(name,String(b.icon||'👗'),b.active===false?0:1,Number(b.sort_order||0));res.json(db.prepare("SELECT * FROM shop_categories WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
 app.patch("/api/admin/categories/:id",auth,admin,(req,res)=>{try{const b=req.body||{};const name=String(b.name||'').trim();if(!name)throw Error('Category name is required');db.prepare("UPDATE shop_categories SET name=?,icon=?,active=?,sort_order=? WHERE id=?").run(name,String(b.icon||'👗'),b.active?1:0,Number(b.sort_order||0),req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/categories/:id",auth,admin,(req,res)=>{try{db.prepare("DELETE FROM shop_categories WHERE id=?").run(req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+
+app.get('/api/quick-filters',(req,res)=>res.json(db.prepare('SELECT * FROM quick_filters WHERE active=1 ORDER BY sort_order,id').all()));
+app.get('/api/admin/quick-filters',auth,admin,(req,res)=>res.json(db.prepare('SELECT * FROM quick_filters ORDER BY sort_order,id').all()));
+app.post('/api/admin/quick-filters',auth,admin,(req,res)=>{try{const b=req.body||{},label=String(b.label||'').trim(),filterType=String(b.filter_type||'').trim();if(!label)throw Error('Filter name is required');if(!['IN_STOCK','RATING_4'].includes(filterType))throw Error('Choose a valid filter type');const r=db.prepare('INSERT INTO quick_filters(label,filter_type,active,sort_order) VALUES(?,?,?,?)').run(label,filterType,b.active===false?0:1,Number(b.sort_order||0));res.json(db.prepare('SELECT * FROM quick_filters WHERE id=?').get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
+app.patch('/api/admin/quick-filters/:id',auth,admin,(req,res)=>{try{const b=req.body||{},label=String(b.label||'').trim(),filterType=String(b.filter_type||'').trim();if(!label)throw Error('Filter name is required');if(!['IN_STOCK','RATING_4'].includes(filterType))throw Error('Choose a valid filter type');db.prepare('UPDATE quick_filters SET label=?,filter_type=?,active=?,sort_order=? WHERE id=?').run(label,filterType,b.active?1:0,Number(b.sort_order||0),Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+app.delete('/api/admin/quick-filters/:id',auth,admin,(req,res)=>{try{db.prepare('DELETE FROM quick_filters WHERE id=?').run(Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 
 function offerIsCurrentlyActive(o){
  if(!o || Number(o.active)!==1) return false;
@@ -392,178 +430,27 @@ app.post("/api/admin/offers/:id/send",auth,admin,(req,res)=>{
  }catch(e){res.status(400).json({error:e.message})}
 });
 app.get("/api/products",(req,res)=>{
- const {q="",category="All",sort="featured"}=req.query;
+ const {q="",category="All",sort="featured",filters=""}=req.query;
  let rows=db.prepare(`SELECT * FROM products
  WHERE (?='' OR name LIKE ? OR category LIKE ?)
  AND (?='All' OR lower(trim(category))=lower(trim(?)))`).all(q,`%${q}%`,`%${q}%`,category,category);
+ const selected=String(filters).split(',').map(x=>x.trim()).filter(Boolean);
+ if(selected.includes('IN_STOCK'))rows=rows.filter(x=>Number(x.stock)>0);
+ if(selected.includes('RATING_4'))rows=rows.filter(x=>Number(x.rating)>=4);
  if(sort==="low")rows.sort((a,b)=>a.price-b.price);
  if(sort==="high")rows.sort((a,b)=>b.price-a.price);
  if(sort==="rating")rows.sort((a,b)=>b.rating-a.rating);
  res.json(rows);
 });
 
-function behaviorUserId(req){
- try{
-  const raw=readCookie(req,'ashwini_session');if(!raw)return null;
-  const s=db.prepare('SELECT user_id,expires_at FROM auth_sessions WHERE session_hash=?').get(sessionHash(raw));
-  return s&&Number(s.expires_at)>Date.now()?Number(s.user_id):null;
- }catch{return null}
-}
-app.post('/api/behavior-events',(req,res)=>{
- try{
-  const allowed=new Set(['product_view','add_to_cart','wishlist','search','recommendation_impression','recommendation_click']);
-  const eventType=String(req.body?.event_type||'').trim();
-  const sessionId=String(req.body?.session_id||'').trim().slice(0,80);
-  if(!allowed.has(eventType)||!/^[A-Za-z0-9_-]{16,80}$/.test(sessionId))return res.status(400).json({error:'Invalid behavior event'});
-  const productId=Number(req.body?.product_id)||null,contextProductId=Number(req.body?.context_product_id)||null;
-  if(productId&&!db.prepare('SELECT id FROM products WHERE id=?').get(productId))return res.status(400).json({error:'Invalid product'});
-  const metadata=req.body?.metadata&&typeof req.body.metadata==='object'?req.body.metadata:{};
-  const safeMetadata=JSON.stringify({category:String(metadata.category||'').slice(0,80),source:String(metadata.source||'').slice(0,40)});
-  db.prepare('INSERT INTO behavior_events(session_id,user_id,event_type,product_id,context_product_id,metadata) VALUES(?,?,?,?,?,?)')
-   .run(sessionId,behaviorUserId(req),eventType,productId,contextProductId,safeMetadata);
-  res.status(201).json({ok:true});
- }catch(e){console.error('[Behavior event]',e);res.status(500).json({error:'Event could not be saved'})}
-});
+function behaviorUserId(req){try{const raw=readCookie(req,'ashwini_session');if(!raw)return null;const s=db.prepare('SELECT user_id,expires_at FROM auth_sessions WHERE session_hash=?').get(sessionHash(raw));return s&&Number(s.expires_at)>Date.now()?Number(s.user_id):null}catch{return null}}
+app.post('/api/behavior-events',(req,res)=>{try{const allowed=new Set(['product_view','add_to_cart','wishlist','search','recommendation_impression','recommendation_click']),eventType=String(req.body?.event_type||'').trim(),sessionId=String(req.body?.session_id||'').trim().slice(0,80);if(!allowed.has(eventType)||!/^[A-Za-z0-9_-]{16,80}$/.test(sessionId))return res.status(400).json({error:'Invalid behavior event'});const productId=Number(req.body?.product_id)||null,contextProductId=Number(req.body?.context_product_id)||null;if(productId&&!db.prepare('SELECT id FROM products WHERE id=?').get(productId))return res.status(400).json({error:'Invalid product'});const m=req.body?.metadata&&typeof req.body.metadata==='object'?req.body.metadata:{},metadata=JSON.stringify({category:String(m.category||'').slice(0,80),source:String(m.source||'').slice(0,40)});db.prepare('INSERT INTO behavior_events(session_id,user_id,event_type,product_id,context_product_id,metadata) VALUES(?,?,?,?,?,?)').run(sessionId,behaviorUserId(req),eventType,productId,contextProductId,metadata);res.status(201).json({ok:true})}catch(e){console.error('[Behavior event]',e);res.status(500).json({error:'Event could not be saved'})}});
+app.get('/api/recommendations/items/:id',(req,res)=>{try{const productId=Number(req.params.id),limit=Math.max(1,Math.min(12,Number(req.query.limit)||6)),seed=db.prepare('SELECT * FROM products WHERE id=?').get(productId);if(!seed)return res.status(404).json({error:'Product not found'});const raw=db.prepare(`WITH valid_items AS (SELECT DISTINCT oi.order_id,oi.product_id FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status NOT IN ('CANCELLED','PAYMENT_FAILED') AND (o.payment_method='COD' OR o.payment_status='PAID' OR o.status NOT IN ('PAYMENT_PENDING'))),seed_orders AS (SELECT order_id FROM valid_items WHERE product_id=?),seed_count AS (SELECT COUNT(*) n FROM seed_orders),candidates AS (SELECT vi.product_id,COUNT(*) together FROM valid_items vi JOIN seed_orders so ON so.order_id=vi.order_id WHERE vi.product_id<>? GROUP BY vi.product_id),frequencies AS (SELECT product_id,COUNT(*) purchases FROM valid_items GROUP BY product_id) SELECT p.*,c.together,f.purchases,(SELECT n FROM seed_count) seed_purchases FROM candidates c JOIN frequencies f ON f.product_id=c.product_id JOIN products p ON p.id=c.product_id WHERE p.stock>0`).all(productId,productId),purchase=raw.map(x=>({...x,cf_score:x.together/Math.sqrt(Math.max(1,x.seed_purchases*x.purchases))})),behavior=db.prepare(`WITH seed_sessions AS (SELECT DISTINCT session_id FROM behavior_events WHERE product_id=? AND event_type IN ('product_view','add_to_cart','wishlist','recommendation_click') AND created_at>=datetime('now','-30 days')) SELECT b.product_id,COUNT(DISTINCT b.session_id) related_sessions,SUM(CASE b.event_type WHEN 'add_to_cart' THEN 4 WHEN 'wishlist' THEN 3 WHEN 'recommendation_click' THEN 2 ELSE 1 END) behavior_score FROM behavior_events b JOIN seed_sessions s ON s.session_id=b.session_id WHERE b.product_id IS NOT NULL AND b.product_id<>? AND b.event_type IN ('product_view','add_to_cart','wishlist','recommendation_click') AND b.created_at>=datetime('now','-30 days') GROUP BY b.product_id`).all(productId,productId),products=new Map(db.prepare('SELECT * FROM products WHERE id<>? AND stock>0').all(productId).map(x=>[Number(x.id),x])),combined=new Map();for(const x of purchase)combined.set(Number(x.id),{...x,ranking_score:Number(x.cf_score||0)*10});for(const b of behavior){const p=products.get(Number(b.product_id));if(!p)continue;const x=combined.get(Number(b.product_id))||{...p,together:0,purchases:0,cf_score:0};combined.set(Number(b.product_id),{...x,related_sessions:Number(b.related_sessions||0),behavior_score:Number(b.behavior_score||0),ranking_score:Number(x.ranking_score||0)+Math.log1p(Number(b.behavior_score||0))})}const rows=[...combined.values()].sort((a,b)=>b.ranking_score-a.ranking_score||b.rating-a.rating).slice(0,limit);if(rows.length)return res.json({strategy:purchase.length?'hybrid':'behavior',seed_product_id:productId,results:rows});const fallback=db.prepare(`SELECT p.*,(CASE WHEN lower(trim(p.category))=lower(trim(?)) THEN 1 ELSE 0 END) category_match,COALESCE(SUM(oi.quantity),0) purchases FROM products p LEFT JOIN order_items oi ON oi.product_id=p.id LEFT JOIN orders o ON o.id=oi.order_id AND o.status NOT IN ('CANCELLED','PAYMENT_FAILED') WHERE p.id<>? AND p.stock>0 GROUP BY p.id ORDER BY category_match DESC,purchases DESC,p.rating DESC,p.id DESC LIMIT ?`).all(seed.category,productId,limit);res.json({strategy:'cold_start',seed_product_id:productId,results:fallback})}catch(e){console.error('[Item recommendations]',e);res.status(500).json({error:'Recommendations could not be loaded.'})}});
 
-// Item-to-item collaborative filtering based on products purchased together.
-// Cosine similarity prevents globally popular products from dominating every result.
-app.get('/api/recommendations/items/:id',(req,res)=>{
- try{
-  const productId=Number(req.params.id);
-  const limit=Math.max(1,Math.min(12,Number(req.query.limit)||6));
-  const seed=db.prepare('SELECT * FROM products WHERE id=?').get(productId);
-  if(!seed)return res.status(404).json({error:'Product not found'});
-
-  const rawRows=db.prepare(`
-   WITH valid_items AS (
-    SELECT DISTINCT oi.order_id,oi.product_id
-    FROM order_items oi JOIN orders o ON o.id=oi.order_id
-    WHERE o.status NOT IN ('CANCELLED','PAYMENT_FAILED')
-      AND (o.payment_method='COD' OR o.payment_status='PAID' OR o.status NOT IN ('PAYMENT_PENDING'))
-   ), seed_orders AS (
-    SELECT order_id FROM valid_items WHERE product_id=?
-   ), seed_count AS (
-    SELECT COUNT(*) AS n FROM seed_orders
-   ), candidates AS (
-    SELECT vi.product_id,COUNT(*) AS together
-    FROM valid_items vi JOIN seed_orders so ON so.order_id=vi.order_id
-    WHERE vi.product_id<>?
-    GROUP BY vi.product_id
-   ), frequencies AS (
-    SELECT product_id,COUNT(*) AS purchases FROM valid_items GROUP BY product_id
-   )
-   SELECT p.*,c.together,f.purchases,(SELECT n FROM seed_count) AS seed_purchases
-   FROM candidates c JOIN frequencies f ON f.product_id=c.product_id
-   JOIN products p ON p.id=c.product_id
-   WHERE p.stock>0
-   ORDER BY c.together DESC,p.rating DESC,p.id DESC`).all(productId,productId);
-  const purchaseRows=rawRows.map(row=>({...row,
-   cf_score:row.together/Math.sqrt(Math.max(1,row.seed_purchases*row.purchases))
-  }));
-
-  const behaviorRows=db.prepare(`WITH seed_sessions AS (
-    SELECT DISTINCT session_id FROM behavior_events
-    WHERE product_id=? AND event_type IN ('product_view','add_to_cart','wishlist','recommendation_click')
-      AND created_at>=datetime('now','-30 days')
-   ) SELECT b.product_id,COUNT(DISTINCT b.session_id) AS related_sessions,
-    SUM(CASE b.event_type WHEN 'add_to_cart' THEN 4 WHEN 'wishlist' THEN 3 WHEN 'recommendation_click' THEN 2 ELSE 1 END) AS behavior_score
-   FROM behavior_events b JOIN seed_sessions s ON s.session_id=b.session_id
-   WHERE b.product_id IS NOT NULL AND b.product_id<>?
-    AND b.event_type IN ('product_view','add_to_cart','wishlist','recommendation_click')
-    AND b.created_at>=datetime('now','-30 days')
-   GROUP BY b.product_id`).all(productId,productId);
-  const behaviorById=new Map(behaviorRows.map(x=>[Number(x.product_id),x]));
-  const productById=new Map(db.prepare('SELECT * FROM products WHERE id<>? AND stock>0').all(productId).map(x=>[Number(x.id),x]));
-  const combined=new Map();
-  for(const row of purchaseRows)combined.set(Number(row.id),{...row,ranking_score:Number(row.cf_score||0)*10});
-  for(const [id,b] of behaviorById){const p=productById.get(id);if(!p)continue;const old=combined.get(id)||{...p,together:0,purchases:0,cf_score:0};combined.set(id,{...old,related_sessions:Number(b.related_sessions||0),behavior_score:Number(b.behavior_score||0),ranking_score:Number(old.ranking_score||0)+Math.log1p(Number(b.behavior_score||0))});}
-  const rows=[...combined.values()].sort((a,b)=>b.ranking_score-a.ranking_score||b.rating-a.rating).slice(0,limit);
-
-  if(rows.length)return res.json({strategy:purchaseRows.length?'hybrid':'behavior',seed_product_id:productId,results:rows});
-
-  // Cold-start fallback until enough completed/COD order pairs exist.
-  const fallback=db.prepare(`SELECT p.*,
-    (CASE WHEN lower(trim(p.category))=lower(trim(?)) THEN 1 ELSE 0 END) AS category_match,
-    COALESCE(SUM(oi.quantity),0) AS purchases
-   FROM products p
-   LEFT JOIN order_items oi ON oi.product_id=p.id
-   LEFT JOIN orders o ON o.id=oi.order_id AND o.status NOT IN ('CANCELLED','PAYMENT_FAILED')
-   WHERE p.id<>? AND p.stock>0
-   GROUP BY p.id
-   ORDER BY category_match DESC,purchases DESC,p.rating DESC,p.id DESC
-   LIMIT ?`).all(seed.category,productId,limit);
-  res.json({strategy:'cold_start',seed_product_id:productId,results:fallback});
- }catch(e){
-  console.error('[Item recommendations]',e);
-  res.status(500).json({error:'Recommendations could not be loaded.'});
- }
-});
-
-function visualSearchOutputText(response){
- for(const item of response?.output||[]){
-  for(const part of item?.content||[]){
-   if(part?.type==='output_text'&&part.text)return part.text;
-  }
- }
- return '';
-}
-function visualSearchJson(text){
- const cleaned=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
- try{return JSON.parse(cleaned)}catch{}
- const match=cleaned.match(/\{[\s\S]*\}/);
- if(match)try{return JSON.parse(match[0])}catch{}
- throw Error('AI returned an unreadable result. Please try another photo.');
-}
-function productVisualScore(product,analysis){
- const haystack=[product.name,product.category,product.description,product.badge_text,product.offer_text,product.emoji]
-  .filter(Boolean).join(' ').toLowerCase();
- const weighted=[
-  [analysis.garment_type,8],[analysis.category,7],[analysis.gender,3],[analysis.style,4],
-  [analysis.pattern,4],[analysis.occasion,3],...((analysis.colors||[]).map(x=>[x,5])),
-  ...((analysis.keywords||[]).map(x=>[x,2]))
- ];
- let score=0,matched=[];
- for(const [raw,weight] of weighted){
-  const term=String(raw||'').trim().toLowerCase();
-  if(term&&haystack.includes(term)){score+=weight;matched.push(term)}
- }
- return {score,matched:[...new Set(matched)].slice(0,6)};
-}
-
-app.post('/api/visual-search',async(req,res)=>{
- try{
-  const imageData=String(req.body?.imageData||'');
-  if(!/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(imageData))
-   return res.status(400).json({error:'Please upload a JPG, PNG or WebP photo.'});
-  if(imageData.length>18_000_000)
-   return res.status(413).json({error:'Photo is too large. Please choose a photo under 12 MB.'});
-  if(!process.env.OPENAI_API_KEY)
-   return res.status(503).json({error:'AI photo search is not configured yet. Add OPENAI_API_KEY on the server.'});
-
-  const categories=db.prepare('SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND trim(category)<>\'\'').all().map(x=>x.category);
-  const prompt=`Analyze this clothing/product photo for an Indian fashion store. Return ONLY valid JSON with these keys: category (best matching broad category), garment_type, colors (array), style, pattern, gender, occasion, keywords (array of concise searchable words), confidence (number 0 to 1), summary (maximum 12 words). Use these store categories when suitable: ${categories.join(', ')}. Do not identify people or infer sensitive traits.`;
-  const aiResponse=await fetch('https://api.openai.com/v1/responses',{
-   method:'POST',
-   headers:{'Authorization':`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},
-   body:JSON.stringify({
-    model:process.env.OPENAI_VISION_MODEL||'gpt-5.4',store:false,max_output_tokens:500,
-    input:[{role:'user',content:[{type:'input_text',text:prompt},{type:'input_image',image_url:imageData,detail:'low'}]}]
-   })
-  });
-  const aiBody=await aiResponse.json().catch(()=>({}));
-  if(!aiResponse.ok)throw Error(aiBody?.error?.message||'AI photo analysis failed.');
-  const analysis=visualSearchJson(visualSearchOutputText(aiBody));
-  const products=db.prepare('SELECT * FROM products').all();
-  let ranked=products.map(product=>({product,...productVisualScore(product,analysis)})).sort((a,b)=>b.score-a.score);
-  const positive=ranked.filter(x=>x.score>0);
-  if(positive.length)ranked=positive;
-  const results=ranked.slice(0,12).map(x=>({...x.product,visual_score:x.score,visual_matches:x.matched}));
-  res.json({analysis,results,count:results.length});
- }catch(e){
-  console.error('Visual search error:',e.message);
-  res.status(502).json({error:e.message||'AI photo search failed. Please try again.'});
- }
-});
+function visualSearchOutputText(response){for(const item of response?.output||[])for(const part of item?.content||[])if(part?.type==='output_text'&&part.text)return part.text;return ''}
+function visualSearchJson(text){const cleaned=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');try{return JSON.parse(cleaned)}catch{}const match=cleaned.match(/\{[\s\S]*\}/);if(match)try{return JSON.parse(match[0])}catch{}throw Error('AI returned an unreadable result. Please try another photo.')}
+function productVisualScore(product,a){const hay=[product.name,product.category,product.description,product.badge_text,product.offer_text,product.emoji].filter(Boolean).join(' ').toLowerCase(),weighted=[[a.garment_type,8],[a.category,7],[a.gender,3],[a.style,4],[a.pattern,4],[a.occasion,3],...((a.colors||[]).map(x=>[x,5])),...((a.keywords||[]).map(x=>[x,2]))];let score=0,matched=[];for(const [raw,w] of weighted){const term=String(raw||'').trim().toLowerCase();if(term&&hay.includes(term)){score+=w;matched.push(term)}}return {score,matched:[...new Set(matched)].slice(0,6)}}
+app.post('/api/visual-search',async(req,res)=>{try{const imageData=String(req.body?.imageData||'');if(!/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(imageData))return res.status(400).json({error:'Please upload a JPG, PNG or WebP photo.'});if(imageData.length>18_000_000)return res.status(413).json({error:'Photo is too large. Please choose a photo under 12 MB.'});if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'AI photo search is not configured yet.'});const categories=db.prepare("SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND trim(category)<>''").all().map(x=>x.category),prompt=`Analyze this clothing/product photo for an Indian fashion store. Return ONLY valid JSON with keys category, garment_type, colors, style, pattern, gender, occasion, keywords, confidence, summary. Use store categories when suitable: ${categories.join(', ')}.`;const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_VISION_MODEL||'gpt-5.4',store:false,max_output_tokens:500,input:[{role:'user',content:[{type:'input_text',text:prompt},{type:'input_image',image_url:imageData,detail:'low'}]}]})}),body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body?.error?.message||'AI photo analysis failed.');const analysis=visualSearchJson(visualSearchOutputText(body)),ranked=db.prepare('SELECT * FROM products').all().map(product=>({product,...productVisualScore(product,analysis)})).sort((a,b)=>b.score-a.score),positive=ranked.filter(x=>x.score>0),results=(positive.length?positive:ranked).slice(0,12).map(x=>({...x.product,visual_score:x.score,visual_matches:x.matched}));res.json({analysis,results,count:results.length})}catch(e){console.error('Visual search error:',e.message);res.status(502).json({error:e.message||'AI photo search failed.'})}});
 function makeOtp(){return String(crypto.randomInt(100000,1000000))}
 function hashOtp(otp){return crypto.createHash("sha256").update(String(otp)).digest("hex")}
 function otpMatches(input,stored){try{return Boolean(stored)&&crypto.timingSafeEqual(Buffer.from(hashOtp(input),"hex"),Buffer.from(stored,"hex"))}catch{return false}}
@@ -581,21 +468,79 @@ function issueOtp(u, kind){
  console.log(`[Ashwini ${kind.toUpperCase()} OTP] ${u.email || u.phone}: ${otp}`);
  return otp;
 }
-app.get('/api/auth/msg91-config',(req,res)=>{const widgetId=String(process.env.MSG91_WIDGET_ID||'').trim(),tokenAuth=String(process.env.MSG91_WIDGET_TOKEN||'').trim();if(!widgetId||!tokenAuth)return res.status(503).json({error:'MSG91 OTP is not configured on the server.'});res.json({widgetId,tokenAuth})});
+// MSG91 OTP Widget configuration for the customer-facing mobile OTP flow.
+// The widget token is intended for client-side use; the account AuthKey stays server-side.
+app.get("/api/auth/msg91-config",(req,res)=>{
+ const widgetId=String(process.env.MSG91_WIDGET_ID||"").trim();
+ const tokenAuth=String(process.env.MSG91_WIDGET_TOKEN||"").trim();
+ if(!widgetId||!tokenAuth)return res.status(503).json({error:"MSG91 OTP is not configured. Add MSG91_WIDGET_ID and MSG91_WIDGET_TOKEN in Render."});
+ res.json({widgetId,tokenAuth});
+});
 async function verifyMsg91AccessToken(accessToken){
- const authkey=String(process.env.MSG91_AUTHKEY||'').trim(),verifiedToken=String(accessToken||'').trim();
- if(!authkey||!verifiedToken)throw Error('MSG91 verification is not configured.');
- const endpoint='https://control.msg91.com/api/v5/widget/verifyAccessToken';
- let r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({authkey,'access-token':verifiedToken})}),text=await r.text();
- if(/access-token field is required/i.test(text)){r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json',authkey},body:JSON.stringify({'access-token':verifiedToken})});text=await r.text()}
- let data={};try{data=JSON.parse(text)}catch{}
- if(!r.ok||String(data.type||'').toLowerCase()==='error'||data.success===false)throw Error(data.message||data.error||'MSG91 access token verification failed');
+ const authkey=String(process.env.MSG91_AUTHKEY||"").trim();
+ if(!authkey)throw new Error("MSG91 server AuthKey is not configured.");
+ const endpoint="https://control.msg91.com/api/v5/widget/verifyAccessToken",verifiedToken=String(accessToken||"").trim();
+ let r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({authkey,"access-token":verifiedToken})});
+ let text=await r.text();
+ // Some MSG91 accounts accept the server integration payload as JSON instead
+ // of a form. Retry only for that specific parsing response.
+ if(/access-token field is required/i.test(text)){
+  r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authkey},body:JSON.stringify({"access-token":verifiedToken})});
+  text=await r.text();
+ }
+ let data={}; try{data=JSON.parse(text)}catch{}
+ if(!r.ok||String(data.type||"").toLowerCase()==="error"||data.success===false)throw new Error(data.message||data.error||"MSG91 access token verification failed");
  return data;
 }
-function msg91VerifiedPhone(data){return normalizePhone(data.mobile||data.phone||data.identifier||data.data?.mobile||data.data?.phone||data.data?.identifier)}
-app.post('/api/auth/verify-msg91-login',async(req,res)=>{try{const phone=normalizePhone(req.body?.identifier),accessToken=String(req.body?.accessToken||'').trim();if(!/^\d{10}$/.test(phone)||!accessToken)return res.status(400).json({error:'Valid mobile verification is required'});const verified=msg91VerifiedPhone(await verifyMsg91AccessToken(accessToken));if(verified&&verified!==phone)return res.status(401).json({error:'Verified mobile number does not match'});const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);if(!u)return res.status(404).json({error:'Customer account not found. Please register first.'});createSession(res,u.id);res.json({user:{id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''}})}catch(e){console.error('[MSG91 login]',e.message);res.status(401).json({error:e.message||'MSG91 OTP verification failed'})}});
-app.post('/api/auth/request-msg91-registration',(req,res)=>{const phone=normalizePhone(req.body?.phone),email=String(req.body?.email||'').trim().toLowerCase();if(!/^\d{10}$/.test(phone))return res.status(400).json({error:'Enter a valid 10-digit mobile number'});if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:'Enter a valid email address'});if(db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(email))return res.status(409).json({error:'This email is already registered. Please sign in.'});const existing=db.prepare('SELECT * FROM users WHERE phone=?').get(phone),pending=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${phone}@ashwini.local`;if(existing&&!pending)return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});if(!existing)db.prepare("INSERT INTO users(name,email,password_hash,phone,role) VALUES(?,?,?,?,?)").run('Pending Buyer',`phone_${phone}@ashwini.local`,'',phone,'customer');res.json({ok:true})});
-app.post('/api/auth/register-msg91',async(req,res)=>{try{const {name,email,password,phone,accessToken}=req.body||{},normalized=normalizePhone(phone),normalizedEmail=String(email||'').trim().toLowerCase();if(!name||!normalizedEmail||String(password||'').length<8||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:'Name, email, 8+ character password and MSG91 verification are required'});const u0=db.prepare('SELECT * FROM users WHERE phone=?').get(normalized);const isPending=u0&&u0.role==='customer'&&u0.name==='Pending Buyer'&&!String(u0.password_hash||'')&&String(u0.email||'')===`phone_${normalized}@ashwini.local`;if(!isPending)return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});if(db.prepare('SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?').get(normalizedEmail,u0.id))return res.status(409).json({error:'This email is already registered. Please sign in.'});const verified=msg91VerifiedPhone(await verifyMsg91AccessToken(accessToken));if(verified&&verified!==normalized)return res.status(401).json({error:'Verified mobile number does not match'});const hash=await bcrypt.hash(password,12);const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=? WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(String(name).trim(),normalizedEmail,hash,u0.id,`phone_${normalized}@ashwini.local`);if(changed.changes!==1)return res.status(409).json({error:'Account registration state changed. Please sign in or start again.'});const u=db.prepare('SELECT id,name,email,role,phone FROM users WHERE id=?').get(u0.id);createSession(res,u.id);res.json({user:u})}catch(e){console.error('[MSG91 registration]',e.message);if(String(e.message||'').includes('UNIQUE constraint failed: users.email'))return res.status(409).json({error:'This email is already registered. Please sign in.'});res.status(401).json({error:e.message||'MSG91 registration failed'})}});
+function msg91VerifiedPhone(data){let phone=normalizePhone(data.mobile||data.phone||data.identifier||data.data?.mobile||data.data?.phone||data.data?.identifier);if(phone.length===12&&phone.startsWith('91'))phone=phone.slice(2);return phone}
+app.post("/api/auth/verify-msg91-login",async(req,res)=>{
+ try{
+  const identifier=String(req.body?.identifier||"").trim(), accessToken=String(req.body?.accessToken||"").trim();
+  const phone=normalizePhone(identifier);
+  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"MSG91 mobile verification requires a valid 10-digit mobile number."});
+  if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
+  const verification=await verifyMsg91AccessToken(accessToken);
+  const verifiedPhone=msg91VerifiedPhone(verification);
+  if(verifiedPhone && verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the sign-in number."});
+  const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);
+  if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
+  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
+  clearOtpFailures(req,phone);
+  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
+  createSession(res,u.id);res.json({user:safe});
+ }catch(e){console.error("[MSG91 login verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
+});
+app.post("/api/auth/request-msg91-registration",(req,res)=>{
+ const phone=normalizePhone(req.body?.phone),email=String(req.body?.email||'').trim().toLowerCase();
+ if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit mobile number"});
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:'Enter a valid email address'});
+ if(db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(email))return res.status(409).json({error:'This email is already registered. Please sign in.'});
+ const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(phone);
+ const pending=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${phone}@ashwini.local`;
+ if(existing&&!pending)return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});
+ if(!existing)db.prepare("INSERT INTO users(name,email,password_hash,phone,otp_hash,otp_expires_at,role) VALUES(?,?,?,?,?,?,?)").run("Pending Buyer",`phone_${phone}@ashwini.local`,"",phone,"",0,"customer");
+ res.json({ok:true});
+});
+app.post("/api/auth/register-msg91",async(req,res)=>{
+ try{
+  const {name,email,password,phone,accessToken}=req.body||{};
+  const normalized=normalizePhone(phone);
+  if(!name||!email||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
+  if(String(password).length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
+  const verification=await verifyMsg91AccessToken(accessToken);
+  const verifiedPhone=msg91VerifiedPhone(verification);
+  if(verifiedPhone && verifiedPhone!==normalized)return res.status(401).json({error:"The verified mobile number does not match the registration number."});
+  const u0=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
+  const pending=u0&&u0.role==='customer'&&u0.name==='Pending Buyer'&&!String(u0.password_hash||'')&&String(u0.email||'')===`phone_${normalized}@ashwini.local`;
+  if(!pending)return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});
+  if(db.prepare('SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?').get(String(email).trim().toLowerCase(),u0.id))return res.status(409).json({error:'This email is already registered. Please sign in.'});
+  const hash=await bcrypt.hash(password,12);
+  const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(String(name).trim(),String(email).trim().toLowerCase(),hash,u0.id,`phone_${normalized}@ashwini.local`);
+  if(changed.changes!==1)return res.status(409).json({error:'Account registration state changed. Please sign in or start again.'});
+  const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);
+  createSession(res,u.id);res.json({user:u});
+ }catch(e){console.error("[MSG91 registration verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
+});
 app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
  if(!identifier)return res.status(400).json({error:"Enter your email or mobile number"});
@@ -678,6 +623,48 @@ app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
   if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
   res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
  }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
+});
+app.post("/api/auth/admin-login-start",async(req,res)=>{
+ try{
+  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||"");
+  if(!identifier||!password)return res.status(400).json({error:"Enter admin mobile/email and password"});
+  const mobile=normalizePhone(identifier),email=identifier.toLowerCase();
+  let u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
+  // First mobile sign-in: the admin already proves ownership with the existing
+  // admin password, then this mobile is saved on the admin account for later use.
+  if(!u && /^\d{10}$/.test(mobile)){
+   const admins=db.prepare("SELECT * FROM users WHERE role='admin' ORDER BY id LIMIT 10").all();
+   u=admins.find(x=>bcrypt.compareSync(password,String(x.password_hash||'')))||null;
+   if(u){db.prepare('UPDATE users SET phone=? WHERE id=?').run(mobile,u.id);u={...u,phone:mobile};}
+  }
+  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  // A mobile admin sign-in uses the already configured MSG91 secure widget.
+  // Email sign-in stays on the existing email-OTP route below.
+  if(/^\d{10}$/.test(mobile))return res.json({ok:true,channel:"mobile",phone:mobile});
+  if(!otpGuard(req,res,u.email))return;
+  const otp=issueOtp(u,'login');
+  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
+  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
+  res.json({ok:true,email:u.email});
+ }catch(e){console.error('[Ashwini Admin secure login]',e.message);res.status(503).json({error:"Admin OTP could not be delivered. Please check email configuration."});}
+});
+app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
+ try{
+  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||""),accessToken=String(req.body?.accessToken||"").trim();
+  const phone=normalizePhone(identifier);
+  if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit admin mobile number."});
+  if(!password)return res.status(400).json({error:"Admin password is required."});
+  if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
+  const verification=await verifyMsg91AccessToken(accessToken);
+  const verifiedPhone=msg91VerifiedPhone(verification);
+  if(verifiedPhone&&verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the admin sign-in number."});
+  const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
+  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
+  clearOtpFailures(req,phone);
+  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
+  createSession(res,u.id);res.json({user:safe});
+ }catch(e){console.error("[MSG91 admin login verification]",e.message);res.status(401).json({error:e.message||"MSG91 admin OTP verification failed."});}
 });
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();

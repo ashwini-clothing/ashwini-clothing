@@ -1,0 +1,25 @@
+ASHWINI CLOTHING - CLEAN MERGED VERSION (28-08-2026)
+
+Upload all files from this folder to the GitHub repository main branch, then deploy the latest commit on Render.
+
+Important:
+1. This clean package does not contain ashwini.db or any backup database.
+2. Do not replace Render's existing persistent database.
+3. Keep the existing Render environment variables for MSG91 and email OTP.
+4. After deployment, test one existing customer login and one new registration with a different email/mobile.
+
+Restored and merged:
+- Original admin login panel and administration tools
+- Appearance, delivery, inventory and quick-filter controls
+- Product/slide/offer/customer/order/return/help features
+- MSG91 mobile OTP and email OTP
+- Duplicate email/mobile account protection
+- Shop Now button in outgoing emails
+- AI/free photo search
+- Item-to-item recommendations and real-time behavior tracking
+- Mobile and desktop responsive files
+
+Removed from this package:
+- Database files (customer/order data safety)
+- node_modules (Render installs packages automatically)
+- Duplicate unsafe legacy registration API routes
