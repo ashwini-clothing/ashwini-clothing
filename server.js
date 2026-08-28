@@ -676,10 +676,10 @@ app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
  createSession(res,u.id);res.json({user:safe});
 });
-app.post("/api/auth/login",async(req,res)=>{
- const u=db.prepare("SELECT * FROM users WHERE email=?").get((req.body.email||"").toLowerCase());
- if(!u||!(await bcrypt.compare(req.body.password||"",u.password_hash)))return res.status(401).json({error:"Invalid email or password"});
- const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};createSession(res,u.id);res.json({user:safe});
+// Do not keep a password-only compatibility login: it would bypass the
+// customer OTP flow and the separate password + OTP admin flow above.
+app.post("/api/auth/login",(req,res)=>{
+ res.status(410).json({error:"Password-only sign in is disabled. Please use secure OTP sign in."});
 });
 function profileOtpTarget(value){return /^\d{10}$/.test(normalizePhone(value))?"mobile":"email"}
 async function deliverProfileOtp(value,otp){const channel=profileOtpTarget(value);return channel==='mobile'?sendSmsOtp(value,otp):sendEmail(value,'Ashwini Clothing profile verification OTP',`Your profile change verification OTP is ${otp}. It expires in 5 minutes. Do not share it.`)}
