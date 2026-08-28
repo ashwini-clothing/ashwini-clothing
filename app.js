@@ -679,7 +679,7 @@ async function verifyLoginOtpFor(){
  }catch(e){alert(e.message||'OTP verification failed')}
 }
 function showRegisterPanel(){
- openM(`<h2>Create your Ashwini account</h2><p>Verify your mobile once and your account will be created. Existing mobile numbers will not create duplicate accounts.</p><div class="form">
+ openM(`<h2>Create your Ashwini account</h2><div class="form">
  <input id="rn" placeholder="Full name" autocomplete="name"><input id="re" placeholder="Email" autocomplete="email"><input id="rp" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><input id="rphone" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel">
  <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div>`);
 }
