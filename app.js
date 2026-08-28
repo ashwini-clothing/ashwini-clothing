@@ -679,9 +679,9 @@ async function verifyLoginOtpFor(){
  }catch(e){alert(e.message||'OTP verification failed')}
 }
 function showRegisterPanel(){
- openM(`<h2>Create your Ashwini account</h2><div class="form">
+ openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Create your Ashwini account</h2><div class="form">
  <input id="rn" placeholder="Full name" autocomplete="name"><input id="re" placeholder="Email" autocomplete="email"><input id="rp" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><input id="rphone" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel">
- <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div>`);
+ <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
 }
 function showAdminLoginPanel(){
  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo">ASHWINI</div><h2>Store admin sign in</h2><div class="form"><label class="login-label"><b>Admin mobile number or email</b></label><input id="adminLoginIdentifier" placeholder="Mobile number or email" autocomplete="username"><label class="login-label"><b>Password</b></label><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold amazon-continue-btn" onclick="adminBeginLogin()">Continue securely</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
