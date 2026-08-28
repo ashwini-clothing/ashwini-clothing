@@ -107,6 +107,9 @@ try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_expires_at INTEGER DEFAUL
 try{db.exec("ALTER TABLE orders ADD COLUMN customer_phone TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN delivered_at TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN cancelled_at TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN stock_reserved_at TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN stock_released_at TEXT DEFAULT ''")}catch{}
+try{db.exec("UPDATE orders SET stock_reserved_at=created_at WHERE COALESCE(stock_reserved_at,'')='' AND COALESCE(stock_released_at,'')='' ")}catch{}
 try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_order_id INTEGER DEFAULT NULL")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_return_id INTEGER DEFAULT NULL")}catch{}
@@ -172,6 +175,39 @@ db.prepare("UPDATE products SET image=? WHERE id=?").run('/new-model-dress-clean
 const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET
  ? new Razorpay({key_id:process.env.RAZORPAY_KEY_ID,key_secret:process.env.RAZORPAY_KEY_SECRET}):null;
 
+function releaseOrderStock(orderId,nextStatus){
+ return db.transaction(()=>{
+  const order=db.prepare("SELECT id,payment_status,stock_released_at FROM orders WHERE id=?").get(orderId);
+  if(!order||order.payment_status==='PAID'||String(order.stock_released_at||''))return false;
+  const claimed=db.prepare("UPDATE orders SET stock_released_at=CURRENT_TIMESTAMP,status=COALESCE(?,status),updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(stock_released_at,'')='' AND payment_status<>'PAID'").run(nextStatus||null,order.id);
+  if(!claimed.changes)return false;
+  const items=db.prepare("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id").all(order.id);
+  const restore=db.prepare("UPDATE products SET stock=stock+? WHERE id=?");
+  for(const item of items)restore.run(Number(item.quantity||0),item.product_id);
+  return true;
+ })();
+}
+function reserveReleasedOrderStock(orderId){
+ return db.transaction(()=>{
+  const order=db.prepare("SELECT id,stock_released_at FROM orders WHERE id=?").get(orderId);
+  if(!order)return false;
+  if(!String(order.stock_released_at||''))return true;
+  const items=db.prepare("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id").all(order.id);
+  for(const item of items){const product=db.prepare("SELECT stock FROM products WHERE id=?").get(item.product_id);if(!product||Number(product.stock)<Number(item.quantity))return false}
+  const deduct=db.prepare("UPDATE products SET stock=stock-? WHERE id=? AND stock>=?");
+  for(const item of items){const qty=Number(item.quantity);if(!deduct.run(qty,item.product_id,qty).changes)throw Error('Stock changed while restoring payment reservation')}
+  db.prepare("UPDATE orders SET stock_released_at='',stock_reserved_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);
+  return true;
+ })();
+}
+function releaseExpiredPaymentStock(){
+ const rows=db.prepare("SELECT id FROM orders WHERE payment_method='RAZORPAY' AND payment_status='PENDING' AND status='PAYMENT_PENDING' AND COALESCE(stock_released_at,'')='' AND datetime(created_at)<=datetime('now','-30 minutes')").all();
+ for(const row of rows)if(releaseOrderStock(row.id,'PAYMENT_EXPIRED'))console.info(`[Ashwini stock] Released expired payment reservation for Order #${row.id}`);
+}
+try{releaseExpiredPaymentStock()}catch(e){console.error('[Ashwini stock expiry]',e.message)}
+const stockExpiryTimer=setInterval(()=>{try{releaseExpiredPaymentStock()}catch(e){console.error('[Ashwini stock expiry]',e.message)}},5*60*1000);
+stockExpiryTimer.unref?.();
+
 // Razorpay must be verified against the untouched request bytes. Keep this
 // route before express.json(), otherwise signature validation is unreliable.
 app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1mb'}),(req,res)=>{
@@ -198,9 +234,10 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
   const currency=String(payment?.currency||orderEntity?.currency||'INR').toUpperCase();
   if(!Number.isFinite(paidAmount)||paidAmount!==Number(order.total)*100||currency!=='INR'){finish('REJECTED','Payment amount or currency did not match the Ashwini order');return res.json({ok:true,matched:false})}
   if(eventType==='payment.failed'){
-   if(order.payment_status!=='PAID')db.prepare("UPDATE orders SET payment_status='FAILED',status=CASE WHEN status='PAYMENT_PENDING' THEN 'PAYMENT_FAILED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);
+   if(order.payment_status!=='PAID'){db.prepare("UPDATE orders SET payment_status='FAILED',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_EXPIRED') THEN 'PAYMENT_FAILED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);releaseOrderStock(order.id,'PAYMENT_FAILED')}
   }else{
-   db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);
+   if(!reserveReleasedOrderStock(order.id)){db.prepare("UPDATE orders SET status='PAYMENT_REVIEW',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);finish('REJECTED','Payment captured after reservation expired, but stock is no longer available');console.error(`[Razorpay webhook] PAID Order #${order.id} requires refund/review because stock is unavailable`);return res.json({ok:true,review:true})}
+   db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED','PAYMENT_EXPIRED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);
   }
   finish('PROCESSED');res.json({ok:true});
  }catch(e){db.prepare("UPDATE razorpay_webhook_events SET status='ERROR',error=? WHERE event_id=?").run(String(e.message||e).slice(0,500),eventId);console.error('[Razorpay webhook]',e.message);res.status(500).json({error:'Webhook processing failed'})}
@@ -840,10 +877,12 @@ app.get('/api/cod/availability',(req,res)=>{
 app.get('/api/admin/cod-settings',auth,admin,(req,res)=>{try{const global=db.prepare('SELECT enabled,updated_at FROM cod_settings WHERE id=1').get()||{enabled:1};const states=db.prepare('SELECT state,enabled,updated_at FROM cod_state_settings ORDER BY state').all();res.json({enabled:Number(global.enabled)!==0,updated_at:global.updated_at||'',states});}catch(e){res.status(500).json({error:e.message||'Could not load COD settings'})}});
 app.patch('/api/admin/cod-settings',auth,admin,(req,res)=>{try{const enabled=req.body?.enabled===false||String(req.body?.enabled).toLowerCase()==='false'?0:1;const states=Array.isArray(req.body?.states)?req.body.states:[];const tx=db.transaction(()=>{db.prepare('UPDATE cod_settings SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=1').run(enabled);const up=db.prepare('INSERT INTO cod_state_settings(state,enabled,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(state) DO UPDATE SET enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP');const del=db.prepare('DELETE FROM cod_state_settings WHERE state=?');for(const x of states){const state=String(x?.state||'').trim().slice(0,80);if(!state)continue;if(x?.enabled===null||x?.enabled===undefined)del.run(state);else up.run(state,x.enabled?1:0);}});tx();const global=db.prepare('SELECT enabled,updated_at FROM cod_settings WHERE id=1').get();res.json({ok:true,enabled:Number(global.enabled)!==0,updated_at:global.updated_at,states:db.prepare('SELECT state,enabled,updated_at FROM cod_state_settings ORDER BY state').all()});}catch(e){res.status(400).json({error:e.message||'Could not save COD settings'})}});
 app.post("/api/checkout/create",auth,async(req,res)=>{
+ let createdOrderId=null;
  try{
   const {items,address,payment_method="RAZORPAY",coupon="",delivery_state=""}=req.body||{};
   if(!address?.trim())throw Error("Delivery address required");
   if(!['RAZORPAY','COD'].includes(String(payment_method).toUpperCase()))throw Error("Invalid payment method");
+  if(String(payment_method).toUpperCase()==='RAZORPAY'&&!razorpay)throw Error("Razorpay not configured. Add keys in Render Environment");
   if(String(payment_method).toUpperCase()==='COD'){
    const global=db.prepare('SELECT enabled FROM cod_settings WHERE id=1').get()?.enabled;
    const state=String(delivery_state||'').trim();
@@ -888,13 +927,12 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
    return Number(r.lastInsertRowid);
   });
 
-  const orderId=createOrder();
+  const orderId=createOrder();createdOrderId=orderId;
   if(payment_method==="COD")return res.json({ok:true,mode:"COD",orderId,total});
-  if(!razorpay)return res.status(503).json({error:"Razorpay not configured. Add keys in .env"});
   const rp=await razorpay.orders.create({amount:total*100,currency:"INR",receipt:`ASHWINI-${orderId}`});
   db.prepare("UPDATE orders SET razorpay_order_id=? WHERE id=?").run(rp.id,orderId);
   res.json({ok:true,mode:"RAZORPAY",orderId,total,razorpayOrderId:rp.id,keyId:process.env.RAZORPAY_KEY_ID});
- }catch(e){console.error('[Ashwini checkout]',e);res.status(400).json({error:e.message||"Order could not be created"})}
+ }catch(e){if(createdOrderId){db.prepare("UPDATE orders SET payment_status='FAILED' WHERE id=? AND payment_status<>'PAID'").run(createdOrderId);releaseOrderStock(createdOrderId,'PAYMENT_FAILED')}console.error('[Ashwini checkout]',e);res.status(400).json({error:e.message||"Order could not be created"})}
 });
 app.post("/api/checkout/verify",auth,async(req,res)=>{
  try{
@@ -910,7 +948,8 @@ app.post("/api/checkout/verify",auth,async(req,res)=>{
   const amountMatches=Number(payment.amount)===Math.round(Number(o.total)*100);
   if(payment.order_id!==o.razorpay_order_id||String(payment.currency||'').toUpperCase()!=='INR'||!amountMatches)return res.status(400).json({error:"Payment details do not match this order"});
   if(payment.status!=='captured')return res.status(409).json({error:"Payment is still being processed. Please check Your Orders shortly."});
-  db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
+  if(!reserveReleasedOrderStock(o.id)){db.prepare("UPDATE orders SET status='PAYMENT_REVIEW',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(o.id);return res.status(409).json({error:"Payment was received after the stock reservation expired. Please contact Ashwini support; the order requires review or refund."})}
+  db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED','PAYMENT_EXPIRED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
   res.json({ok:true});
  }catch(e){console.error('[Razorpay checkout verification]',e.message);res.status(400).json({error:'Payment could not be verified. Please check Your Orders before trying again.'})}
 });
@@ -1068,6 +1107,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,cancelled_at=CASE WHEN ?='CANCELLED' AND COALESCE(cancelled_at,'')='' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(req.body.status,req.body.status,req.body.status,req.params.id);
  if(!result.changes)return res.status(404).json({error:"Order not found"});
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+ if(order.status==='CANCELLED'&&order.payment_status!=='PAID')releaseOrderStock(order.id,'CANCELLED');
  if(before.status!==order.status){const label=String(order.status).replaceAll("_"," ");const msg=`Order #${order.id} is now ${label}. Payment status: ${String(order.payment_status||'PENDING').replaceAll('_',' ')}.`;addOrderEvent(order.id,order.user_id,order.status,`Order ${label}`,msg);const u=db.prepare("SELECT name,email FROM users WHERE id=?").get(order.user_id);if(u?.email){await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${u.name||'Customer'},\n\n${msg}\n\nTrack your order from Your Orders in your Ashwini Clothing account.`)}}
  res.json({ok:true,order});
 });
