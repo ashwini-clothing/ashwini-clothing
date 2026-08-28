@@ -54,4 +54,9 @@
     background: #f3f3f3 !important;
     color: #131921 !important;
   }
+
+  body header .search .search-voice.listening {
+    color: #c45500 !important;
+    background: #fff3e0 !important;
+  }
 }
