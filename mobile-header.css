@@ -6,7 +6,7 @@
   body header { position: sticky; top: 0; z-index: 7000; box-shadow: 0 2px 7px rgba(0,0,0,.22); }
   body header .top {
     display: grid !important;
-    grid-template-columns: 58px minmax(55px,1fr) 68px 56px 42px !important;
+    grid-template-columns: 50px minmax(63px,1fr) 68px 56px 42px !important;
     grid-template-areas: "brand brand account orders cart" "offers search search search search" !important;
     gap: 7px !important;
     align-items: center !important;
@@ -47,9 +47,9 @@
   body header .mobile-cart-icon { display: block !important; font-style: normal !important; font-size: 21px !important; line-height: 24px !important; filter: brightness(0) invert(1) !important; }
   body header #count { position: absolute !important; top: -7px !important; right: -11px !important; display: flex !important; align-items: center !important; justify-content: center !important; min-width: 18px !important; height: 18px !important; padding: 0 3px !important; margin: 0 !important; border-radius: 999px !important; background: #fff !important; color: #54213b !important; font-size: 10px !important; line-height: 18px !important; font-weight: 800 !important; box-sizing: border-box !important; }
 
-  body header .top .offer-toplink { grid-area: offers !important; display: flex !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; width: auto !important; min-width: 0 !important; height: 43px !important; padding: 0 8px !important; overflow: hidden !important; border: 1px solid #d49b00 !important; border-radius: 22px !important; color: #3f2800 !important; background: #ffd54a !important; }
+  body header .top .offer-toplink { grid-area: offers !important; display: flex !important; align-items: center !important; justify-content: center !important; align-self: stretch !important; width: auto !important; min-width: 0 !important; height: 40px !important; padding: 0 3px !important; overflow: hidden !important; border: 1px solid #d49b00 !important; border-radius: 20px !important; color: #3f2800 !important; background: #ffd54a !important; }
   body header .top .offer-toplink b { display: block !important; font-size: 0 !important; animation: none !important; }
-  body header .top .offer-toplink b::after { content: "Offers" !important; display: block !important; color: #3f2800 !important; font-size: 11px !important; line-height: 1 !important; font-weight: 800 !important; }
+  body header .top .offer-toplink b::after { content: "Offers" !important; display: block !important; color: #3f2800 !important; font-size: 10px !important; line-height: 1 !important; font-weight: 800 !important; }
   body header .top .search { grid-area: search !important; display: flex !important; align-items: stretch !important; width: 100% !important; min-width: 0 !important; height: 44px !important; margin: 0 !important; overflow: hidden !important; border: 1px solid #c8b9b1 !important; border-radius: 5px !important; background: #fff !important; box-shadow: none !important; box-sizing: border-box !important; }
   body header .top .search select { display: block !important; flex: 0 0 43px !important; width: 43px !important; min-width: 43px !important; height: 42px !important; padding: 0 3px !important; border: 0 !important; border-right: 1px solid #ddd2cc !important; border-radius: 0 !important; background: #f4eee9 !important; font-size: 11px !important; box-sizing: border-box !important; }
   body header .top .search input#q { display: block !important; flex: 1 1 auto !important; min-width: 0 !important; width: 1px !important; height: 42px !important; padding: 0 8px !important; border: 0 !important; border-radius: 0 !important; font-size: 14px !important; box-shadow: none !important; box-sizing: border-box !important; }
@@ -94,10 +94,10 @@
 }
 
 @media (max-width: 350px) {
-  body header .top { grid-template-columns: 54px minmax(48px,1fr) 64px 52px 40px !important; gap: 5px !important; padding-inline: 7px !important; }
+  body header .top { grid-template-columns: 46px minmax(56px,1fr) 64px 52px 40px !important; gap: 5px !important; padding-inline: 7px !important; }
   body header .top .logo .brand-name { font-size: 17px !important; letter-spacing: .35px !important; }
   body header .top .logo img { flex-basis: 31px !important; width: 31px !important; height: 31px !important; }
-  body header .top .offer-toplink { padding-inline: 6px !important; }
+  body header .top .offer-toplink { padding-inline: 2px !important; }
   body header .top .search select { flex-basis: 40px !important; width: 40px !important; min-width: 40px !important; }
   body header .top .search .search-lens-action, body header .top .search .search-submit { flex-basis: 32px !important; width: 32px !important; min-width: 32px !important; }
   body header .top .search input { padding-inline: 5px !important; font-size: 13px !important; }
