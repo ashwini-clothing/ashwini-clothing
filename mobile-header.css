@@ -91,6 +91,46 @@
   body .mobile-delivery-strip > input { width: 100% !important; min-width: 0 !important; height: 38px !important; padding: 0 8px !important; box-sizing: border-box !important; font-size: 15px !important; }
   body .mobile-delivery-strip > button { min-width: 0 !important; height: 38px !important; padding: 0 10px !important; white-space: nowrap !important; }
   body .mobile-delivery-strip > small { grid-column: 1 / -1 !important; margin: 0 !important; font-size: 10px !important; line-height: 1.25 !important; }
+
+  body .product-area #grid .sizebox,
+  body .products .sizebox,
+  body .product-grid .sizebox {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    margin: 7px 0 !important;
+  }
+  body .product-area #grid .sizebox .size,
+  body .products .sizebox .size,
+  body .product-grid .sizebox .size {
+    flex: 0 0 30px !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+    border-width: 1px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    line-height: 28px !important;
+  }
+  body #modal .detail .sizebox {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 7px !important;
+    margin: 8px 0 12px !important;
+  }
+  body #modal .detail .sizebox .size {
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 0 !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    line-height: 38px !important;
+  }
 }
 
 @media (max-width: 350px) {
