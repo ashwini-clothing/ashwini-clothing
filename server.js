@@ -162,6 +162,8 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AU
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec("ALTER TABLE auth_sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE auth_sessions ADD COLUMN device_label TEXT NOT NULL DEFAULT 'Unknown device'")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_rate_limits (key_hash TEXT PRIMARY KEY,window_start INTEGER NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,last_request INTEGER NOT NULL DEFAULT 0,verify_failures INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)`);db.prepare('DELETE FROM auth_rate_limits WHERE updated_at<?').run(Date.now()-24*60*60*1000)}catch(e){console.error('[Ashwini auth rate limits]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_help_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL DEFAULT '', customer_email TEXT NOT NULL DEFAULT '', message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT)`)}catch{}
@@ -351,12 +353,13 @@ function token(u){return jwt.sign({id:u.id,name:u.name,email:u.email,phone:u.pho
 function sessionHash(value){return crypto.createHash("sha256").update(String(value)).digest("hex")}
 function setSessionCookie(res,raw){res.setHeader("Set-Cookie",`ashwini_session=${raw}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${process.env.NODE_ENV==='production'?'; Secure':''}`)}
 function clearSessionCookie(res){res.setHeader("Set-Cookie","ashwini_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")}
-function createSession(res,userId){const raw=crypto.randomBytes(32).toString("base64url"),hash=sessionHash(raw),now=Date.now(),exp=now+30*24*60*60*1000;db.prepare("DELETE FROM auth_sessions WHERE expires_at<?").run(now);db.prepare("INSERT INTO auth_sessions(session_hash,user_id,expires_at,last_seen_at) VALUES(?,?,?,?)").run(hash,userId,exp,now);setSessionCookie(res,raw);return raw}
+function sessionDeviceLabel(userAgent=''){const ua=String(userAgent);const browser=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'Browser';const device=/Android/i.test(ua)?'Android phone':/iPhone/i.test(ua)?'iPhone':/iPad/i.test(ua)?'iPad':/Windows/i.test(ua)?'Windows computer':/Macintosh|Mac OS/i.test(ua)?'Mac computer':/Linux/i.test(ua)?'Linux device':'Device';return `${browser} on ${device}`}
+function createSession(req,res,userId){const raw=crypto.randomBytes(32).toString("base64url"),hash=sessionHash(raw),now=Date.now(),exp=now+30*24*60*60*1000,ua=String(req?.headers?.['user-agent']||'').slice(0,500);db.prepare("DELETE FROM auth_sessions WHERE expires_at<?").run(now);db.prepare("INSERT INTO auth_sessions(session_hash,user_id,expires_at,last_seen_at,user_agent,device_label) VALUES(?,?,?,?,?,?)").run(hash,userId,exp,now,ua,sessionDeviceLabel(ua));setSessionCookie(res,raw);return raw}
 function readCookie(req,name){const raw=String(req.headers.cookie||"");for(const part of raw.split(";")){const [k,...v]=part.trim().split("=");if(k===name)return decodeURIComponent(v.join("="));}return ""}
 function auth(req,res,next){
  try{
   const raw=readCookie(req,"ashwini_session");let u=null;
-  if(raw){const s=db.prepare("SELECT user_id,expires_at FROM auth_sessions WHERE session_hash=?").get(sessionHash(raw));if(s&&Number(s.expires_at)>Date.now()){u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(s.user_id);if(u){const now=Date.now();const newExp=now+30*24*60*60*1000;db.prepare("UPDATE auth_sessions SET last_seen_at=?,expires_at=? WHERE session_hash=?").run(now,newExp,sessionHash(raw));setSessionCookie(res,raw);}else db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));}}
+  if(raw){const s=db.prepare("SELECT id,user_id,expires_at FROM auth_sessions WHERE session_hash=?").get(sessionHash(raw));if(s&&Number(s.expires_at)>Date.now()){u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(s.user_id);if(u){req.sessionId=Number(s.id);const now=Date.now();const newExp=now+30*24*60*60*1000;db.prepare("UPDATE auth_sessions SET last_seen_at=?,expires_at=? WHERE session_hash=?").run(now,newExp,sessionHash(raw));setSessionCookie(res,raw);}else db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));}}
   if(!u){const h=req.headers.authorization||"";if(h.startsWith("Bearer ")){const claims=jwt.verify(h.slice(7),SECRET);u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(claims.id);}}
   if(!u)return res.status(401).json({error:"Login required. Please sign in again."});req.user=u;next();
  }catch{res.status(401).json({error:"Login required. Please sign in again."})}
@@ -664,7 +667,7 @@ app.post("/api/auth/verify-msg91-login",async(req,res)=>{
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
   clearOtpFailures(req,phone);
   const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
-  createSession(res,u.id);res.json({user:safe});
+  createSession(req,res,u.id);res.json({user:safe});
  }catch(e){console.error("[MSG91 login verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
 });
 app.post("/api/auth/request-msg91-registration",(req,res)=>{
@@ -695,7 +698,7 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
   const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(String(name).trim(),String(email).trim().toLowerCase(),hash,u0.id,`phone_${normalized}@ashwini.local`);
   if(changed.changes!==1)return res.status(409).json({error:'Account registration state changed. Please sign in or start again.'});
   const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);
-  createSession(res,u.id);res.json({user:u});
+  createSession(req,res,u.id);res.json({user:u});
  }catch(e){console.error("[MSG91 registration verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
 });
 app.post("/api/auth/request-login-otp",async(req,res)=>{
@@ -726,7 +729,7 @@ app.post("/api/auth/verify-login-otp",(req,res)=>{
  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
  clearOtpFailures(req,identifier);
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
- createSession(res,u.id);res.json({user:safe});
+ createSession(req,res,u.id);res.json({user:safe});
 });
 app.post("/api/auth/request-recovery-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
@@ -825,7 +828,7 @@ app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
   clearOtpFailures(req,phone);
   const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
-  createSession(res,u.id);res.json({user:safe});
+  createSession(req,res,u.id);res.json({user:safe});
  }catch(e){console.error("[MSG91 admin login verification]",e.message);res.status(401).json({error:e.message||"MSG91 admin OTP verification failed."});}
 });
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
@@ -837,7 +840,7 @@ app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
  clearOtpFailures(req,email);
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
- createSession(res,u.id);res.json({user:safe});
+ createSession(req,res,u.id);res.json({user:safe});
 });
 // Do not keep a password-only compatibility login: it would bypass the
 // customer OTP flow and the separate password + OTP admin flow above.
@@ -866,6 +869,9 @@ app.patch("/api/me/security",auth,(req,res)=>{try{
 }catch(e){res.status(400).json({error:e.message||"Could not update security settings"})}});
 app.post("/api/me/profile-change/request",auth,async(req,res)=>{try{const u=db.prepare("SELECT * FROM users WHERE id=?").get(req.user.id);const name=String(req.body?.name||u.name).trim(),newEmail=String(req.body?.email||u.email).trim().toLowerCase(),newPhone=normalizePhone(req.body?.phone||u.phone);if(!name||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(newEmail)||!/^[0-9]{10}$/.test(newPhone))return res.status(400).json({error:"Enter a valid name, email and 10-digit mobile number"});if(db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?").get(newEmail,u.id))return res.status(409).json({error:"Email is already in use"});if(db.prepare("SELECT id FROM users WHERE phone=? AND id<>?").get(newPhone,u.id))return res.status(409).json({error:"Mobile number is already in use"});if(newEmail===String(u.email).toLowerCase()&&newPhone===String(u.phone||"")){db.prepare("UPDATE users SET name=? WHERE id=?").run(name,u.id);return res.json({ok:true,unchanged:true,user:db.prepare("SELECT id,name,email,phone,role FROM users WHERE id=?").get(u.id)});}db.prepare("DELETE FROM profile_change_requests WHERE user_id=?").run(u.id);const r=db.prepare(`INSERT INTO profile_change_requests(user_id,old_email,old_phone,new_email,new_phone,created_at) VALUES(?,?,?,?,?,?)`).run(u.id,u.email,u.phone||"",newEmail,newPhone,Date.now());const targets=[];const changedEmail=newEmail!==String(u.email).toLowerCase(),changedPhone=newPhone!==String(u.phone||"");for(const [key,value,changed] of [["old_email",u.email,changedEmail],["new_email",newEmail,changedEmail],["old_phone",u.phone||"",changedPhone],["new_phone",newPhone,changedPhone]]){if(!changed||!value)continue;const otp=makeOtp(),hash=hashOtp(otp),exp=Date.now()+5*60*1000;db.prepare(`UPDATE profile_change_requests SET ${key}_hash=?,${key}_expires=? WHERE id=?`).run(hash,exp,r.lastInsertRowid);try{const d=await deliverProfileOtp(value,otp);if(!d.sent&&process.env.NODE_ENV==='production'&&String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:`${profileOtpTarget(value)==='mobile'?'SMS':'Email'} verification is not configured.`});targets.push({key,channel:profileOtpTarget(value),devOtp:(process.env.NODE_ENV!=='production'||String(process.env.SHOW_DEV_OTP||'').toLowerCase()==='true')?otp:undefined});}catch{return res.status(503).json({error:"Verification OTP could not be delivered. Please try again later."})}}res.json({ok:true,requiresVerification:true,targets});}catch(e){res.status(400).json({error:e.message})}});
 app.post("/api/me/profile-change/confirm",auth,async(req,res)=>{try{const r=db.prepare("SELECT * FROM profile_change_requests WHERE user_id=? ORDER BY id DESC LIMIT 1").get(req.user.id);if(!r)return res.status(400).json({error:"No pending profile change"});if(Number(r.attempts)>=5){db.prepare("DELETE FROM profile_change_requests WHERE id=?").run(r.id);return res.status(429).json({error:"Too many verification attempts. Please start again."});}const now=Date.now(),b=req.body||{},checks=[];if(r.new_email!==r.old_email)checks.push(["old_email",b.oldEmailOtp],["new_email",b.newEmailOtp]);if(r.new_phone!==r.old_phone)checks.push(["old_phone",b.oldPhoneOtp],["new_phone",b.newPhoneOtp]);for(const [key,otp] of checks){if(!/^\d{6}$/.test(String(otp||""))||Number(r[`${key}_expires`])<now||!otpMatches(otp,r[`${key}_hash`])){db.prepare("UPDATE profile_change_requests SET attempts=attempts+1 WHERE id=?").run(r.id);return res.status(400).json({error:"Invalid or expired verification OTP"});}}db.prepare("UPDATE users SET name=?,email=?,phone=? WHERE id=?").run(String(b.name||req.user.name).trim(),r.new_email,r.new_phone,req.user.id);db.prepare("DELETE FROM profile_change_requests WHERE id=?").run(r.id);const u=db.prepare("SELECT id,name,email,phone,role FROM users WHERE id=?").get(req.user.id);res.json({ok:true,user:u});}catch(e){res.status(400).json({error:e.message})}});
+app.get('/api/me/sessions',auth,(req,res)=>{try{db.prepare('DELETE FROM auth_sessions WHERE expires_at<?').run(Date.now());const sessions=db.prepare('SELECT id,created_at,last_seen_at,expires_at,device_label FROM auth_sessions WHERE user_id=? ORDER BY last_seen_at DESC').all(req.user.id).map(s=>({...s,current:Number(s.id)===Number(req.sessionId)}));res.json({sessions})}catch(e){res.status(500).json({error:'Could not load active sessions'})}});
+app.delete('/api/me/sessions/:id',auth,(req,res)=>{try{const id=Number(req.params.id);if(!Number.isInteger(id))return res.status(400).json({error:'Invalid session'});const found=db.prepare('SELECT id FROM auth_sessions WHERE id=? AND user_id=?').get(id,req.user.id);if(!found)return res.status(404).json({error:'Session not found'});db.prepare('DELETE FROM auth_sessions WHERE id=? AND user_id=?').run(id,req.user.id);const current=id===Number(req.sessionId);if(current)clearSessionCookie(res);res.json({ok:true,current})}catch(e){res.status(500).json({error:'Could not sign out this device'})}});
+app.post('/api/me/sessions/logout-all',auth,(req,res)=>{try{db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(req.user.id);clearSessionCookie(res);res.json({ok:true})}catch(e){res.status(500).json({error:'Could not sign out all devices'})}});
 app.post("/api/auth/logout",auth,(req,res)=>{try{const raw=readCookie(req,"ashwini_session");if(raw)db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));clearSessionCookie(res);res.json({ok:true});}catch(e){clearSessionCookie(res);res.json({ok:true});}});
 app.get("/api/products/:id/questions",(req,res)=>{
  const productId=Number(req.params.id);
