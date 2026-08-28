@@ -17,4 +17,41 @@
     stroke-linecap: round !important;
     stroke-linejoin: round !important;
   }
+
+  body header .search .search-photo,
+  body header .search .search-voice {
+    display: flex !important;
+    flex: 0 0 38px !important;
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 42px !important;
+    padding: 0 !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #37475a !important;
+    box-shadow: none !important;
+  }
+
+  body header .search .search-photo svg,
+  body header .search .search-voice svg {
+    display: block !important;
+    width: 20px !important;
+    height: 20px !important;
+    fill: none !important;
+    stroke: currentColor !important;
+    stroke-width: 1.8 !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+  }
+
+  body header .search .search-photo:hover,
+  body header .search .search-voice:hover {
+    background: #f3f3f3 !important;
+    color: #131921 !important;
+  }
 }
