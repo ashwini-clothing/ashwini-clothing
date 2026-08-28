@@ -599,8 +599,13 @@ app.post("/api/auth/reset-password",async(req,res)=>{
  if(password.length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
  if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash))return res.status(400).json({error:"Invalid or expired OTP"});
  const hash=await bcrypt.hash(password,12);
- db.prepare("UPDATE users SET password_hash=?,recovery_otp_hash='',recovery_otp_expires_at=0 WHERE id=?").run(hash,u.id);
- res.json({ok:true,message:"Password reset successfully. You can now sign in."});
+ const resetAccount=db.transaction(()=>{
+  db.prepare("UPDATE users SET password_hash=?,recovery_otp_hash='',recovery_otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(hash,u.id);
+  db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(u.id);
+ });
+ resetAccount();
+ clearSessionCookie(res);
+ res.json({ok:true,message:"Password reset successfully. All previous sessions have been signed out. You can now sign in."});
 });
 app.post("/api/auth/setup-admin",async(req,res)=>{
  const admins=db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin'").get().n;
