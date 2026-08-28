@@ -1045,6 +1045,21 @@ app.get("/api/admin/stats",auth,admin,(req,res)=>{
  res.json({revenue,orders:db.prepare("SELECT COUNT(*) n FROM orders").get().n,customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,products:db.prepare("SELECT COUNT(*) n FROM products").get().n});
 });
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id ORDER BY o.id DESC").all()));
+app.post("/api/admin/orders/:id/cash-received",auth,admin,async(req,res)=>{
+ try{
+  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+  if(!order)return res.status(404).json({error:"Order not found"});
+  if(order.payment_method!=="COD")return res.status(400).json({error:"Cash received can only be recorded for a Cash on Delivery order"});
+  if(order.status!=="DELIVERED")return res.status(400).json({error:"Mark the order delivered before recording the COD payment"});
+  if(order.payment_status==="PAID")return res.json({ok:true,already_paid:true,order});
+  db.prepare("UPDATE orders SET payment_status='PAID',updated_at=CURRENT_TIMESTAMP WHERE id=? AND payment_status<>'PAID'").run(order.id);
+  const updated=db.prepare("SELECT * FROM orders WHERE id=?").get(order.id);
+  addOrderEvent(updated.id,updated.user_id,'PAYMENT_RECEIVED','Cash payment received',`Cash on Delivery payment for Order #${updated.id} was received and recorded as PAID.`);
+  const customer=db.prepare("SELECT name,email FROM users WHERE id=?").get(updated.user_id);
+  if(customer?.email)await notifyEmail(customer.email,`Ashwini Clothing Payment Received - Order #${updated.id}`,`Hello ${customer.name||'Customer'},\n\nWe received the Cash on Delivery payment for Order #${updated.id}. Its payment status is now PAID.\n\nThank you for shopping with Ashwini Clothing.`);
+  res.json({ok:true,order:updated});
+ }catch(e){console.error('[Ashwini COD payment]',e);res.status(400).json({error:e.message||'COD payment could not be recorded'})}
+});
 app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const ok=["PAYMENT_PENDING","PLACED","CONFIRMED","PACKED","SHIPPED","OUT_FOR_DELIVERY","DELIVERED","CANCELLED"];
  if(!ok.includes(req.body.status))return res.status(400).json({error:"Invalid status"});
