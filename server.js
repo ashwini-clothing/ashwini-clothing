@@ -158,6 +158,7 @@ try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_message TEXT NOT NULL
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_state_settings (state TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS behavior_events (id INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL,user_id INTEGER,event_type TEXT NOT NULL,product_id INTEGER,context_product_id INTEGER,metadata TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at); CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);`)}catch(e){console.error('[Behavior table]',e.message)}
+try{db.exec(`CREATE TABLE IF NOT EXISTS razorpay_webhook_events (id INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL UNIQUE,event_type TEXT NOT NULL,razorpay_order_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'RECEIVED',error TEXT NOT NULL DEFAULT '',received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,processed_at TEXT)`)}catch(e){console.error('[Razorpay webhook table]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_settings (id INTEGER PRIMARY KEY CHECK(id=1), dispatch_city TEXT NOT NULL DEFAULT 'Jandli, Ambala Cantt', dispatch_state TEXT NOT NULL DEFAULT 'Haryana', dispatch_pincode TEXT NOT NULL DEFAULT '134003', same_city_min INTEGER NOT NULL DEFAULT 1, same_city_max INTEGER NOT NULL DEFAULT 2, same_state_min INTEGER NOT NULL DEFAULT 2, same_state_max INTEGER NOT NULL DEFAULT 4, nearby_min INTEGER NOT NULL DEFAULT 3, nearby_max INTEGER NOT NULL DEFAULT 5, rest_min INTEGER NOT NULL DEFAULT 5, rest_max INTEGER NOT NULL DEFAULT 8, remote_min INTEGER NOT NULL DEFAULT 7, remote_max INTEGER NOT NULL DEFAULT 10, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, block_type TEXT NOT NULL CHECK(block_type IN ('PIN','CITY','STATE')), block_value TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(block_type,block_value))`)}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO delivery_settings(id) VALUES(1)`).run()}catch{}
@@ -170,6 +171,40 @@ db.exec(fs.readFileSync(path.join(__dirname,"seed.sql"),"utf8"));
 db.prepare("UPDATE products SET image=? WHERE id=?").run('/new-model-dress-clean.jpg',100);
 const razorpay=process.env.RAZORPAY_KEY_ID&&process.env.RAZORPAY_KEY_SECRET
  ? new Razorpay({key_id:process.env.RAZORPAY_KEY_ID,key_secret:process.env.RAZORPAY_KEY_SECRET}):null;
+
+// Razorpay must be verified against the untouched request bytes. Keep this
+// route before express.json(), otherwise signature validation is unreliable.
+app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1mb'}),(req,res)=>{
+ const secret=String(process.env.RAZORPAY_WEBHOOK_SECRET||''),signature=String(req.headers['x-razorpay-signature']||''),raw=Buffer.isBuffer(req.body)?req.body:Buffer.from(req.body||'');
+ if(!secret)return res.status(503).json({error:'Razorpay webhook is not configured'});
+ const expected=crypto.createHmac('sha256',secret).update(raw).digest('hex');
+ const valid=/^[a-f0-9]{64}$/i.test(signature)&&crypto.timingSafeEqual(Buffer.from(expected,'hex'),Buffer.from(signature,'hex'));
+ if(!valid)return res.status(401).json({error:'Invalid webhook signature'});
+ let event;
+ try{event=JSON.parse(raw.toString('utf8'))}catch{return res.status(400).json({error:'Invalid webhook payload'})}
+ const eventId=String(req.headers['x-razorpay-event-id']||event.id||crypto.createHash('sha256').update(raw).digest('hex')).slice(0,160);
+ const eventType=String(event.event||'unknown').slice(0,80);
+ const payment=event.payload?.payment?.entity||null,orderEntity=event.payload?.order?.entity||null;
+ const razorpayOrderId=String(payment?.order_id||orderEntity?.id||'');
+ const previous=db.prepare('SELECT status FROM razorpay_webhook_events WHERE event_id=?').get(eventId);
+ if(previous&&previous.status!=='ERROR')return res.json({ok:true,duplicate:true});
+ if(!previous)db.prepare('INSERT INTO razorpay_webhook_events(event_id,event_type,razorpay_order_id) VALUES(?,?,?)').run(eventId,eventType,razorpayOrderId);
+ try{
+  const finish=(status,error='')=>db.prepare('UPDATE razorpay_webhook_events SET status=?,error=?,processed_at=CURRENT_TIMESTAMP WHERE event_id=?').run(status,String(error).slice(0,500),eventId);
+  if(!['payment.captured','order.paid','payment.failed'].includes(eventType)){finish('IGNORED');return res.json({ok:true,ignored:true})}
+  const order=db.prepare("SELECT * FROM orders WHERE razorpay_order_id=? AND payment_method='RAZORPAY'").get(razorpayOrderId);
+  if(!order){finish('REJECTED','Matching Ashwini order was not found');return res.json({ok:true,matched:false})}
+  const paidAmount=Number(payment?.amount??orderEntity?.amount_paid??orderEntity?.amount);
+  const currency=String(payment?.currency||orderEntity?.currency||'INR').toUpperCase();
+  if(!Number.isFinite(paidAmount)||paidAmount!==Number(order.total)*100||currency!=='INR'){finish('REJECTED','Payment amount or currency did not match the Ashwini order');return res.json({ok:true,matched:false})}
+  if(eventType==='payment.failed'){
+   if(order.payment_status!=='PAID')db.prepare("UPDATE orders SET payment_status='FAILED',status=CASE WHEN status='PAYMENT_PENDING' THEN 'PAYMENT_FAILED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);
+  }else{
+   db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);
+  }
+  finish('PROCESSED');res.json({ok:true});
+ }catch(e){db.prepare("UPDATE razorpay_webhook_events SET status='ERROR',error=? WHERE event_id=?").run(String(e.message||e).slice(0,500),eventId);console.error('[Razorpay webhook]',e.message);res.status(500).json({error:'Webhook processing failed'})}
+});
 
 app.use(cors());
 app.use(express.json({limit:'25mb'}));
@@ -861,14 +896,23 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
   res.json({ok:true,mode:"RAZORPAY",orderId,total,razorpayOrderId:rp.id,keyId:process.env.RAZORPAY_KEY_ID});
  }catch(e){console.error('[Ashwini checkout]',e);res.status(400).json({error:e.message||"Order could not be created"})}
 });
-app.post("/api/checkout/verify",auth,(req,res)=>{
- const {orderId,razorpay_order_id,razorpay_payment_id,razorpay_signature}=req.body;
- const o=db.prepare("SELECT * FROM orders WHERE id=? AND user_id=?").get(orderId,req.user.id);
- if(!o||o.razorpay_order_id!==razorpay_order_id)return res.status(400).json({error:"Order mismatch"});
- const expected=crypto.createHmac("sha256",process.env.RAZORPAY_KEY_SECRET||"").update(o.razorpay_order_id+"|"+razorpay_payment_id).digest("hex");
- if(expected!==razorpay_signature)return res.status(400).json({error:"Payment verification failed"});
- db.prepare("UPDATE orders SET payment_status='PAID',status='CONFIRMED',razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
- res.json({ok:true});
+app.post("/api/checkout/verify",auth,async(req,res)=>{
+ try{
+  const {orderId,razorpay_order_id,razorpay_payment_id,razorpay_signature}=req.body;
+  const o=db.prepare("SELECT * FROM orders WHERE id=? AND user_id=? AND payment_method='RAZORPAY'").get(orderId,req.user.id);
+  if(!o||o.razorpay_order_id!==razorpay_order_id)return res.status(400).json({error:"Order mismatch"});
+  if(!razorpay)return res.status(503).json({error:"Razorpay is not configured"});
+  const expected=crypto.createHmac("sha256",process.env.RAZORPAY_KEY_SECRET||"").update(o.razorpay_order_id+"|"+razorpay_payment_id).digest("hex");
+  const supplied=String(razorpay_signature||'');
+  const valid=/^[a-f0-9]{64}$/i.test(supplied)&&crypto.timingSafeEqual(Buffer.from(expected,'hex'),Buffer.from(supplied,'hex'));
+  if(!valid)return res.status(400).json({error:"Payment verification failed"});
+  const payment=await razorpay.payments.fetch(String(razorpay_payment_id||''));
+  const amountMatches=Number(payment.amount)===Math.round(Number(o.total)*100);
+  if(payment.order_id!==o.razorpay_order_id||String(payment.currency||'').toUpperCase()!=='INR'||!amountMatches)return res.status(400).json({error:"Payment details do not match this order"});
+  if(payment.status!=='captured')return res.status(409).json({error:"Payment is still being processed. Please check Your Orders shortly."});
+  db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
+  res.json({ok:true});
+ }catch(e){console.error('[Razorpay checkout verification]',e.message);res.status(400).json({error:'Payment could not be verified. Please check Your Orders before trying again.'})}
 });
 
 app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
