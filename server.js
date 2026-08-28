@@ -123,6 +123,10 @@ try{db.exec("ALTER TABLE orders ADD COLUMN cancelled_at TEXT DEFAULT ''")}catch{
 try{db.exec("ALTER TABLE orders ADD COLUMN stock_reserved_at TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN stock_released_at TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN checkout_key TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN razorpay_refund_id TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN refund_amount INTEGER DEFAULT 0")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN refund_requested_at TEXT DEFAULT ''")}catch{}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
 try{db.exec("UPDATE orders SET stock_reserved_at=created_at WHERE COALESCE(stock_reserved_at,'')='' AND COALESCE(stock_released_at,'')='' ")}catch{}
 try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
@@ -205,6 +209,36 @@ function releaseOrderStock(orderId,nextStatus){
   for(const item of items)restore.run(Number(item.quantity||0),item.product_id);
   return true;
  })();
+}
+function restoreCancelledOrderStock(orderId){
+ return db.transaction(()=>{
+  const order=db.prepare("SELECT id,stock_released_at FROM orders WHERE id=?").get(orderId);
+  if(!order||String(order.stock_released_at||''))return false;
+  const claimed=db.prepare("UPDATE orders SET stock_released_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(stock_released_at,'')=''").run(order.id);
+  if(!claimed.changes)return false;
+  const items=db.prepare("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id").all(order.id),restore=db.prepare("UPDATE products SET stock=stock+? WHERE id=?");
+  for(const item of items)restore.run(Number(item.quantity||0),item.product_id);
+  return true;
+ })();
+}
+async function cancelOrderSafely(order){
+ if(order.status==='CANCELLED')return db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);
+ if(!['PAYMENT_PENDING','PAYMENT_EXPIRED','PAYMENT_FAILED','PLACED','CONFIRMED','PACKED'].includes(String(order.status)))throw Error('This order can no longer be cancelled because shipping has started');
+ if(order.payment_method==='RAZORPAY'&&order.payment_status==='PAID'){
+  if(!razorpay||!order.razorpay_payment_id)throw Error('Online refund is not configured for this payment. Please contact Ashwini Support.');
+  const claim=db.prepare("UPDATE orders SET refund_status='PROCESSING',refund_requested_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(refund_status,'') IN ('','FAILED')").run(order.id);
+  if(!claim.changes){const current=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);if(['PROCESSING','PENDING','PROCESSED'].includes(String(current.refund_status)))return current;throw Error('This refund could not be started again')}
+  try{
+   const refund=await razorpay.payments.refund(order.razorpay_payment_id,{amount:Number(order.total)*100,notes:{ashwini_order_id:String(order.id),reason:'Customer order cancellation'}});
+   const refundStatus=String(refund.status||'PENDING').toUpperCase(),paymentStatus=refundStatus==='PROCESSED'?'REFUNDED':'REFUND_PENDING';
+   db.prepare("UPDATE orders SET status='CANCELLED',payment_status=?,razorpay_refund_id=?,refund_status=?,refund_amount=?,cancelled_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(paymentStatus,String(refund.id||''),refundStatus,Math.round(Number(refund.amount||Number(order.total)*100)/100),order.id);
+   restoreCancelledOrderStock(order.id);
+  }catch(error){db.prepare("UPDATE orders SET refund_status='FAILED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);throw Error(`Refund could not be initiated: ${error?.error?.description||error.message||'Razorpay error'}`)}
+ }else{
+  db.prepare("UPDATE orders SET status='CANCELLED',payment_status=CASE WHEN payment_status='PAID' THEN payment_status ELSE 'CANCELLED' END,cancelled_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);
+  restoreCancelledOrderStock(order.id);
+ }
+ return db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);
 }
 function reserveReleasedOrderStock(orderId){
  return db.transaction(()=>{
@@ -1122,6 +1156,7 @@ app.get("/api/orders/:id",auth,(req,res)=>{
   const deliveredAt=o.status==='DELIVERED'?Date.parse(String(o.delivered_at||o.updated_at||o.created_at||'')):NaN;const returnDeadline=Number.isFinite(deliveredAt)?new Date(deliveredAt+4*24*60*60*1000).toISOString():null;res.json({...o,return_deadline_at:returnDeadline,return_eligible:Boolean(returnDeadline&&Date.now()<=Date.parse(returnDeadline)),items,return_request,tracking:{current:o.status,stages:['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED']}});
  }catch(e){res.status(500).json({error:e.message||'Could not load order'})}
 });
+app.post('/api/orders/:id/cancel',auth,async(req,res)=>{try{const order=db.prepare('SELECT * FROM orders WHERE id=? AND user_id=?').get(req.params.id,req.user.id);if(!order)return res.status(404).json({error:'Order not found for this account'});const cancelled=await cancelOrderSafely(order),hasRefund=['REFUND_PENDING','REFUNDED'].includes(String(cancelled.payment_status));if(order.status!==cancelled.status){addOrderEvent(cancelled.id,cancelled.user_id,'CANCELLED','Order cancelled',cancelled.payment_method==='RAZORPAY'&&order.payment_status==='PAID'?`Order #${cancelled.id} was cancelled and its Razorpay refund was initiated.`:`Order #${cancelled.id} was cancelled successfully.`);await Promise.allSettled([notifyEmail(req.user.email,`Ashwini Clothing Order #${cancelled.id} Cancelled`,hasRefund?`Your order #${cancelled.id} was cancelled. A refund of ₹${Number(cancelled.refund_amount||cancelled.total).toLocaleString('en-IN')} has been initiated through Razorpay. The final credit time depends on your bank or payment method.`:`Your order #${cancelled.id} was cancelled successfully. No online refund was required.`),notifyEmail(adminEmail(),`Ashwini Order #${cancelled.id} Cancelled`,`Customer ${req.user.name} cancelled Order #${cancelled.id}. Payment: ${cancelled.payment_status}. Refund: ${cancelled.refund_status||'Not required'}.`)]);}res.json({ok:true,order:cancelled,message:hasRefund?'Order cancelled and refund initiated':'Order cancelled successfully'})}catch(e){res.status(400).json({error:e.message||'Order could not be cancelled'})}});
 
 app.get('/api/customer-help',auth,(req,res)=>{
  try{
@@ -1188,6 +1223,9 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  if(!ok.includes(req.body.status))return res.status(400).json({error:"Invalid status"});
  const before=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
  if(!before)return res.status(404).json({error:"Order not found"});
+ if(req.body.status==='CANCELLED'){
+  try{const order=await cancelOrderSafely(before);if(before.status!==order.status){const msg=order.payment_status==='REFUND_PENDING'||order.payment_status==='REFUNDED'?`Order #${order.id} was cancelled and its Razorpay refund was initiated.`:`Order #${order.id} was cancelled.`;addOrderEvent(order.id,order.user_id,'CANCELLED','Order cancelled',msg);const u=db.prepare('SELECT name,email FROM users WHERE id=?').get(order.user_id);if(u?.email)await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} Cancelled`,msg)}return res.json({ok:true,order})}catch(e){return res.status(400).json({error:e.message||'Order cancellation failed'})}
+ }
  const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,cancelled_at=CASE WHEN ?='CANCELLED' AND COALESCE(cancelled_at,'')='' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(req.body.status,req.body.status,req.body.status,req.params.id);
  if(!result.changes)return res.status(404).json({error:"Order not found"});
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
