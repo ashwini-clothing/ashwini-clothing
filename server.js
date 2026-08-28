@@ -704,14 +704,11 @@ app.post("/api/auth/reset-password",async(req,res)=>{
  clearSessionCookie(res);
  res.json({ok:true,message:"Password reset successfully. All previous sessions have been signed out. You can now sign in."});
 });
-app.post("/api/auth/setup-admin",async(req,res)=>{
- const admins=db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin'").get().n;
- if(admins>0)return res.status(403).json({error:"Store admin is already configured"});
- const {name,email,password}=req.body||{};
- if(!name||!email||!password||String(password).length<8)return res.status(400).json({error:"Name, email and an 8+ character password are required"});
- try{const hash=await bcrypt.hash(password,12);const r=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)").run(name,email.toLowerCase(),hash,'admin');const u=db.prepare("SELECT id,name,email,role FROM users WHERE id=?").get(r.lastInsertRowid);createSession(res,u.id);res.json({user:u})}
- catch{res.status(409).json({error:"Email already registered"})}
-});
+// Admin creation is never exposed through a public HTTP request. If the
+// database is recreated, the owner must configure ADMIN_EMAIL and
+// ADMIN_PASSWORD in the private Render Environment; startup bootstrap above
+// will then restore the authorised store-admin account.
+app.post("/api/auth/setup-admin",(req,res)=>res.status(404).json({error:"Not found"}));
 app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase();
  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:"Enter a valid admin email address"});
