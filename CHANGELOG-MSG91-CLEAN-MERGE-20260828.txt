@@ -1,0 +1,10 @@
+Ashwini Clothing - Clean MSG91 Restore and Merge
+
+- Restored the working MSG91 secure OTP widget for customer mobile login.
+- Restored MSG91 verified customer registration.
+- Restored server-side MSG91 access-token verification.
+- Restored MSG91 variables in .env.example and render.yaml without embedding secrets.
+- Removed the overlapping demo mobile-registration OTP endpoints and duplicate OTP input UI.
+- Kept email OTP, recovery, admin email OTP and password login flows separate.
+- Preserved visual search, mobile/desktop layouts, item collaborative filtering and real-time behavior tracking.
+- Updated the app.js cache version so deployed browsers load the merged code.
