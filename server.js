@@ -27,7 +27,13 @@ function publishHelpChat(threadId,payload){
   const data=`data: ${JSON.stringify(payload)}\n\n`;
   for(const key of keys){const set=helpChatStreams.get(key);if(!set)continue;for(const res of [...set]){try{res.write(data)}catch{try{res.end()}catch{}set.delete(res)}}}
 }
-const SECRET=process.env.JWT_SECRET||"CHANGE_ME";
+const configuredJwtSecret=String(process.env.JWT_SECRET||'').trim();
+const insecureJwtSecret=!configuredJwtSecret||configuredJwtSecret.length<32||/^(change_me|changeme|secret|replace-with)/i.test(configuredJwtSecret);
+if(process.env.NODE_ENV==='production'&&insecureJwtSecret){
+ throw new Error('JWT_SECRET must be configured in Render Environment with at least 32 random characters. Refusing to start insecurely.');
+}
+const SECRET=insecureJwtSecret?crypto.randomBytes(48).toString('base64url'):configuredJwtSecret;
+if(insecureJwtSecret)console.warn('[Ashwini security] Development is using a temporary JWT secret; sessions will not survive a restart.');
 
 // Keep customer/order data independent of version folders. If an older version
 // already has an Ashwini database, reuse the newest nearby database on first run.
