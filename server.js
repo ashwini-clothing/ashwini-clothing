@@ -911,9 +911,10 @@ app.get("/api/admin/questions",auth,admin,(req,res)=>{
 
 app.get('/api/products/:id/reviews',(req,res)=>{
  const productId=Number(req.params.id); if(!Number.isInteger(productId))return res.status(400).json({error:'Invalid product'});
- const rows=db.prepare(`SELECT r.id,r.product_id,r.rating,r.feedback,r.created_at,u.name AS customer_name FROM product_reviews r JOIN users u ON u.id=r.user_id WHERE r.product_id=? ORDER BY r.created_at DESC`).all(productId);
+ const rows=db.prepare(`SELECT r.id,r.product_id,r.rating,r.feedback,r.created_at,u.name AS customer_name,EXISTS(SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=r.product_id AND o.user_id=r.user_id AND o.status='DELIVERED' AND o.payment_status='PAID') AS verified_purchase FROM product_reviews r JOIN users u ON u.id=r.user_id WHERE r.product_id=? ORDER BY r.created_at DESC`).all(productId);
  const summary=db.prepare('SELECT COUNT(*) count, COALESCE(AVG(rating),0) avg FROM product_reviews WHERE product_id=?').get(productId);
- res.json({reviews:rows.map(r=>({...r,customer_name:r.customer_name||'Customer'})),count:Number(summary.count||0),average:Number(summary.avg||0)});
+ const viewerId=behaviorUserId(req),canReview=viewerId?!!db.prepare("SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=? AND o.user_id=? AND o.status='DELIVERED' AND o.payment_status='PAID' LIMIT 1").get(productId,viewerId):false;
+ res.json({reviews:rows.map(r=>({...r,customer_name:r.customer_name||'Customer',verified_purchase:!!r.verified_purchase})),count:Number(summary.count||0),average:Number(summary.avg||0),can_review:canReview});
 });
 app.post('/api/products/:id/reviews',auth,(req,res)=>{
  if(req.user.role!=='customer')return res.status(403).json({error:'Customer review only'});
@@ -922,6 +923,8 @@ app.post('/api/products/:id/reviews',auth,(req,res)=>{
  if(!feedback)return res.status(400).json({error:'Please write your feedback'});
  if(feedback.length>1000)return res.status(400).json({error:'Feedback is too long'});
  if(!db.prepare('SELECT id FROM products WHERE id=?').get(productId))return res.status(404).json({error:'Product not found'});
+ const verified=db.prepare("SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=? AND o.user_id=? AND o.status='DELIVERED' AND o.payment_status='PAID' LIMIT 1").get(productId,req.user.id);
+ if(!verified)return res.status(403).json({error:'Only customers with a delivered and paid purchase can review this product'});
  const existing=db.prepare('SELECT id FROM product_reviews WHERE product_id=? AND user_id=?').get(productId,req.user.id);
  if(existing){db.prepare('UPDATE product_reviews SET rating=?,feedback=?,created_at=CURRENT_TIMESTAMP WHERE id=?').run(rating,feedback,existing.id);}
  else db.prepare('INSERT INTO product_reviews(product_id,user_id,rating,feedback) VALUES(?,?,?,?)').run(productId,req.user.id,rating,feedback);
