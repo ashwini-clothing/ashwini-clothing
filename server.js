@@ -205,8 +205,9 @@ function admin(req,res,next){if(req.user?.role!=="admin")return res.status(403).
 async function sendEmail(to,subject,text,html){
  const provider=String(process.env.EMAIL_PROVIDER||'resend').trim().toLowerCase();
  const from=process.env.EMAIL_FROM||'Ashwini Clothing <onboarding@resend.dev>';
+ const shopUrl=String(process.env.PUBLIC_SITE_URL||'https://ashwiniweb.com').replace(/\/$/,'');
  if(!to)return {sent:false,configured:false,error:'Recipient email is missing'};
- const safeHtml=html||`<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Ashwini Clothing</h2><p>${String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p></div>`;
+ const safeHtml=html||`<div style="font-family:Arial,sans-serif;line-height:1.6;color:#30252a;max-width:560px;margin:auto"><h2 style="color:#5a2e40">Ashwini Clothing</h2><p>${String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p><p style="margin-top:24px"><a href="${shopUrl}" style="display:inline-block;padding:12px 24px;border-radius:7px;background:#5a2e40;color:#fff;text-decoration:none;font-weight:700">Shop Now</a></p><p style="font-size:12px;color:#777">If the button does not open, visit ${shopUrl}</p></div>`;
  try{
   if(provider==='smtp'){
    const nodemailer=(await import('nodemailer')).default;
