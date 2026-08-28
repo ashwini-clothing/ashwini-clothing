@@ -2,6 +2,7 @@
 .search-lens-action { display: none; }
 .lens-source-menu { display: none; }
 @media (max-width: 600px) {
+  body.msg91-otp-open .mobile-delivery-strip { display: none !important; }
   body header { position: sticky; top: 0; z-index: 7000; box-shadow: 0 2px 7px rgba(0,0,0,.22); }
   body header .top {
     display: grid !important;

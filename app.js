@@ -637,9 +637,10 @@ async function openMsg91Verification(phone){
  // MSG91 creates its own secure OTP modal. Remove Ashwini's temporary panel
  // completely so only one clean OTP screen is visible to the customer.
  const ownModal=document.getElementById('modal');if(ownModal){ownModal.style.display='none';ownModal.style.zIndex='';ownModal.setAttribute('aria-hidden','true');document.body.style.overflow=''}
+ document.body.classList.add('msg91-otp-open');
  return new Promise((resolve,reject)=>{
   let finished=false;
-  const finish=(fn,value)=>{if(finished)return;finished=true;fn(value)};
+  const finish=(fn,value)=>{if(finished)return;finished=true;document.body.classList.remove('msg91-otp-open');fn(value)};
   const configuration={
    widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'91'+phone,
    success:data=>{const accessToken=msg91AccessToken(data);if(!accessToken){finish(reject,new Error('MSG91 verified the OTP but did not return a verification token.'));return}finish(resolve,accessToken)},
