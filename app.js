@@ -110,7 +110,9 @@ function enhancePasswordInputs(root=document){
  }catch{}
 }
 function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';if(String(html).includes('Ashwini Admin Dashboard'))requestAnimationFrame(addAppearanceDashboardBox);document.getElementById('modalClose')?.focus()}
-function closeM(){if(window.__helpChatTimer){clearInterval(window.__helpChatTimer);window.__helpChatTimer=null}if(window.__helpChatStream){window.__helpChatStream.close();window.__helpChatStream=null}const m=document.getElementById('modal');if(!m)return;m.style.display='none';m.style.zIndex='';m.setAttribute('aria-hidden','true');document.body.style.overflow=''}
+function closeM(fromHistory=false){if(window.__productHistoryActive&&!fromHistory){history.back();return}if(window.__helpChatTimer){clearInterval(window.__helpChatTimer);window.__helpChatTimer=null}if(window.__helpChatStream){window.__helpChatStream.close();window.__helpChatStream=null}const m=document.getElementById('modal');if(!m)return;m.style.display='none';m.style.zIndex='';m.setAttribute('aria-hidden','true');document.body.style.overflow='';window.__productHistoryActive=false}
+function markProductHistory(id){if(window.__productHistoryActive){history.replaceState({...history.state,ashwiniProduct:Number(id)},'',location.href);return}history.pushState({...history.state,ashwiniProduct:Number(id)},'',location.href);window.__productHistoryActive=true}
+window.addEventListener('popstate',()=>{if(window.__productHistoryActive){window.__productHistoryActive=false;closeM(true)}});
 
 const galleryFallback={1:['/_model_western.jpg'],2:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg'],3:['/_model_purple.jpg'],4:['/_model_purple.jpg'],5:['/_model_blue.jpg'],6:['/_model_blue.jpg'],7:['/_model_purple.jpg'],8:['/_model_western.jpg'],9:['/_model_blue.jpg'],10:['/_model_pink.jpg'],11:['/_model_western.jpg'],12:['/_model_purple.jpg'],13:['/_model_pink.jpg'],14:['/_model_purple.jpg'],100:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg']};
 function getGallery(p){let a=[];try{a=JSON.parse(p.gallery||'[]')}catch{}if(!Array.isArray(a)||!a.length)a=galleryFallback[p.id]||[];if(p.image&&!a.includes(p.image))a.unshift(p.image);return [...new Set(a)].filter(Boolean).slice(0,5)}
@@ -221,6 +223,7 @@ async function detail(id){
   <div class="product-info"><h3>Product Details / History</h3><div class="product-history">${esc(history)}</div>${user?.role==='admin'?`<button class="wishlist" type="button" style="margin-top:10px" onclick="stop(event);editProduct(${p.id})">✎ Edit Product</button>`:''}<h3 style="margin-top:18px">Care Instructions</h3><div class="product-history">${esc(care)}</div></div>
   ${recommendationsHtml}${policySections()}${securitySection()}${qaHtml}${reviewsHtml}
   </div></div>`);
+ markProductHistory(p.id);
  bindImageZoom(p.id);
 }
 async function itemRecommendationsSection(id){
