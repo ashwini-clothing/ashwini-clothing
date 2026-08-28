@@ -254,7 +254,16 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
 
 app.use(cors());
 app.use(express.json({limit:'25mb'}));
-app.use(express.static(__dirname));
+
+// Do not expose the project directory. Only customer-facing files are public;
+// server source, SQL, database, environment, deployment and documentation
+// files must never be downloadable from the website.
+const publicCssFiles=new Set(['/mobile-rebuild-v3.css','/mobile-header.css','/desktop-search-fix.css','/lens-camera.css','/visual-search.css','/recommendations.css']);
+function sendPublicFile(res,fileName){res.sendFile(path.join(__dirname,fileName),err=>{if(err&&!res.headersSent)res.status(err.statusCode===404?404:500).end()})}
+app.get(['/', '/index.html'],(req,res)=>sendPublicFile(res,'index.html'));
+app.get('/app.js',(req,res)=>sendPublicFile(res,'app.js'));
+app.get([...publicCssFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
+app.get(/^\/[^/]+\.(?:png|jpe?g|webp|gif|svg|ico)$/i,(req,res)=>sendPublicFile(res,req.path.slice(1)));
 
 // Persist rate limits in SQLite so a Render restart cannot clear an attacker's
 // OTP request or verification-attempt counters.
@@ -1145,5 +1154,7 @@ app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{
 app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM products WHERE id=?").run(req.params.id);res.json({ok:true})});
 
 app.get("/api/webhooks/health",(req,res)=>res.json({razorpayConfigured:Boolean(razorpay)}));
-app.use((req,res)=>res.sendFile(path.join(__dirname,"index.html")));
+app.use('/api',(req,res)=>res.status(404).json({error:'Not found'}));
+app.get(/.*/,(req,res)=>path.extname(req.path)?res.status(404).end():sendPublicFile(res,'index.html'));
+app.use((req,res)=>res.status(404).end());
 app.listen(PORT,"0.0.0.0",()=>console.log(`Ashwini Clothing: http://0.0.0.0:${PORT}`));
