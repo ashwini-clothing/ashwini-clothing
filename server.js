@@ -127,6 +127,9 @@ try{db.exec("ALTER TABLE orders ADD COLUMN razorpay_refund_id TEXT DEFAULT ''")}
 try{db.exec("ALTER TABLE orders ADD COLUMN refund_status TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN refund_amount INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN refund_requested_at TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN dispute_id TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN dispute_status TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN dispute_reason TEXT DEFAULT ''")}catch{}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
 try{db.exec("UPDATE orders SET stock_reserved_at=created_at WHERE COALESCE(stock_reserved_at,'')='' AND COALESCE(stock_released_at,'')='' ")}catch{}
 try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
@@ -273,16 +276,28 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
  try{event=JSON.parse(raw.toString('utf8'))}catch{return res.status(400).json({error:'Invalid webhook payload'})}
  const eventId=String(req.headers['x-razorpay-event-id']||event.id||crypto.createHash('sha256').update(raw).digest('hex')).slice(0,160);
  const eventType=String(event.event||'unknown').slice(0,80);
- const payment=event.payload?.payment?.entity||null,orderEntity=event.payload?.order?.entity||null;
+ const payment=event.payload?.payment?.entity||null,orderEntity=event.payload?.order?.entity||null,refund=event.payload?.refund?.entity||null,dispute=event.payload?.dispute?.entity||null;
  const razorpayOrderId=String(payment?.order_id||orderEntity?.id||'');
  const previous=db.prepare('SELECT status FROM razorpay_webhook_events WHERE event_id=?').get(eventId);
  if(previous&&previous.status!=='ERROR')return res.json({ok:true,duplicate:true});
  if(!previous)db.prepare('INSERT INTO razorpay_webhook_events(event_id,event_type,razorpay_order_id) VALUES(?,?,?)').run(eventId,eventType,razorpayOrderId);
  try{
   const finish=(status,error='')=>db.prepare('UPDATE razorpay_webhook_events SET status=?,error=?,processed_at=CURRENT_TIMESTAMP WHERE event_id=?').run(status,String(error).slice(0,500),eventId);
-  if(!['payment.captured','order.paid','payment.failed'].includes(eventType)){finish('IGNORED');return res.json({ok:true,ignored:true})}
-  const order=db.prepare("SELECT * FROM orders WHERE razorpay_order_id=? AND payment_method='RAZORPAY'").get(razorpayOrderId);
+  const paymentEvents=['payment.captured','order.paid','payment.failed'],refundEvents=['refund.created','refund.processed','refund.failed'],disputeEvents=['payment.dispute.created','payment.dispute.won','payment.dispute.lost','payment.dispute.closed'];
+  if(![...paymentEvents,...refundEvents,...disputeEvents].includes(eventType)){finish('IGNORED');return res.json({ok:true,ignored:true})}
+  const relatedPaymentId=String(refund?.payment_id||dispute?.payment_id||payment?.id||'');
+  const order=razorpayOrderId?db.prepare("SELECT * FROM orders WHERE razorpay_order_id=? AND payment_method='RAZORPAY'").get(razorpayOrderId):db.prepare("SELECT * FROM orders WHERE payment_method='RAZORPAY' AND (razorpay_payment_id=? OR razorpay_refund_id=?)").get(relatedPaymentId,String(refund?.id||''));
   if(!order){finish('REJECTED','Matching Ashwini order was not found');return res.json({ok:true,matched:false})}
+  if(refundEvents.includes(eventType)){
+   const refundStatus=eventType==='refund.processed'?'PROCESSED':eventType==='refund.failed'?'FAILED':String(refund?.status||'PENDING').toUpperCase(),paymentStatus=refundStatus==='PROCESSED'?'REFUNDED':refundStatus==='FAILED'?'REFUND_FAILED':'REFUND_PENDING';
+   db.prepare("UPDATE orders SET razorpay_refund_id=COALESCE(NULLIF(?,''),razorpay_refund_id),refund_status=?,refund_amount=CASE WHEN ?>0 THEN ? ELSE refund_amount END,payment_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(refund?.id||''),refundStatus,Number(refund?.amount||0),Math.round(Number(refund?.amount||0)/100),paymentStatus,order.id);
+   finish('PROCESSED');return res.json({ok:true,refund:true});
+  }
+  if(disputeEvents.includes(eventType)){
+   const disputeStatus=eventType.split('.').pop().toUpperCase(),paymentStatus=disputeStatus==='CREATED'?'DISPUTED':disputeStatus==='LOST'?'DISPUTE_LOST':'PAID';
+   db.prepare("UPDATE orders SET dispute_id=COALESCE(NULLIF(?,''),dispute_id),dispute_status=?,dispute_reason=?,payment_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(dispute?.id||''),disputeStatus,String(dispute?.reason_code||dispute?.reason||'').slice(0,200),paymentStatus,order.id);
+   finish('PROCESSED');return res.json({ok:true,dispute:true});
+  }
   const paidAmount=Number(payment?.amount??orderEntity?.amount_paid??orderEntity?.amount);
   const currency=String(payment?.currency||orderEntity?.currency||'INR').toUpperCase();
   if(!Number.isFinite(paidAmount)||paidAmount!==Number(order.total)*100||currency!=='INR'){finish('REJECTED','Payment amount or currency did not match the Ashwini order');return res.json({ok:true,matched:false})}
