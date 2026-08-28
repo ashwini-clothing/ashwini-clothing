@@ -1,0 +1,10 @@
+Ashwini Clothing - Item-to-Item Collaborative Filtering
+
+- Added GET /api/recommendations/items/:id.
+- Learns from distinct products purchased together in valid orders.
+- Uses cosine similarity to reduce popularity bias.
+- Excludes the current product, cancelled/failed orders and out-of-stock products.
+- Uses category/popularity cold-start recommendations until enough order history exists.
+- Shows a responsive "Customers also bought" section in product details.
+- Requires no external AI API or API credit.
+- Existing desktop/mobile search, header, cart and checkout layouts were not changed.

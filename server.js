@@ -389,6 +389,62 @@ app.get("/api/products",(req,res)=>{
  res.json(rows);
 });
 
+// Item-to-item collaborative filtering based on products purchased together.
+// Cosine similarity prevents globally popular products from dominating every result.
+app.get('/api/recommendations/items/:id',(req,res)=>{
+ try{
+  const productId=Number(req.params.id);
+  const limit=Math.max(1,Math.min(12,Number(req.query.limit)||6));
+  const seed=db.prepare('SELECT * FROM products WHERE id=?').get(productId);
+  if(!seed)return res.status(404).json({error:'Product not found'});
+
+  const rawRows=db.prepare(`
+   WITH valid_items AS (
+    SELECT DISTINCT oi.order_id,oi.product_id
+    FROM order_items oi JOIN orders o ON o.id=oi.order_id
+    WHERE o.status NOT IN ('CANCELLED','PAYMENT_FAILED')
+      AND (o.payment_method='COD' OR o.payment_status='PAID' OR o.status NOT IN ('PAYMENT_PENDING'))
+   ), seed_orders AS (
+    SELECT order_id FROM valid_items WHERE product_id=?
+   ), seed_count AS (
+    SELECT COUNT(*) AS n FROM seed_orders
+   ), candidates AS (
+    SELECT vi.product_id,COUNT(*) AS together
+    FROM valid_items vi JOIN seed_orders so ON so.order_id=vi.order_id
+    WHERE vi.product_id<>?
+    GROUP BY vi.product_id
+   ), frequencies AS (
+    SELECT product_id,COUNT(*) AS purchases FROM valid_items GROUP BY product_id
+   )
+   SELECT p.*,c.together,f.purchases,(SELECT n FROM seed_count) AS seed_purchases
+   FROM candidates c JOIN frequencies f ON f.product_id=c.product_id
+   JOIN products p ON p.id=c.product_id
+   WHERE p.stock>0
+   ORDER BY c.together DESC,p.rating DESC,p.id DESC`).all(productId,productId);
+  const rows=rawRows.map(row=>({...row,
+   cf_score:row.together/Math.sqrt(Math.max(1,row.seed_purchases*row.purchases))
+  })).sort((a,b)=>b.cf_score-a.cf_score||b.together-a.together||b.rating-a.rating).slice(0,limit);
+
+  if(rows.length)return res.json({strategy:'collaborative',seed_product_id:productId,results:rows});
+
+  // Cold-start fallback until enough completed/COD order pairs exist.
+  const fallback=db.prepare(`SELECT p.*,
+    (CASE WHEN lower(trim(p.category))=lower(trim(?)) THEN 1 ELSE 0 END) AS category_match,
+    COALESCE(SUM(oi.quantity),0) AS purchases
+   FROM products p
+   LEFT JOIN order_items oi ON oi.product_id=p.id
+   LEFT JOIN orders o ON o.id=oi.order_id AND o.status NOT IN ('CANCELLED','PAYMENT_FAILED')
+   WHERE p.id<>? AND p.stock>0
+   GROUP BY p.id
+   ORDER BY category_match DESC,purchases DESC,p.rating DESC,p.id DESC
+   LIMIT ?`).all(seed.category,productId,limit);
+  res.json({strategy:'cold_start',seed_product_id:productId,results:fallback});
+ }catch(e){
+  console.error('[Item recommendations]',e);
+  res.status(500).json({error:'Recommendations could not be loaded.'});
+ }
+});
+
 function visualSearchOutputText(response){
  for(const item of response?.output||[]){
   for(const part of item?.content||[]){

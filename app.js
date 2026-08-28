@@ -257,6 +257,7 @@ async function detail(id){
  const gallery=getGallery(p), liked=wishlist.includes(id);
  const qaHtml=await qaSection(p.id);
  const reviewsHtml=await reviewsSection(p.id);
+ const recommendationsHtml=await itemRecommendationsSection(p.id);
  const highlights=await api('/api/product-highlights').catch(()=>[]);
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
@@ -272,9 +273,24 @@ async function detail(id){
   <div class="delivery-box"><b>📍 Check delivery</b><div class="pin-row"><input id="pin-${p.id}" maxlength="6" inputmode="numeric" placeholder="Enter PIN code"><button class="wishlist" type="button" onclick="stop(event);checkDelivery(${p.id})">Check</button></div><div id="delivery-${p.id}" class="delivery-result">Free delivery available after PIN check.</div></div>
   <div class="buy"><button class="buy-now" type="button" onclick="stop(event);buyNow(${p.id},this)">Buy Now</button><button class="gold" type="button" onclick="stop(event);addFromDetail(${p.id},this)">Add to Cart</button><button class="wishlist" type="button" onclick="stop(event);wish(${p.id})">${liked?'♥':'♡'} Wishlist</button></div>
   <div class="product-info"><h3>Product Details / History</h3><div class="product-history">${esc(history)}</div>${user?.role==='admin'?`<button class="wishlist" type="button" style="margin-top:10px" onclick="stop(event);editProduct(${p.id})">✎ Edit Product</button>`:''}<h3 style="margin-top:18px">Care Instructions</h3><div class="product-history">${esc(care)}</div></div>
-  ${policySections()}${securitySection()}${qaHtml}${reviewsHtml}
+  ${recommendationsHtml}${policySections()}${securitySection()}${qaHtml}${reviewsHtml}
   </div></div>`);
  bindImageZoom(p.id);
+}
+async function itemRecommendationsSection(id){
+ try{
+  const data=await api(`/api/recommendations/items/${id}?limit=6`);
+  const items=Array.isArray(data.results)?data.results:[];
+  if(!items.length)return '';
+  const collaborative=data.strategy==='collaborative';
+  return `<section class="item-recommendations" aria-label="Recommended products">
+   <div class="item-recommendations-head"><div><h3>Customers also bought</h3><small>${collaborative?'Based on products purchased together':'Popular related products while purchase history grows'}</small></div></div>
+   <div class="item-recommendations-grid">${items.map(p=>`<article class="item-recommendation-card" tabindex="0" onclick="detail(${p.id})" onkeydown="if(event.key==='Enter')detail(${p.id})">
+    <div class="item-recommendation-image">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">`:esc(p.emoji||'👗')}</div>
+    <div class="item-recommendation-copy"><b>${esc(p.name)}</b><span>₹${Number(p.price||0).toLocaleString('en-IN')}</span>${collaborative?`<small>Bought together ${Number(p.together||0)} time${Number(p.together||0)===1?'':'s'}</small>`:`<small>${esc(p.category||'Recommended')}</small>`}</div>
+   </article>`).join('')}</div>
+  </section>`;
+ }catch{return ''}
 }
 async function reviewsSection(id){
  try{
