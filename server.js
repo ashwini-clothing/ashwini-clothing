@@ -109,6 +109,8 @@ try{db.exec("ALTER TABLE orders ADD COLUMN delivered_at TEXT DEFAULT ''")}catch{
 try{db.exec("ALTER TABLE orders ADD COLUMN cancelled_at TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN stock_reserved_at TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN stock_released_at TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN checkout_key TEXT DEFAULT ''")}catch{}
+try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
 try{db.exec("UPDATE orders SET stock_reserved_at=created_at WHERE COALESCE(stock_reserved_at,'')='' AND COALESCE(stock_released_at,'')='' ")}catch{}
 try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_order_id INTEGER DEFAULT NULL")}catch{}
@@ -879,7 +881,9 @@ app.patch('/api/admin/cod-settings',auth,admin,(req,res)=>{try{const enabled=req
 app.post("/api/checkout/create",auth,async(req,res)=>{
  let createdOrderId=null;
  try{
-  const {items,address,payment_method="RAZORPAY",coupon="",delivery_state=""}=req.body||{};
+  const {items,address,payment_method="RAZORPAY",coupon="",delivery_state="",idempotency_key=""}=req.body||{};
+  const checkoutKey=String(idempotency_key||'').trim();
+  if(!/^[A-Za-z0-9_-]{16,100}$/.test(checkoutKey))throw Error("Secure checkout key is missing. Please reopen checkout and try again.");
   if(!address?.trim())throw Error("Delivery address required");
   if(!['RAZORPAY','COD'].includes(String(payment_method).toUpperCase()))throw Error("Invalid payment method");
   if(String(payment_method).toUpperCase()==='RAZORPAY'&&!razorpay)throw Error("Razorpay not configured. Add keys in Render Environment");
@@ -899,6 +903,13 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
   if(!currentUser && req.user.phone) currentUser=db.prepare("SELECT id,name,email,role,phone FROM users WHERE phone=?").get(String(req.user.phone).replace(/\D/g,''));
   if(!currentUser)throw Error("Customer account was not found. Please sign in again.");
 
+  const existingOrder=db.prepare("SELECT * FROM orders WHERE user_id=? AND checkout_key=?").get(currentUser.id,checkoutKey);
+  if(existingOrder){
+   if(existingOrder.payment_method==='COD')return res.json({ok:true,mode:'COD',orderId:existingOrder.id,total:existingOrder.total,duplicate:true});
+   if(existingOrder.razorpay_order_id)return res.json({ok:true,mode:'RAZORPAY',orderId:existingOrder.id,total:existingOrder.total,razorpayOrderId:existingOrder.razorpay_order_id,keyId:process.env.RAZORPAY_KEY_ID,duplicate:true});
+   return res.status(409).json({error:'This checkout is already being prepared. Please wait a moment and try again.'});
+  }
+
   const accountPhone=String(currentUser.phone||'').replace(/\D/g,'');
   if(accountPhone && /^\d{10}$/.test(accountPhone) && accountPhone!==enteredPhone) throw Error("Please use the same mobile number as your signed-in account");
   const customerPhone=accountPhone && /^\d{10}$/.test(accountPhone) ? accountPhone : enteredPhone;
@@ -916,8 +927,8 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
    // Explicitly verify the parent row before the FK insert.
    const parent=db.prepare("SELECT id FROM users WHERE id=?").get(currentUser.id);
    if(!parent)throw Error("Customer account was not found. Please sign in again.");
-   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone) VALUES(?,?,?,?,?,?,?)")
-    .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone);
+   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,checkout_key,stock_reserved_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)")
+    .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone,checkoutKey);
    const add=db.prepare("INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)");
    const dec=db.prepare("UPDATE products SET stock=stock-? WHERE id=?");
    for(const x of out){
