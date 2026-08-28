@@ -10,6 +10,12 @@ services:
         value: production
       - key: DB_PATH
         value: /var/data/ashwini.db
+      - key: BACKUP_DIR
+        value: /var/data/backups
+      - key: BACKUP_INTERVAL_HOURS
+        value: 24
+      - key: BACKUP_RETENTION_DAYS
+        value: 14
       - key: EMAIL_PROVIDER
         value: resend
       - key: ADMIN_EMAIL

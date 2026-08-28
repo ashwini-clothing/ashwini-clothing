@@ -9,6 +9,7 @@ import Razorpay from "razorpay";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import { backupDatabase } from "./scripts/backup-db.js";
 
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const app=express(), PORT=process.env.PORT||3000;
@@ -50,6 +51,12 @@ console.log(`[Ashwini DB] Using ${dbPath}`);
 const db=new Database(dbPath);
 db.pragma("foreign_keys=ON");
 db.exec(fs.readFileSync(path.join(__dirname,"schema.sql"),"utf8"));
+const backupIntervalHours=Math.max(1,Number(process.env.BACKUP_INTERVAL_HOURS)||24);
+function runScheduledBackup(){backupDatabase().then(file=>console.log(`[Ashwini backup] Created ${file}`)).catch(error=>console.error('[Ashwini backup] Failed:',error.message))}
+const backupStartTimer=setTimeout(runScheduledBackup,60*1000);
+const backupIntervalTimer=setInterval(runScheduledBackup,backupIntervalHours*60*60*1000);
+backupStartTimer.unref?.();
+backupIntervalTimer.unref?.();
 try{db.exec("ALTER TABLE products ADD COLUMN gallery TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN product_history TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN size_chart TEXT DEFAULT ''")}catch{}
