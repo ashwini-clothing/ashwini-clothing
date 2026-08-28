@@ -155,6 +155,7 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AU
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 for(const q of ["ALTER TABLE returns ADD COLUMN request_type TEXT NOT NULL DEFAULT 'REPLACEMENT'","ALTER TABLE returns ADD COLUMN replacement_size TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_color TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN pickup_at TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN admin_note TEXT DEFAULT ''","ALTER TABLE returns ADD COLUMN replacement_order_id INTEGER DEFAULT NULL"]){try{db.exec(q)}catch{}}
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_hash TEXT NOT NULL UNIQUE, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS auth_rate_limits (key_hash TEXT PRIMARY KEY,window_start INTEGER NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,last_request INTEGER NOT NULL DEFAULT 0,verify_failures INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)`);db.prepare('DELETE FROM auth_rate_limits WHERE updated_at<?').run(Date.now()-24*60*60*1000)}catch(e){console.error('[Ashwini auth rate limits]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_help_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL DEFAULT '', customer_email TEXT NOT NULL DEFAULT '', message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_threads (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guest_token TEXT NOT NULL DEFAULT '', customer_name TEXT NOT NULL DEFAULT 'Guest customer', customer_email TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'OPEN', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
@@ -255,28 +256,31 @@ app.use(cors());
 app.use(express.json({limit:'25mb'}));
 app.use(express.static(__dirname));
 
-// Login/OTP security hardening: short-lived in-memory rate limits protect the
-// authentication endpoints without changing the existing customer/order APIs.
-const otpLimits=new Map();
+// Persist rate limits in SQLite so a Render restart cannot clear an attacker's
+// OTP request or verification-attempt counters.
 function clientIp(req){return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"unknown").split(",")[0].trim();}
-function otpKey(req,identifier){return clientIp(req)+"|"+String(identifier||"").trim().toLowerCase();}
+function otpKey(req,identifier){return crypto.createHash('sha256').update(clientIp(req)+"|"+String(identifier||"").trim().toLowerCase()).digest('hex');}
+function freshOtpLimit(now=Date.now()){return {window_start:now,request_count:0,last_request:0,verify_failures:0,updated_at:now}}
+function readOtpLimit(key,now=Date.now()){
+ const row=db.prepare('SELECT * FROM auth_rate_limits WHERE key_hash=?').get(key);
+ return !row||now-Number(row.window_start)>15*60*1000?freshOtpLimit(now):row;
+}
+function saveOtpLimit(key,x){db.prepare(`INSERT INTO auth_rate_limits(key_hash,window_start,request_count,last_request,verify_failures,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(key_hash) DO UPDATE SET window_start=excluded.window_start,request_count=excluded.request_count,last_request=excluded.last_request,verify_failures=excluded.verify_failures,updated_at=excluded.updated_at`).run(key,x.window_start,x.request_count,x.last_request,x.verify_failures,x.updated_at)}
 function otpGuard(req,res,identifier,kind="request") {
  const key=otpKey(req,identifier), now=Date.now(), windowMs=15*60*1000, cooldown=45*1000, max=5;
- let x=otpLimits.get(key);
- if(!x || now-x.windowStart>windowMs) x={windowStart:now,count:0,last:0,verifyFails:0};
- if(kind==="request" && now-x.last<cooldown) return res.status(429).json({error:`Please wait ${Math.ceil((cooldown-(now-x.last))/1000)} seconds before requesting another OTP.`});
- if(kind==="request" && x.count>=max) return res.status(429).json({error:"Too many OTP requests. Please try again later."});
- if(kind==="request"){x.count++;x.last=now;}
- otpLimits.set(key,x);
+ const x=readOtpLimit(key,now);
+ if(kind==="request" && now-Number(x.last_request)<cooldown) return res.status(429).json({error:`Please wait ${Math.ceil((cooldown-(now-Number(x.last_request)))/1000)} seconds before requesting another OTP.`});
+ if(kind==="request" && Number(x.request_count)>=max) return res.status(429).json({error:"Too many OTP requests. Please try again later."});
+ if(kind==="request"){x.request_count=Number(x.request_count)+1;x.last_request=now;x.updated_at=now;saveOtpLimit(key,x);}
  return x;
 }
 function otpVerifyGuard(req,res,identifier){
- const key=otpKey(req,identifier), x=otpLimits.get(key)||{windowStart:Date.now(),count:0,last:0,verifyFails:0};
- if(x.verifyFails>=5)return res.status(429).json({error:"Too many incorrect OTP attempts. Please request a new OTP."});
+ const key=otpKey(req,identifier), x=readOtpLimit(key);
+ if(Number(x.verify_failures)>=5)return res.status(429).json({error:"Too many incorrect sign-in attempts. Please wait 15 minutes before trying again."});
  return x;
 }
-function recordOtpFailure(req,identifier){const key=otpKey(req,identifier),x=otpLimits.get(key)||{windowStart:Date.now(),count:0,last:0,verifyFails:0};x.verifyFails++;otpLimits.set(key,x);}
-function clearOtpFailures(req,identifier){const key=otpKey(req,identifier),x=otpLimits.get(key);if(x){x.verifyFails=0;otpLimits.set(key,x);}}
+function recordOtpFailure(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=Number(x.verify_failures)+1;x.updated_at=now;saveOtpLimit(key,x)}
+function clearOtpFailures(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=0;x.updated_at=now;saveOtpLimit(key,x)}
 function publicOtpResponse(otp,channel,message){const dev=process.env.NODE_ENV!=="production" || String(process.env.SHOW_DEV_OTP||"").toLowerCase()==="true";return {ok:true,channel,message,...(dev?{devOtp:otp}:{})};}
 async function sendSmsOtp(to,otp){
  const provider=String(process.env.SMS_PROVIDER||"").trim().toLowerCase();
@@ -732,6 +736,7 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
  try{
   const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||"");
   if(!identifier||!password)return res.status(400).json({error:"Enter admin mobile/email and password"});
+  if(!otpVerifyGuard(req,res,identifier))return;
   const mobile=normalizePhone(identifier),email=identifier.toLowerCase();
   let u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
   // First mobile sign-in: the admin already proves ownership with the existing
@@ -741,7 +746,8 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
    u=admins.find(x=>bcrypt.compareSync(password,String(x.password_hash||'')))||null;
    if(u){db.prepare('UPDATE users SET phone=? WHERE id=?').run(mobile,u.id);u={...u,phone:mobile};}
   }
-  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,identifier);return res.status(401).json({error:"Incorrect admin login details"})}
+  clearOtpFailures(req,identifier);
   // A mobile admin sign-in uses the already configured MSG91 secure widget.
   // Email sign-in stays on the existing email-OTP route below.
   if(/^\d{10}$/.test(mobile))return res.json({ok:true,channel:"mobile",phone:mobile});
@@ -759,11 +765,12 @@ app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
   if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit admin mobile number."});
   if(!password)return res.status(400).json({error:"Admin password is required."});
   if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
+  if(!otpVerifyGuard(req,res,phone))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
   if(verifiedPhone&&verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the admin sign-in number."});
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
-  if(!u||!await bcrypt.compare(password,String(u.password_hash||"")))return res.status(401).json({error:"Incorrect admin login details"});
+  if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,phone);return res.status(401).json({error:"Incorrect admin login details"})}
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
   clearOtpFailures(req,phone);
   const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
