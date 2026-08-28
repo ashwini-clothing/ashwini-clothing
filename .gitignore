@@ -1,7 +1,8 @@
 .env
 .env.*
 !.env.example
-ashwini.db
+*.db
 *.db-shm
 *.db-wal
+backups/
 node_modules/
