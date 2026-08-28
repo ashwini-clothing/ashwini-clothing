@@ -252,7 +252,28 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
  }catch(e){db.prepare("UPDATE razorpay_webhook_events SET status='ERROR',error=? WHERE event_id=?").run(String(e.message||e).slice(0,500),eventId);console.error('[Razorpay webhook]',e.message);res.status(500).json({error:'Webhook processing failed'})}
 });
 
-app.use(cors());
+const allowedOrigins=new Set([
+  'https://ashwiniweb.com',
+  'https://www.ashwiniweb.com',
+  String(process.env.PUBLIC_SITE_URL||'').replace(/\/$/,''),
+  ...String(process.env.ALLOWED_ORIGINS||'').split(',').map(value=>value.trim().replace(/\/$/,'')).filter(Boolean),
+  ...(process.env.NODE_ENV==='production'?[]:['http://localhost:10000','http://127.0.0.1:10000'])
+].filter(Boolean));
+app.use((req,res,next)=>{
+  res.setHeader('X-Content-Type-Options','nosniff');
+  res.setHeader('X-Frame-Options','DENY');
+  res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy','camera=(self), microphone=(self), geolocation=(self), payment=(self)');
+  res.setHeader('Cross-Origin-Resource-Policy','same-origin');
+  if(req.secure||String(req.headers['x-forwarded-proto']||'').toLowerCase()==='https')res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');
+  next();
+});
+app.use((req,res,next)=>{
+  const origin=String(req.headers.origin||'').replace(/\/$/,'');
+  if(origin&&!allowedOrigins.has(origin))return res.status(403).json({error:'Origin is not allowed'});
+  next();
+});
+app.use(cors({origin:(origin,done)=>done(null,!origin||allowedOrigins.has(String(origin).replace(/\/$/,''))),credentials:true,methods:['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','Idempotency-Key']}));
 const standardJsonParser=express.json({limit:'256kb'});
 const imageJsonParser=express.json({limit:'20mb'});
 function isImagePayloadRoute(pathname=''){
