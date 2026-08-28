@@ -465,7 +465,6 @@ function issueOtp(u, kind){
  const otp=makeOtp(), hash=hashOtp(otp), exp=Date.now()+5*60*1000;
  if(kind==='login') db.prepare("UPDATE users SET login_otp_hash=?,login_otp_expires_at=? WHERE id=?").run(hash,exp,u.id);
  else db.prepare("UPDATE users SET recovery_otp_hash=?,recovery_otp_expires_at=? WHERE id=?").run(hash,exp,u.id);
- console.log(`[Ashwini ${kind.toUpperCase()} OTP] ${u.email || u.phone}: ${otp}`);
  return otp;
 }
 // MSG91 OTP Widget configuration for the customer-facing mobile OTP flow.
