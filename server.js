@@ -52,6 +52,29 @@ try{db.exec("ALTER TABLE products ADD COLUMN badge_text TEXT DEFAULT 'Ashwini Ch
 try{db.exec("ALTER TABLE products ADD COLUMN offer_text TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN offer_discount REAL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")}catch{}
+// Enforce one non-empty mobile number per account at the database boundary.
+// Triggers protect upgraded databases even when historical duplicates prevent
+// creation of the supporting unique index; existing rows are never auto-deleted.
+try{db.exec(`
+ CREATE TRIGGER IF NOT EXISTS users_unique_phone_insert
+ BEFORE INSERT ON users
+ WHEN trim(COALESCE(NEW.phone,''))<>''
+  AND EXISTS(SELECT 1 FROM users WHERE phone=NEW.phone)
+ BEGIN
+  SELECT RAISE(ABORT,'Mobile number is already registered');
+ END;
+ CREATE TRIGGER IF NOT EXISTS users_unique_phone_update
+ BEFORE UPDATE OF phone ON users
+ WHEN trim(COALESCE(NEW.phone,''))<>''
+  AND EXISTS(SELECT 1 FROM users WHERE phone=NEW.phone AND id<>OLD.id)
+ BEGIN
+  SELECT RAISE(ABORT,'Mobile number is already registered');
+ END;
+`)}catch(e){console.error('[Ashwini mobile uniqueness]',e.message)}
+try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unique_phone ON users(phone) WHERE trim(COALESCE(phone,''))<>''")}catch{
+ const duplicateGroups=Number(db.prepare("SELECT COUNT(*) n FROM (SELECT phone FROM users WHERE trim(COALESCE(phone,''))<>'' GROUP BY phone HAVING COUNT(*)>1)").get()?.n||0);
+ console.warn(`[Ashwini mobile uniqueness] ${duplicateGroups} historical duplicate mobile group(s) require admin review; new duplicates are blocked.`);
+}
 try{db.exec("ALTER TABLE users ADD COLUMN otp_hash TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN otp_expires_at INTEGER DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch{}
