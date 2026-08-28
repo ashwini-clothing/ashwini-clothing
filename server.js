@@ -580,16 +580,21 @@ function issueOtp(u, kind){
  console.log(`[Ashwini ${kind.toUpperCase()} OTP] ${u.email || u.phone}: ${otp}`);
  return otp;
 }
-app.post("/api/auth/request-otp",(req,res)=>{
- const phone=normalizePhone(req.body?.phone);
- if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit mobile number"});
- const existing=db.prepare("SELECT id FROM users WHERE phone=?").get(phone);
- if(existing) db.prepare("UPDATE users SET otp_hash='',otp_expires_at=0 WHERE id=?").run(existing.id);
- else db.prepare("INSERT INTO users(name,email,password_hash,phone,otp_hash,otp_expires_at) VALUES(?,?,?,?,?,?)").run("Pending Buyer",`phone_${phone}@ashwini.local`,"",phone,"",0);
- const u=db.prepare("SELECT * FROM users WHERE phone=?").get(phone);
- const otp=issueOtp(u,'login');
- res.json({ok:true,devOtp:otp,channel:'mobile',message:"OTP generated. In live mode connect an SMS provider to deliver it."});
-});
+app.get('/api/auth/msg91-config',(req,res)=>{const widgetId=String(process.env.MSG91_WIDGET_ID||'').trim(),tokenAuth=String(process.env.MSG91_WIDGET_TOKEN||'').trim();if(!widgetId||!tokenAuth)return res.status(503).json({error:'MSG91 OTP is not configured on the server.'});res.json({widgetId,tokenAuth})});
+async function verifyMsg91AccessToken(accessToken){
+ const authkey=String(process.env.MSG91_AUTHKEY||'').trim(),verifiedToken=String(accessToken||'').trim();
+ if(!authkey||!verifiedToken)throw Error('MSG91 verification is not configured.');
+ const endpoint='https://control.msg91.com/api/v5/widget/verifyAccessToken';
+ let r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({authkey,'access-token':verifiedToken})}),text=await r.text();
+ if(/access-token field is required/i.test(text)){r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json',authkey},body:JSON.stringify({'access-token':verifiedToken})});text=await r.text()}
+ let data={};try{data=JSON.parse(text)}catch{}
+ if(!r.ok||String(data.type||'').toLowerCase()==='error'||data.success===false)throw Error(data.message||data.error||'MSG91 access token verification failed');
+ return data;
+}
+function msg91VerifiedPhone(data){return normalizePhone(data.mobile||data.phone||data.identifier||data.data?.mobile||data.data?.phone||data.data?.identifier)}
+app.post('/api/auth/verify-msg91-login',async(req,res)=>{try{const phone=normalizePhone(req.body?.identifier),accessToken=String(req.body?.accessToken||'').trim();if(!/^\d{10}$/.test(phone)||!accessToken)return res.status(400).json({error:'Valid mobile verification is required'});const verified=msg91VerifiedPhone(await verifyMsg91AccessToken(accessToken));if(verified&&verified!==phone)return res.status(401).json({error:'Verified mobile number does not match'});const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);if(!u)return res.status(404).json({error:'Customer account not found. Please register first.'});createSession(res,u.id);res.json({user:{id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''}})}catch(e){console.error('[MSG91 login]',e.message);res.status(401).json({error:e.message||'MSG91 OTP verification failed'})}});
+app.post('/api/auth/request-msg91-registration',(req,res)=>{const phone=normalizePhone(req.body?.phone);if(!/^\d{10}$/.test(phone))return res.status(400).json({error:'Enter a valid 10-digit mobile number'});const u=db.prepare('SELECT * FROM users WHERE phone=?').get(phone);if(u&&u.role==='customer'&&String(u.password_hash||''))return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});if(!u)db.prepare("INSERT INTO users(name,email,password_hash,phone,role) VALUES(?,?,?,?,?)").run('Pending Buyer',`phone_${phone}@ashwini.local`,'',phone,'customer');res.json({ok:true})});
+app.post('/api/auth/register-msg91',async(req,res)=>{try{const {name,email,password,phone,accessToken}=req.body||{},normalized=normalizePhone(phone);if(!name||!email||String(password||'').length<8||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:'Name, email, 8+ character password and MSG91 verification are required'});const verified=msg91VerifiedPhone(await verifyMsg91AccessToken(accessToken));if(verified&&verified!==normalized)return res.status(401).json({error:'Verified mobile number does not match'});const u0=db.prepare('SELECT * FROM users WHERE phone=?').get(normalized);if(!u0||u0.role==='admin')return res.status(409).json({error:'Mobile number cannot be registered'});const hash=await bcrypt.hash(password,12);db.prepare("UPDATE users SET name=?,email=?,password_hash=?,role='customer' WHERE id=?").run(String(name).trim(),String(email).trim().toLowerCase(),hash,u0.id);const u=db.prepare('SELECT id,name,email,role,phone FROM users WHERE id=?').get(u0.id);createSession(res,u.id);res.json({user:u})}catch(e){console.error('[MSG91 registration]',e.message);res.status(401).json({error:e.message||'MSG91 registration failed'})}});
 app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
  if(!identifier)return res.status(400).json({error:"Enter your email or mobile number"});
@@ -651,16 +656,6 @@ app.post("/api/auth/reset-password",async(req,res)=>{
  const hash=await bcrypt.hash(password,12);
  db.prepare("UPDATE users SET password_hash=?,recovery_otp_hash='',recovery_otp_expires_at=0 WHERE id=?").run(hash,u.id);
  res.json({ok:true,message:"Password reset successfully. You can now sign in."});
-});
-app.post("/api/auth/register",async(req,res)=>{
- const {name,email,password,phone,otp}=req.body||{};
- if(!name||!email||!password||!/^[0-9]{10}$/.test(String(phone||""))||!/^[0-9]{6}$/.test(String(otp||"")))return res.status(400).json({error:"Name, email, mobile number and 6-digit OTP are required"});
- const u0=db.prepare("SELECT * FROM users WHERE phone=?").get(String(phone));
- if(!u0||!u0.login_otp_hash && !u0.otp_hash)return res.status(400).json({error:"Please request a fresh OTP"});
- const expected=u0.login_otp_hash||u0.otp_hash, expires=u0.login_otp_expires_at||u0.otp_expires_at;
- if(expires<Date.now()||!otpMatches(otp,expected))return res.status(400).json({error:"Invalid or expired OTP"});
- try{const hash=await bcrypt.hash(password,12);db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(name,email.toLowerCase(),hash,u0.id);const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);createSession(res,u.id);res.json({user:u})}
- catch{res.status(409).json({error:"Email or mobile already registered"})}
 });
 app.post("/api/auth/setup-admin",async(req,res)=>{
  const admins=db.prepare("SELECT COUNT(*) n FROM users WHERE role='admin'").get().n;
