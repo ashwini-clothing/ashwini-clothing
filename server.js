@@ -253,7 +253,21 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
 });
 
 app.use(cors());
-app.use(express.json({limit:'25mb'}));
+const standardJsonParser=express.json({limit:'256kb'});
+const imageJsonParser=express.json({limit:'20mb'});
+function isImagePayloadRoute(pathname=''){
+  return pathname==='/api/visual-search'
+    || pathname==='/api/admin/store-profile'
+    || pathname==='/api/admin/offers' || pathname.startsWith('/api/admin/offers/')
+    || pathname==='/api/admin/slides' || pathname.startsWith('/api/admin/slides/')
+    || pathname==='/api/admin/products' || pathname.startsWith('/api/admin/products/');
+}
+app.use((req,res,next)=>(isImagePayloadRoute(req.path)?imageJsonParser:standardJsonParser)(req,res,next));
+app.use((err,req,res,next)=>{
+  if(err?.type==='entity.too.large')return res.status(413).json({error:'Request is too large'});
+  if(err instanceof SyntaxError && Object.prototype.hasOwnProperty.call(err,'body'))return res.status(400).json({error:'Invalid JSON request'});
+  next(err);
+});
 
 // Do not expose the project directory. Only customer-facing files are public;
 // server source, SQL, database, environment, deployment and documentation
