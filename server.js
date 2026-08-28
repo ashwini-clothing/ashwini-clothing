@@ -125,6 +125,18 @@ try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_name TEXT NOT NULL DE
 try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!'")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_settings (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS cod_state_settings (state TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS behavior_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ session_id TEXT NOT NULL,
+ user_id INTEGER,
+ event_type TEXT NOT NULL,
+ product_id INTEGER,
+ context_product_id INTEGER,
+ metadata TEXT NOT NULL DEFAULT '{}',
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
+ FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+); CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at); CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);`)}catch(e){console.error('[Behavior table]',e.message)}
 try{db.prepare("INSERT OR IGNORE INTO cod_settings(id,enabled) VALUES(1,1)").run()}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO store_profile(id,about_title,history,address,city,state,pincode,email,phone,logo_data) VALUES(1,?,?,?,?,?,?,?,?,?)`).run('About Ashwini Clothing','Welcome to Ashwini Clothing. Our story and company information can be updated by the store admin.','','','','','ashwiniweb88@gmail.com','', '')}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_answers (id INTEGER PRIMARY KEY AUTOINCREMENT, question_id INTEGER NOT NULL, user_id INTEGER, answer TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(question_id) REFERENCES product_questions(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
@@ -389,6 +401,29 @@ app.get("/api/products",(req,res)=>{
  res.json(rows);
 });
 
+function behaviorUserId(req){
+ try{
+  const raw=readCookie(req,'ashwini_session');if(!raw)return null;
+  const s=db.prepare('SELECT user_id,expires_at FROM auth_sessions WHERE session_hash=?').get(sessionHash(raw));
+  return s&&Number(s.expires_at)>Date.now()?Number(s.user_id):null;
+ }catch{return null}
+}
+app.post('/api/behavior-events',(req,res)=>{
+ try{
+  const allowed=new Set(['product_view','add_to_cart','wishlist','search','recommendation_impression','recommendation_click']);
+  const eventType=String(req.body?.event_type||'').trim();
+  const sessionId=String(req.body?.session_id||'').trim().slice(0,80);
+  if(!allowed.has(eventType)||!/^[A-Za-z0-9_-]{16,80}$/.test(sessionId))return res.status(400).json({error:'Invalid behavior event'});
+  const productId=Number(req.body?.product_id)||null,contextProductId=Number(req.body?.context_product_id)||null;
+  if(productId&&!db.prepare('SELECT id FROM products WHERE id=?').get(productId))return res.status(400).json({error:'Invalid product'});
+  const metadata=req.body?.metadata&&typeof req.body.metadata==='object'?req.body.metadata:{};
+  const safeMetadata=JSON.stringify({category:String(metadata.category||'').slice(0,80),source:String(metadata.source||'').slice(0,40)});
+  db.prepare('INSERT INTO behavior_events(session_id,user_id,event_type,product_id,context_product_id,metadata) VALUES(?,?,?,?,?,?)')
+   .run(sessionId,behaviorUserId(req),eventType,productId,contextProductId,safeMetadata);
+  res.status(201).json({ok:true});
+ }catch(e){console.error('[Behavior event]',e);res.status(500).json({error:'Event could not be saved'})}
+});
+
 // Item-to-item collaborative filtering based on products purchased together.
 // Cosine similarity prevents globally popular products from dominating every result.
 app.get('/api/recommendations/items/:id',(req,res)=>{
@@ -421,11 +456,29 @@ app.get('/api/recommendations/items/:id',(req,res)=>{
    JOIN products p ON p.id=c.product_id
    WHERE p.stock>0
    ORDER BY c.together DESC,p.rating DESC,p.id DESC`).all(productId,productId);
-  const rows=rawRows.map(row=>({...row,
+  const purchaseRows=rawRows.map(row=>({...row,
    cf_score:row.together/Math.sqrt(Math.max(1,row.seed_purchases*row.purchases))
-  })).sort((a,b)=>b.cf_score-a.cf_score||b.together-a.together||b.rating-a.rating).slice(0,limit);
+  }));
 
-  if(rows.length)return res.json({strategy:'collaborative',seed_product_id:productId,results:rows});
+  const behaviorRows=db.prepare(`WITH seed_sessions AS (
+    SELECT DISTINCT session_id FROM behavior_events
+    WHERE product_id=? AND event_type IN ('product_view','add_to_cart','wishlist','recommendation_click')
+      AND created_at>=datetime('now','-30 days')
+   ) SELECT b.product_id,COUNT(DISTINCT b.session_id) AS related_sessions,
+    SUM(CASE b.event_type WHEN 'add_to_cart' THEN 4 WHEN 'wishlist' THEN 3 WHEN 'recommendation_click' THEN 2 ELSE 1 END) AS behavior_score
+   FROM behavior_events b JOIN seed_sessions s ON s.session_id=b.session_id
+   WHERE b.product_id IS NOT NULL AND b.product_id<>?
+    AND b.event_type IN ('product_view','add_to_cart','wishlist','recommendation_click')
+    AND b.created_at>=datetime('now','-30 days')
+   GROUP BY b.product_id`).all(productId,productId);
+  const behaviorById=new Map(behaviorRows.map(x=>[Number(x.product_id),x]));
+  const productById=new Map(db.prepare('SELECT * FROM products WHERE id<>? AND stock>0').all(productId).map(x=>[Number(x.id),x]));
+  const combined=new Map();
+  for(const row of purchaseRows)combined.set(Number(row.id),{...row,ranking_score:Number(row.cf_score||0)*10});
+  for(const [id,b] of behaviorById){const p=productById.get(id);if(!p)continue;const old=combined.get(id)||{...p,together:0,purchases:0,cf_score:0};combined.set(id,{...old,related_sessions:Number(b.related_sessions||0),behavior_score:Number(b.behavior_score||0),ranking_score:Number(old.ranking_score||0)+Math.log1p(Number(b.behavior_score||0))});}
+  const rows=[...combined.values()].sort((a,b)=>b.ranking_score-a.ranking_score||b.rating-a.rating).slice(0,limit);
+
+  if(rows.length)return res.json({strategy:purchaseRows.length?'hybrid':'behavior',seed_product_id:productId,results:rows});
 
   // Cold-start fallback until enough completed/COD order pairs exist.
   const fallback=db.prepare(`SELECT p.*,

@@ -62,6 +62,21 @@ CREATE TABLE IF NOT EXISTS product_reviews (
 
 CREATE TABLE IF NOT EXISTS product_highlights (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, value TEXT NOT NULL, active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 
+CREATE TABLE IF NOT EXISTS behavior_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ session_id TEXT NOT NULL,
+ user_id INTEGER,
+ event_type TEXT NOT NULL,
+ product_id INTEGER,
+ context_product_id INTEGER,
+ metadata TEXT NOT NULL DEFAULT '{}',
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
+ FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at);
+CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);
+
 CREATE TABLE IF NOT EXISTS returns (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  order_id INTEGER NOT NULL,

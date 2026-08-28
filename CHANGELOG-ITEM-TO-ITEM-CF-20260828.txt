@@ -8,3 +8,7 @@ Ashwini Clothing - Item-to-Item Collaborative Filtering
 - Shows a responsive "Customers also bought" section in product details.
 - Requires no external AI API or API credit.
 - Existing desktop/mobile search, header, cart and checkout layouts were not changed.
+- Added real-time product view, cart, wishlist, search and recommendation events.
+- Tracking runs on both mobile and desktop through the shared application code.
+- Hybrid ranking combines recent 30-day behavior with purchase similarity.
+- Search text, images, addresses and payment details are not stored in behavior events.
