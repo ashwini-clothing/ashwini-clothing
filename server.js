@@ -838,8 +838,10 @@ app.post("/api/auth/forgot-login-id",(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim();
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"Customer account not found"});
- if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash))return res.status(400).json({error:"Invalid or expired OTP"});
+ if(!otpVerifyGuard(req,res,identifier))return;
+ if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
  db.prepare("UPDATE users SET recovery_otp_hash='',recovery_otp_expires_at=0 WHERE id=?").run(u.id);
+ clearOtpFailures(req,identifier);
  res.json({ok:true,loginId:u.email,message:"Your login ID is your registered email address."});
 });
 app.post("/api/auth/reset-password",async(req,res)=>{
@@ -847,13 +849,15 @@ app.post("/api/auth/reset-password",async(req,res)=>{
  const u=findCustomerByIdentifier(identifier);
  if(!u)return res.status(404).json({error:"Customer account not found"});
  if(password.length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
- if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash))return res.status(400).json({error:"Invalid or expired OTP"});
+ if(!otpVerifyGuard(req,res,identifier))return;
+ if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
  const hash=await bcrypt.hash(password,12);
  const resetAccount=db.transaction(()=>{
   db.prepare("UPDATE users SET password_hash=?,recovery_otp_hash='',recovery_otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(hash,u.id);
   db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(u.id);
  });
  resetAccount();
+ clearOtpFailures(req,identifier);
  clearSessionCookie(res);
  res.json({ok:true,message:"Password reset successfully. All previous sessions have been signed out. You can now sign in."});
 });
