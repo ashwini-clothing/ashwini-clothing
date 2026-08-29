@@ -885,14 +885,9 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
   if(!identifier||!password)return res.status(400).json({error:"Enter admin mobile/email and password"});
   if(!otpVerifyGuard(req,res,identifier))return;
   const mobile=normalizePhone(identifier),email=identifier.toLowerCase();
-  let u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
-  // First mobile sign-in: the admin already proves ownership with the existing
-  // admin password, then this mobile is saved on the admin account for later use.
-  if(!u && /^\d{10}$/.test(mobile)){
-   const admins=db.prepare("SELECT * FROM users WHERE role='admin' ORDER BY id LIMIT 10").all();
-   u=admins.find(x=>bcrypt.compareSync(password,String(x.password_hash||'')))||null;
-   if(u){db.prepare('UPDATE users SET phone=? WHERE id=?').run(mobile,u.id);u={...u,phone:mobile};}
-  }
+  const u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
+  // Never attach an unknown mobile number during sign-in. A new admin mobile
+  // must be added from an authenticated admin session and OTP-verified there.
   if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,identifier);return res.status(401).json({error:"Incorrect admin login details"})}
   clearOtpFailures(req,identifier);
   // A mobile admin sign-in uses the already configured MSG91 secure widget.
