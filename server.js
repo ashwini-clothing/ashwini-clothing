@@ -819,17 +819,20 @@ app.post("/api/auth/request-msg91-registration",(req,res)=>{
  res.json({ok:true});
 });
 app.post("/api/auth/register-msg91",async(req,res)=>{
+ const body=req.body||{},normalized=normalizePhone(body.phone);let msg91Verified=false;
  try{
-  const {name,email,password,phone,accessToken}=req.body||{};
-  const normalized=normalizePhone(phone);
+  const {name,email,password,accessToken}=body;
   const cleanName=String(name||'').trim(),cleanEmail=String(email||'').trim().toLowerCase();
   if(!cleanName||!cleanEmail||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
   if(cleanName.length>80)return res.status(400).json({error:"Name is too long"});
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail))return res.status(400).json({error:"Enter a valid email address"});
   if(String(password).length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
+  if(String(accessToken).length>4096)return res.status(400).json({error:"MSG91 verification token is invalid."});
+  if(!otpVerifyGuard(req,res,normalized))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
-  if(verifiedPhone!==normalized)return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});
+  if(verifiedPhone!==normalized){recordOtpFailure(req,normalized);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
+  msg91Verified=true;
   const hash=await bcrypt.hash(password,12);
   const createVerifiedAccount=db.transaction(()=>{
    const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
@@ -841,8 +844,9 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
    return Number(db.prepare("INSERT INTO users(name,email,password_hash,phone,role) VALUES(?,?,?,?,?)").run(cleanName,cleanEmail,hash,normalized,'customer').lastInsertRowid);
   });
   const userId=createVerifiedAccount(),u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(userId);
+  clearOtpFailures(req,normalized);
   createSession(req,res,u.id);res.json({user:u});
- }catch(e){console.error("[MSG91 registration verification]",e.message);const conflict=e?.code==='SQLITE_CONSTRAINT'||e?.code==='SQLITE_CONSTRAINT_UNIQUE';res.status(conflict?409:Number(e.status)||401).json({error:conflict?'This email or mobile number is already registered. Please sign in.':e.message||"MSG91 OTP verification failed."});}
+ }catch(e){if(!msg91Verified&&/^\d{10}$/.test(normalized))recordOtpFailure(req,normalized);console.error("[MSG91 registration verification]",e.message);const conflict=e?.code==='SQLITE_CONSTRAINT'||e?.code==='SQLITE_CONSTRAINT_UNIQUE',status=conflict?409:Number(e.status)||401;res.status(status).json({error:conflict?'This email or mobile number is already registered. Please sign in.':status===409?e.message:"MSG91 registration verification failed. Please try again."});}
 });
 app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
