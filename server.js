@@ -18,6 +18,12 @@ app.set('trust proxy',1);
 
 // Live Help Desk events: Server-Sent Events (SSE) for instant customer/admin updates.
 const helpChatStreams=new Map();
+const helpStreamIdentityCounts=new Map();
+function reservePublicHelpStream(identity,res,max=3){
+ const key=String(identity||'unknown'),active=Number(helpStreamIdentityCounts.get(key)||0);if(active>=max)return false;
+ helpStreamIdentityCounts.set(key,active+1);let released=false;const release=()=>{if(released)return;released=true;const left=Number(helpStreamIdentityCounts.get(key)||1)-1;if(left>0)helpStreamIdentityCounts.set(key,left);else helpStreamIdentityCounts.delete(key)};
+ res.once('close',release);res.once('error',release);return true;
+}
 function addHelpChatStream(key,res){
   if(!helpChatStreams.has(key)) helpChatStreams.set(key,new Set());
   helpChatStreams.get(key).add(res);
@@ -447,6 +453,7 @@ function publicWriteAllowed(req,res,bucket,max,windowMs,identity=''){
  }catch(error){console.error('[Public rate limit]',error.message);res.status(503).json({error:'Request protection is temporarily unavailable.'});return false}
 }
 app.use((req,res,next)=>{
+ if(req.method==='GET'&&req.path==='/api/help-chat'&&!publicWriteAllowed(req,res,'HELP_CHAT_OPEN',30,60*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/help-chat/messages'&&!publicWriteAllowed(req,res,'HELP_CHAT_IP',60,15*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/behavior-events'){
   const sessionId=String(req.body?.session_id||'');
@@ -570,6 +577,8 @@ app.get('/api/help-chat/stream',(req,res)=>{
  try{
   const thread=getHelpThread(req);
   if(!thread)return res.status(404).end();
+  const customer=currentHelpCustomer(req),streamIdentity=customer?`user:${customer.id}`:`guest:${helpGuestToken(req)||clientIp(req)}`;
+  if(!reservePublicHelpStream(streamIdentity,res,2))return res.status(429).json({error:'Too many active Help Desk connections. Please close another Help Desk tab and try again.'});
   res.setHeader('Content-Type','text/event-stream; charset=utf-8');res.setHeader('Cache-Control','no-cache, no-transform');res.setHeader('Connection','keep-alive');res.flushHeaders?.();
   res.write(`data: ${JSON.stringify({type:'connected',thread_id:thread.id})}\n\n`);
   addHelpChatStream(`thread:${thread.id}`,res);
