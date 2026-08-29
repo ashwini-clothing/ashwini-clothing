@@ -463,7 +463,7 @@ app.use((req,res,next)=>{
   if(!publicWriteAllowed(req,res,'BEHAVIOR_IP',300,15*60*1000)||!publicWriteAllowed(req,res,'BEHAVIOR_SESSION',120,15*60*1000,sessionId,false)||!publicWriteAllowed(req,res,'BEHAVIOR_GLOBAL',5000,15*60*1000,'ALL',false))return;
  }
  if(req.method==='POST'&&req.path==='/api/visual-search'){
-  if(!publicWriteAllowed(req,res,'VISUAL_SEARCH_BURST',3,5*60*1000)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_DAILY',20,24*60*60*1000))return;
+  if(!publicWriteAllowed(req,res,'VISUAL_SEARCH_BURST',3,5*60*1000)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_DAILY',20,24*60*60*1000)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_GLOBAL_HOUR',100,60*60*1000,'ALL',false)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_GLOBAL_DAY',500,24*60*60*1000,'ALL',false))return;
  }
  if(req.method==='POST'&&req.path==='/api/auth/verify-msg91-login'&&!publicWriteAllowed(req,res,'MSG91_LOGIN_VERIFY',10,15*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/auth/verify-msg91-admin-login'&&!publicWriteAllowed(req,res,'MSG91_ADMIN_VERIFY',10,15*60*1000))return;
