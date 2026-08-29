@@ -459,6 +459,8 @@ app.use((req,res,next)=>{
  if(req.method==='POST'&&req.path==='/api/visual-search'){
   if(!publicWriteAllowed(req,res,'VISUAL_SEARCH_BURST',3,5*60*1000)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_DAILY',20,24*60*60*1000))return;
  }
+ if(req.method==='POST'&&req.path==='/api/auth/request-msg91-registration'&&!publicWriteAllowed(req,res,'REGISTRATION_START',10,60*60*1000))return;
+ if(req.method==='POST'&&req.path==='/api/auth/register-msg91'&&!publicWriteAllowed(req,res,'REGISTRATION_VERIFY',10,60*60*1000))return;
  next();
 });
 function publicOtpResponse(otp,channel,message){const dev=process.env.NODE_ENV!=="production" || String(process.env.SHOW_DEV_OTP||"").toLowerCase()==="true";return {ok:true,channel,message,...(dev?{devOtp:otp}:{})};}
@@ -793,7 +795,7 @@ app.post("/api/auth/verify-msg91-login",async(req,res)=>{
   if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
-  if(verifiedPhone && verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the sign-in number."});
+  if(verifiedPhone!==phone)return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);
   if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
@@ -810,28 +812,33 @@ app.post("/api/auth/request-msg91-registration",(req,res)=>{
  const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(phone);
  const pending=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${phone}@ashwini.local`;
  if(existing&&!pending)return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});
- if(!existing)db.prepare("INSERT INTO users(name,email,password_hash,phone,otp_hash,otp_expires_at,role) VALUES(?,?,?,?,?,?,?)").run("Pending Buyer",`phone_${phone}@ashwini.local`,"",phone,"",0,"customer");
  res.json({ok:true});
 });
 app.post("/api/auth/register-msg91",async(req,res)=>{
  try{
   const {name,email,password,phone,accessToken}=req.body||{};
   const normalized=normalizePhone(phone);
-  if(!name||!email||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
+  const cleanName=String(name||'').trim(),cleanEmail=String(email||'').trim().toLowerCase();
+  if(!cleanName||!cleanEmail||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
+  if(cleanName.length>80)return res.status(400).json({error:"Name is too long"});
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail))return res.status(400).json({error:"Enter a valid email address"});
   if(String(password).length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
-  if(verifiedPhone && verifiedPhone!==normalized)return res.status(401).json({error:"The verified mobile number does not match the registration number."});
-  const u0=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
-  const pending=u0&&u0.role==='customer'&&u0.name==='Pending Buyer'&&!String(u0.password_hash||'')&&String(u0.email||'')===`phone_${normalized}@ashwini.local`;
-  if(!pending)return res.status(409).json({error:'This mobile number is already registered. Please sign in.'});
-  if(db.prepare('SELECT id FROM users WHERE lower(email)=lower(?) AND id<>?').get(String(email).trim().toLowerCase(),u0.id))return res.status(409).json({error:'This email is already registered. Please sign in.'});
+  if(verifiedPhone!==normalized)return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});
   const hash=await bcrypt.hash(password,12);
-  const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(String(name).trim(),String(email).trim().toLowerCase(),hash,u0.id,`phone_${normalized}@ashwini.local`);
-  if(changed.changes!==1)return res.status(409).json({error:'Account registration state changed. Please sign in or start again.'});
-  const u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(u0.id);
+  const createVerifiedAccount=db.transaction(()=>{
+   const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
+   const pending=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${normalized}@ashwini.local`;
+   if(existing&&!pending)throw Object.assign(Error('This mobile number is already registered. Please sign in.'),{status:409});
+   const emailOwner=db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(cleanEmail);
+   if(emailOwner&&(!existing||Number(emailOwner.id)!==Number(existing.id)))throw Object.assign(Error('This email is already registered. Please sign in.'),{status:409});
+   if(pending){const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(cleanName,cleanEmail,hash,existing.id,`phone_${normalized}@ashwini.local`);if(changed.changes!==1)throw Object.assign(Error('Account registration state changed. Please sign in or start again.'),{status:409});return Number(existing.id)}
+   return Number(db.prepare("INSERT INTO users(name,email,password_hash,phone,role) VALUES(?,?,?,?,?)").run(cleanName,cleanEmail,hash,normalized,'customer').lastInsertRowid);
+  });
+  const userId=createVerifiedAccount(),u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(userId);
   createSession(req,res,u.id);res.json({user:u});
- }catch(e){console.error("[MSG91 registration verification]",e.message);res.status(401).json({error:e.message||"MSG91 OTP verification failed."});}
+ }catch(e){console.error("[MSG91 registration verification]",e.message);const conflict=e?.code==='SQLITE_CONSTRAINT'||e?.code==='SQLITE_CONSTRAINT_UNIQUE';res.status(conflict?409:Number(e.status)||401).json({error:conflict?'This email or mobile number is already registered. Please sign in.':e.message||"MSG91 OTP verification failed."});}
 });
 app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
@@ -953,7 +960,7 @@ app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
   if(!otpVerifyGuard(req,res,phone))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
-  if(verifiedPhone&&verifiedPhone!==phone)return res.status(401).json({error:"The verified mobile number does not match the admin sign-in number."});
+  if(verifiedPhone!==phone)return res.status(401).json({error:"MSG91 did not verify the requested admin mobile number."});
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
   if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,phone);return res.status(401).json({error:"Incorrect admin login details"})}
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
