@@ -1071,15 +1071,28 @@ app.post('/api/products/:id/reviews',auth,(req,res)=>{
 
 function resolveItems(items){
  if(!Array.isArray(items)||!items.length)throw Error("Cart is empty");
- let total=0,out=[];
- for(const x of items){
-  const p=db.prepare("SELECT * FROM products WHERE id=?").get(Number(x.id));
-  const qty=Math.max(1,Number(x.quantity||1));
-  if(!p)throw Error("Product not found");
-  if(!p.size_options.split(",").includes(x.size))throw Error(`Size unavailable for ${p.name}`);
-  if(p.stock<qty)throw Error(`Only ${p.stock} left for ${p.name}`);
-  total+=p.price*qty;out.push({p,qty,size:x.size});
+ if(items.length>50)throw Error("Cart contains too many item lines");
+ const combined=new Map(),productQuantities=new Map();
+ for(const item of items){
+  const productId=Number(item?.id),qty=Number(item?.quantity),size=String(item?.size||'').trim();
+  if(!Number.isInteger(productId)||productId<1)throw Error("Invalid product in cart");
+  if(!Number.isInteger(qty)||qty<1||qty>20)throw Error("Each product quantity must be a whole number from 1 to 20");
+  if(!size||size.length>20)throw Error("Invalid product size in cart");
+  productQuantities.set(productId,Number(productQuantities.get(productId)||0)+qty);
+  const key=`${productId}|${size}`,existing=combined.get(key);
+  if(existing){existing.qty+=qty;if(existing.qty>20)throw Error("Maximum quantity per product and size is 20");}
+  else combined.set(key,{productId,qty,size});
  }
+ let total=0,out=[];
+ for(const x of combined.values()){
+  const p=db.prepare("SELECT * FROM products WHERE id=?").get(x.productId);
+  if(!p)throw Error("Product not found");
+  const availableSizes=String(p.size_options||'').split(',').map(value=>value.trim()).filter(Boolean);
+  if(!availableSizes.includes(x.size))throw Error(`Size unavailable for ${p.name}`);
+  if(!Number.isInteger(Number(p.stock))||Number(p.stock)<Number(productQuantities.get(x.productId)))throw Error(`Only ${Math.max(0,Number(p.stock)||0)} left for ${p.name}`);
+  total+=Number(p.price)*x.qty;out.push({p,qty:x.qty,size:x.size});
+ }
+ if(!Number.isSafeInteger(total)||total<0)throw Error("Cart total could not be calculated safely");
  return {total,out};
 }
 app.get('/api/cod/availability',(req,res)=>{
