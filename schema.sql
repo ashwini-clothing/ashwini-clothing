@@ -85,6 +85,23 @@ CREATE TABLE IF NOT EXISTS behavior_events (
 CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);
 
+CREATE TABLE IF NOT EXISTS security_alerts (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ alert_key TEXT NOT NULL,
+ severity TEXT NOT NULL DEFAULT 'HIGH',
+ alert_type TEXT NOT NULL,
+ order_id INTEGER,
+ title TEXT NOT NULL,
+ details TEXT NOT NULL DEFAULT '{}',
+ status TEXT NOT NULL DEFAULT 'OPEN',
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ resolved_at TEXT DEFAULT '',
+ FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_security_alert_status_time ON security_alerts(status,created_at);
+CREATE INDEX IF NOT EXISTS idx_security_alert_key_time ON security_alerts(alert_key,created_at);
+
 CREATE TABLE IF NOT EXISTS returns (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  order_id INTEGER NOT NULL,

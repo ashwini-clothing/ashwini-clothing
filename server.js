@@ -202,6 +202,7 @@ function purgeExpiredBehaviorData(){try{const result=db.prepare("DELETE FROM beh
 purgeExpiredBehaviorData();
 const behaviorRetentionTimer=setInterval(purgeExpiredBehaviorData,24*60*60*1000);behaviorRetentionTimer.unref?.();
 try{db.exec(`CREATE TABLE IF NOT EXISTS razorpay_webhook_events (id INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL UNIQUE,event_type TEXT NOT NULL,razorpay_order_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'RECEIVED',error TEXT NOT NULL DEFAULT '',received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,processed_at TEXT)`)}catch(e){console.error('[Razorpay webhook table]',e.message)}
+try{db.exec(`CREATE TABLE IF NOT EXISTS security_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,alert_key TEXT NOT NULL,severity TEXT NOT NULL DEFAULT 'HIGH',alert_type TEXT NOT NULL,order_id INTEGER,title TEXT NOT NULL,details TEXT NOT NULL DEFAULT '{}',status TEXT NOT NULL DEFAULT 'OPEN',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT DEFAULT '',FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL);CREATE INDEX IF NOT EXISTS idx_security_alert_status_time ON security_alerts(status,created_at);CREATE INDEX IF NOT EXISTS idx_security_alert_key_time ON security_alerts(alert_key,created_at);`)}catch(e){console.error('[Security alert table]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_settings (id INTEGER PRIMARY KEY CHECK(id=1), dispatch_city TEXT NOT NULL DEFAULT 'Jandli, Ambala Cantt', dispatch_state TEXT NOT NULL DEFAULT 'Haryana', dispatch_pincode TEXT NOT NULL DEFAULT '134003', same_city_min INTEGER NOT NULL DEFAULT 1, same_city_max INTEGER NOT NULL DEFAULT 2, same_state_min INTEGER NOT NULL DEFAULT 2, same_state_max INTEGER NOT NULL DEFAULT 4, nearby_min INTEGER NOT NULL DEFAULT 3, nearby_max INTEGER NOT NULL DEFAULT 5, rest_min INTEGER NOT NULL DEFAULT 5, rest_max INTEGER NOT NULL DEFAULT 8, remote_min INTEGER NOT NULL DEFAULT 7, remote_max INTEGER NOT NULL DEFAULT 10, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS delivery_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, block_type TEXT NOT NULL CHECK(block_type IN ('PIN','CITY','STATE')), block_value TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(block_type,block_value))`)}catch{}
 try{db.prepare(`INSERT OR IGNORE INTO delivery_settings(id) VALUES(1)`).run()}catch{}
@@ -278,6 +279,18 @@ try{releaseExpiredPaymentStock()}catch(e){console.error('[Ashwini stock expiry]'
 const stockExpiryTimer=setInterval(()=>{try{releaseExpiredPaymentStock()}catch(e){console.error('[Ashwini stock expiry]',e.message)}},5*60*1000);
 stockExpiryTimer.unref?.();
 
+function createSecurityAlert({key,type,title,orderId=null,severity='HIGH',details={}}){
+ try{
+  const alertKey=String(key||type||'SERVER_ERROR').slice(0,180),safeDetails=JSON.stringify(details,(k,v)=>/secret|token|signature|password/i.test(k)?'[REDACTED]':v).slice(0,4000);
+  const duplicate=db.prepare("SELECT id FROM security_alerts WHERE alert_key=? AND status='OPEN' AND created_at>=datetime('now','-15 minutes') ORDER BY id DESC LIMIT 1").get(alertKey);
+  if(duplicate)return duplicate.id;
+  const result=db.prepare('INSERT INTO security_alerts(alert_key,severity,alert_type,order_id,title,details) VALUES(?,?,?,?,?,?)').run(alertKey,String(severity).slice(0,20),String(type||'SERVER_ERROR').slice(0,80),Number(orderId)||null,String(title||'Ashwini security alert').slice(0,240),safeDetails);
+  const id=Number(result.lastInsertRowid),orderText=orderId?`\nOrder: #${orderId}`:'';
+  Promise.resolve(sendEmail(adminEmail(),`[${severity}] Ashwini Alert #${id}: ${title}`,`A security/operations alert needs review.${orderText}\nType: ${type}\nDetails: ${safeDetails}\n\nOpen Admin > Security Alerts.`)).catch(error=>console.error('[Security alert email]',error.message));
+  return id;
+ }catch(error){console.error('[Security alert]',error.message);return null}
+}
+
 // Razorpay must be verified against the untouched request bytes. Keep this
 // route before express.json(), otherwise signature validation is unreliable.
 app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1mb'}),(req,res)=>{
@@ -305,7 +318,7 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
   if(![...paymentEvents,...refundEvents,...disputeEvents].includes(eventType)){finish('IGNORED');return res.json({ok:true,ignored:true})}
   const relatedPaymentId=String(refund?.payment_id||dispute?.payment_id||payment?.id||'');
   const order=razorpayOrderId?db.prepare("SELECT * FROM orders WHERE razorpay_order_id=? AND payment_method='RAZORPAY'").get(razorpayOrderId):db.prepare("SELECT * FROM orders WHERE payment_method='RAZORPAY' AND (razorpay_payment_id=? OR razorpay_refund_id=?)").get(relatedPaymentId,String(refund?.id||''));
-  if(!order){finish('REJECTED','Matching Ashwini order was not found');return res.json({ok:true,matched:false})}
+  if(!order){finish('REJECTED','Matching Ashwini order was not found');createSecurityAlert({key:`PAYMENT_ORDER_NOT_FOUND:${razorpayOrderId||relatedPaymentId}`,type:'PAYMENT_ORDER_MISMATCH',title:'Razorpay payment has no matching Ashwini order',severity:'CRITICAL',details:{event_id:eventId,event_type:eventType,razorpay_order_id:razorpayOrderId,payment_id:relatedPaymentId}});return res.json({ok:true,matched:false})}
   if(refundEvents.includes(eventType)){
    const refundStatus=eventType==='refund.processed'?'PROCESSED':eventType==='refund.failed'?'FAILED':String(refund?.status||'PENDING').toUpperCase(),paymentStatus=refundStatus==='PROCESSED'?'REFUNDED':refundStatus==='FAILED'?'REFUND_FAILED':'REFUND_PENDING';
    db.prepare("UPDATE orders SET razorpay_refund_id=COALESCE(NULLIF(?,''),razorpay_refund_id),refund_status=?,refund_amount=CASE WHEN ?>0 THEN ? ELSE refund_amount END,payment_status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(refund?.id||''),refundStatus,Number(refund?.amount||0),Math.round(Number(refund?.amount||0)/100),paymentStatus,order.id);
@@ -318,15 +331,15 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
   }
   const paidAmount=Number(payment?.amount??orderEntity?.amount_paid??orderEntity?.amount);
   const currency=String(payment?.currency||orderEntity?.currency||'INR').toUpperCase();
-  if(!Number.isFinite(paidAmount)||paidAmount!==Number(order.total)*100||currency!=='INR'){finish('REJECTED','Payment amount or currency did not match the Ashwini order');return res.json({ok:true,matched:false})}
+  if(!Number.isFinite(paidAmount)||paidAmount!==Number(order.total)*100||currency!=='INR'){finish('REJECTED','Payment amount or currency did not match the Ashwini order');createSecurityAlert({key:`PAYMENT_AMOUNT_MISMATCH:${order.id}:${eventId}`,type:'PAYMENT_AMOUNT_MISMATCH',title:'Razorpay amount/currency does not match order',orderId:order.id,severity:'CRITICAL',details:{event_id:eventId,event_type:eventType,expected_amount_paise:Number(order.total)*100,received_amount_paise:paidAmount,expected_currency:'INR',received_currency:currency}});return res.json({ok:true,matched:false})}
   if(eventType==='payment.failed'){
    if(order.payment_status!=='PAID'){db.prepare("UPDATE orders SET payment_status='FAILED',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_EXPIRED') THEN 'PAYMENT_FAILED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);releaseOrderStock(order.id,'PAYMENT_FAILED')}
   }else{
-   if(!reserveReleasedOrderStock(order.id)){db.prepare("UPDATE orders SET status='PAYMENT_REVIEW',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);finish('REJECTED','Payment captured after reservation expired, but stock is no longer available');console.error(`[Razorpay webhook] PAID Order #${order.id} requires refund/review because stock is unavailable`);return res.json({ok:true,review:true})}
+   if(!reserveReleasedOrderStock(order.id)){db.prepare("UPDATE orders SET status='PAYMENT_REVIEW',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);finish('REJECTED','Payment captured after reservation expired, but stock is no longer available');createSecurityAlert({key:`PAID_STOCK_MISMATCH:${order.id}`,type:'PAID_ORDER_STOCK_MISMATCH',title:'Paid order requires refund/review because stock is unavailable',orderId:order.id,severity:'CRITICAL',details:{event_id:eventId,event_type:eventType,payment_id:String(payment?.id||''),order_status:order.status,payment_status:order.payment_status}});console.error(`[Razorpay webhook] PAID Order #${order.id} requires refund/review because stock is unavailable`);return res.json({ok:true,review:true})}
    db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED','PAYMENT_EXPIRED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=COALESCE(NULLIF(?,''),razorpay_payment_id),updated_at=CURRENT_TIMESTAMP WHERE id=?").run(String(payment?.id||''),order.id);
   }
   finish('PROCESSED');res.json({ok:true});
- }catch(e){db.prepare("UPDATE razorpay_webhook_events SET status='ERROR',error=? WHERE event_id=?").run(String(e.message||e).slice(0,500),eventId);console.error('[Razorpay webhook]',e.message);res.status(500).json({error:'Webhook processing failed'})}
+ }catch(e){db.prepare("UPDATE razorpay_webhook_events SET status='ERROR',error=? WHERE event_id=?").run(String(e.message||e).slice(0,500),eventId);createSecurityAlert({key:`WEBHOOK_ERROR:${eventId}`,type:'PAYMENT_WEBHOOK_ERROR',title:'Razorpay webhook processing failed',severity:'CRITICAL',details:{event_id:eventId,event_type:eventType,error:String(e.message||e).slice(0,500)}});console.error('[Razorpay webhook]',e.message);res.status(500).json({error:'Webhook processing failed'})}
 });
 
 const allowedOrigins=new Set([
@@ -361,6 +374,7 @@ function isImagePayloadRoute(pathname=''){
     || pathname==='/api/admin/products' || pathname.startsWith('/api/admin/products/');
 }
 app.use((req,res,next)=>(isImagePayloadRoute(req.path)?imageJsonParser:standardJsonParser)(req,res,next));
+app.use((req,res,next)=>{res.on('finish',()=>{if(req.path.startsWith('/api/')&&res.statusCode>=500)createSecurityAlert({key:`API_5XX:${req.method}:${req.path}:${res.statusCode}`,type:'SERVER_API_ERROR',title:'Server API returned an internal error',severity:'HIGH',details:{method:req.method,path:String(req.path).slice(0,240),status_code:res.statusCode}})});next()});
 app.use((err,req,res,next)=>{
   if(err?.type==='entity.too.large')return res.status(413).json({error:'Request is too large'});
   if(err instanceof SyntaxError && Object.prototype.hasOwnProperty.call(err,'body'))return res.status(400).json({error:'Invalid JSON request'});
@@ -1113,9 +1127,9 @@ app.post("/api/checkout/verify",auth,async(req,res)=>{
   if(!valid)return res.status(400).json({error:"Payment verification failed"});
   const payment=await razorpay.payments.fetch(String(razorpay_payment_id||''));
   const amountMatches=Number(payment.amount)===Math.round(Number(o.total)*100);
-  if(payment.order_id!==o.razorpay_order_id||String(payment.currency||'').toUpperCase()!=='INR'||!amountMatches)return res.status(400).json({error:"Payment details do not match this order"});
+  if(payment.order_id!==o.razorpay_order_id||String(payment.currency||'').toUpperCase()!=='INR'||!amountMatches){createSecurityAlert({key:`CHECKOUT_PAYMENT_MISMATCH:${o.id}:${razorpay_payment_id}`,type:'CHECKOUT_PAYMENT_MISMATCH',title:'Checkout payment details do not match order',orderId:o.id,severity:'CRITICAL',details:{expected_razorpay_order_id:o.razorpay_order_id,received_razorpay_order_id:String(payment.order_id||''),expected_amount_paise:Number(o.total)*100,received_amount_paise:Number(payment.amount),received_currency:String(payment.currency||'')}});return res.status(400).json({error:"Payment details do not match this order"})}
   if(payment.status!=='captured')return res.status(409).json({error:"Payment is still being processed. Please check Your Orders shortly."});
-  if(!reserveReleasedOrderStock(o.id)){db.prepare("UPDATE orders SET status='PAYMENT_REVIEW',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(o.id);return res.status(409).json({error:"Payment was received after the stock reservation expired. Please contact Ashwini support; the order requires review or refund."})}
+  if(!reserveReleasedOrderStock(o.id)){db.prepare("UPDATE orders SET status='PAYMENT_REVIEW',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(o.id);createSecurityAlert({key:`CHECKOUT_PAID_STOCK_MISMATCH:${o.id}`,type:'PAID_ORDER_STOCK_MISMATCH',title:'Checkout payment received but stock is unavailable',orderId:o.id,severity:'CRITICAL',details:{payment_id:String(razorpay_payment_id||''),order_status:o.status,payment_status:o.payment_status}});return res.status(409).json({error:"Payment was received after the stock reservation expired. Please contact Ashwini support; the order requires review or refund."})}
   db.prepare("UPDATE orders SET payment_status='PAID',status=CASE WHEN status IN ('PAYMENT_PENDING','PAYMENT_FAILED','PAYMENT_EXPIRED') THEN 'CONFIRMED' ELSE status END,razorpay_payment_id=?,razorpay_signature=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(razorpay_payment_id,razorpay_signature,o.id);
   res.json({ok:true});
  }catch(e){console.error('[Razorpay checkout verification]',e.message);res.status(400).json({error:'Payment could not be verified. Please check Your Orders before trying again.'})}
@@ -1259,6 +1273,8 @@ app.get("/api/admin/stats",auth,admin,(req,res)=>{
 });
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id ORDER BY o.id DESC").all()));
 app.get('/api/admin/activity-logs',auth,admin,(req,res)=>{try{const limit=Math.max(1,Math.min(500,Number(req.query?.limit)||200));res.json(db.prepare('SELECT id,admin_user_id,admin_email,action,entity_type,entity_id,details,ip_address,created_at FROM admin_activity_logs ORDER BY id DESC LIMIT ?').all(limit).map(row=>({...row,details:(()=>{try{return JSON.parse(row.details)}catch{return{}}})()})))}catch(e){res.status(500).json({error:'Could not load admin activity logs'})}});
+app.get('/api/admin/security-alerts',auth,admin,(req,res)=>{try{const limit=Math.max(1,Math.min(500,Number(req.query?.limit)||200));res.json(db.prepare(`SELECT a.*,o.status AS order_status,o.payment_status,o.total FROM security_alerts a LEFT JOIN orders o ON o.id=a.order_id ORDER BY CASE a.status WHEN 'OPEN' THEN 0 ELSE 1 END,CASE a.severity WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 ELSE 2 END,a.id DESC LIMIT ?`).all(limit).map(row=>({...row,details:(()=>{try{return JSON.parse(row.details)}catch{return{}}})()})))}catch(e){res.status(500).json({error:'Could not load security alerts'})}});
+app.patch('/api/admin/security-alerts/:id',auth,admin,(req,res)=>{try{const status=String(req.body?.status||'').toUpperCase();if(!['OPEN','IN_REVIEW','RESOLVED'].includes(status))return res.status(400).json({error:'Invalid alert status'});const before=db.prepare('SELECT * FROM security_alerts WHERE id=?').get(Number(req.params.id));if(!before)return res.status(404).json({error:'Alert not found'});db.prepare("UPDATE security_alerts SET status=?,updated_at=CURRENT_TIMESTAMP,resolved_at=CASE WHEN ?='RESOLVED' THEN CURRENT_TIMESTAMP ELSE '' END WHERE id=?").run(status,status,before.id);logAdminActivity(req,'SECURITY_ALERT_UPDATED','SECURITY_ALERT',before.id,{from_status:before.status,to_status:status,alert_type:before.alert_type,order_id:before.order_id||null});res.json({ok:true,alert:db.prepare('SELECT * FROM security_alerts WHERE id=?').get(before.id)})}catch(e){res.status(500).json({error:'Could not update security alert'})}});
 app.post("/api/admin/orders/:id/cash-received",auth,admin,async(req,res)=>{
  try{
   const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
