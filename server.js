@@ -480,7 +480,7 @@ async function sendSmsOtp(to,otp){
   if(!sid||!auth||!from)return {sent:false,configured:false,error:"Twilio SMS is not configured"};
   const body=new URLSearchParams({To:`+91${String(to).replace(/\D/g,"")}`,From:from,Body:`Ashwini Clothing OTP: ${otp}. It expires in 5 minutes. Do not share this OTP.`});
   const basic=Buffer.from(`${sid}:${auth}`).toString("base64");
-  const r=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:"POST",headers:{Authorization:`Basic ${basic}`,"Content-Type":"application/x-www-form-urlencoded"},body});
+  const r=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:"POST",headers:{Authorization:`Basic ${basic}`,"Content-Type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(10000),body});
   if(!r.ok)throw new Error(await r.text());
   return {sent:true,configured:true,provider:"twilio"};
  }
@@ -528,13 +528,13 @@ async function sendEmail(to,subject,text,html){
    const nodemailer=(await import('nodemailer')).default;
    const host=process.env.SMTP_HOST,port=Number(process.env.SMTP_PORT||465),user=process.env.SMTP_USER,pass=process.env.SMTP_PASS;
    if(!host||!user||!pass)return {sent:false,configured:false,error:'SMTP email is not configured. Add SMTP_HOST, SMTP_USER and SMTP_PASS.'};
-   const transporter=nodemailer.createTransport({host,port,secure:String(process.env.SMTP_SECURE||'true').toLowerCase()==='true',auth:{user,pass}});
+   const transporter=nodemailer.createTransport({host,port,secure:String(process.env.SMTP_SECURE||'true').toLowerCase()==='true',auth:{user,pass},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
    await transporter.sendMail({from,to,subject,text,html:safeHtml});
    return {sent:true,configured:true,provider:'smtp'};
   }
   const key=process.env.RESEND_API_KEY;
   if(!key)return {sent:false,configured:false,error:'Resend email is not configured. Add RESEND_API_KEY.'};
-  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({from,to,subject,text,html:safeHtml})});
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(10000),body:JSON.stringify({from,to,subject,text,html:safeHtml})});
   if(!r.ok)throw new Error(await r.text());
   return {sent:true,configured:true,provider:'resend'};
  }catch(e){
@@ -803,12 +803,12 @@ async function verifyMsg91AccessToken(accessToken){
  const authkey=String(process.env.MSG91_AUTHKEY||"").trim();
  if(!authkey)throw new Error("MSG91 server AuthKey is not configured.");
  const endpoint="https://control.msg91.com/api/v5/widget/verifyAccessToken",verifiedToken=String(accessToken||"").trim();
- let r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams({authkey,"access-token":verifiedToken})});
+ let r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},signal:AbortSignal.timeout(10000),body:new URLSearchParams({authkey,"access-token":verifiedToken})});
  let text=await r.text();
  // Some MSG91 accounts accept the server integration payload as JSON instead
  // of a form. Retry only for that specific parsing response.
  if(/access-token field is required/i.test(text)){
-  r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authkey},body:JSON.stringify({"access-token":verifiedToken})});
+  r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authkey},signal:AbortSignal.timeout(10000),body:JSON.stringify({"access-token":verifiedToken})});
   text=await r.text();
  }
  let data={}; try{data=JSON.parse(text)}catch{}
