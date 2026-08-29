@@ -596,38 +596,27 @@ app.get('/api/help-chat/messages',(req,res)=>{try{const thread=getHelpThread(req
 
 app.patch("/api/admin/store-profile",auth,admin,(req,res)=>{try{const b=req.body||{};const logo=String(b.logo_data||"");if(logo && !/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/.test(logo))return res.status(400).json({error:"Invalid logo image"});if(logo.length>15*1024*1024)return res.status(400).json({error:"Logo image is too large"});const waEnabled=b.whatsapp_enabled===true||b.whatsapp_enabled===1||String(b.whatsapp_enabled).toLowerCase()==='true';const waNumber=String(b.whatsapp_number??'').replace(/\D/g,'');if(waNumber && waNumber.length<10)return res.status(400).json({error:"Enter a valid WhatsApp number"});db.prepare(`UPDATE store_profile SET about_title=?,history=?,address=?,city=?,state=?,pincode=?,email=?,phone=?,logo_data=CASE WHEN ?='' THEN logo_data ELSE ? END,whatsapp_enabled=?,whatsapp_number=?,whatsapp_name=?,whatsapp_message=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.about_title||"About Ashwini Clothing").trim(),String(b.history||"").trim(),String(b.address||"").trim(),String(b.city||"").trim(),String(b.state||"").trim(),String(b.pincode||"").trim(),String(b.email||"ashwiniweb88@gmail.com").trim(),String(b.phone||"").trim(),logo,logo,waEnabled?1:0,waNumber,String(b.whatsapp_name||"Ashwini AI Help Desk").trim().slice(0,80),String(b.whatsapp_message||"Hello! 👋 Need help? Chat with us on WhatsApp!").trim().slice(0,500));res.json(db.prepare("SELECT * FROM store_profile WHERE id=1").get())}catch(e){res.status(400).json({error:e.message})}});
 
+const postalLookupCache=new Map(),postalCacheTtlMs=24*60*60*1000,postalNegativeCacheTtlMs=60*60*1000;
+async function lookupPostalPin(pin){
+ const cached=postalLookupCache.get(pin),now=Date.now();if(cached&&cached.expiresAt>now)return cached.place;
+ let place=null;
+ try{const r=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(5000)});if(r.ok){const data=await r.json(),po=data?.[0]?.PostOffice?.[0];if(po)place={pin,area:po.Name||'',district:po.District||'',city:po.Block||po.District||po.Division||'',state:po.State||'',country:po.Country||'India'}}}catch{}
+ if(!place)try{const r=await fetch(`https://api.zippopotam.us/in/${pin}`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(5000)});if(r.ok){const z=await r.json(),p=z?.places?.[0];if(p)place={pin,area:p['place name']||'',district:p['place name']||'',city:p['place name']||'',state:p.state||'',country:z.country||'India'}}}catch{}
+ postalLookupCache.set(pin,{place,expiresAt:now+(place?postalCacheTtlMs:postalNegativeCacheTtlMs)});
+ if(postalLookupCache.size>2000){for(const [key,value] of postalLookupCache)if(value.expiresAt<=now)postalLookupCache.delete(key);while(postalLookupCache.size>2000)postalLookupCache.delete(postalLookupCache.keys().next().value)}
+ return place;
+}
 app.get("/api/pincode/:pin",async(req,res)=>{
  const pin=String(req.params.pin||'').trim();
  if(!/^\d{6}$/.test(pin)) return res.status(400).json({error:"Enter a valid 6-digit PIN code"});
- // Try India Post first. Some valid PINs can temporarily return an empty response,
- // so fall back to a second postal database instead of immediately saying Not Found.
- try{
-  const r=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{headers:{accept:'application/json'}});
-  if(r.ok){
-   const data=await r.json();
-   const offices=data?.[0]?.PostOffice||[];
-   const po=offices[0];
-   if(po){
-    return res.json({pin,area:po.Name||'',district:po.District||'',city:po.Block||po.District||po.Division||'',state:po.State||'',country:po.Country||'India'});
-   }
-  }
- }catch{}
- try{
-  const r2=await fetch(`https://api.zippopotam.us/in/${pin}`,{headers:{accept:'application/json'}});
-  if(r2.ok){
-   const z=await r2.json();
-   const place=z?.places?.[0];
-   if(place){
-    return res.json({pin,area:place['place name']||'',district:place['place name']||'',city:place['place name']||'',state:place['state']||'',country:z.country||'India'});
-   }
-  }
- }catch{}
+ if(!publicWriteAllowed(req,res,'POSTAL_LOOKUP',60,15*60*1000))return;
+ const place=await lookupPostalPin(pin);if(place)return res.json(place);
  return res.status(404).json({error:"PIN code location could not be found. Please check the 6-digit PIN."});
 });
 app.get('/api/delivery-estimate/:pin',async(req,res)=>{
  const pin=String(req.params.pin||'').trim();if(!/^\d{6}$/.test(pin))return res.status(400).json({error:'Enter a valid 6-digit PIN code'});
- const settings=db.prepare('SELECT * FROM delivery_settings WHERE id=1').get();let place=null;
- try{const r=await fetch(`https://api.postalpincode.in/pincode/${pin}`,{headers:{accept:'application/json'}});if(r.ok){const data=await r.json(),po=data?.[0]?.PostOffice?.[0];if(po)place={city:po.Block||po.District||po.Division||'',district:po.District||'',state:po.State||''}}}catch{}
+ if(!publicWriteAllowed(req,res,'DELIVERY_ESTIMATE',60,15*60*1000))return;
+ const settings=db.prepare('SELECT * FROM delivery_settings WHERE id=1').get(),place=await lookupPostalPin(pin);
  if(!place)return res.status(404).json({error:'PIN code location could not be found. Please check the 6-digit PIN.'});
  const cityText=`${place.city} ${place.district}`.toLowerCase(),state=String(place.state||'').toLowerCase(),baseState=String(settings.dispatch_state||'').toLowerCase();
  const blocked=db.prepare("SELECT * FROM delivery_blocks WHERE active=1 ORDER BY CASE block_type WHEN 'PIN' THEN 0 WHEN 'CITY' THEN 1 ELSE 2 END").all().find(x=>x.block_type==='PIN'?x.block_value===pin:x.block_type==='CITY'?cityText.includes(String(x.block_value||'').toLowerCase()):state===String(x.block_value||'').toLowerCase());
