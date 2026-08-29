@@ -186,6 +186,7 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_threads (id INTEGER PRIMARY KE
 try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER NOT NULL, sender_role TEXT NOT NULL CHECK(sender_role IN ('CUSTOMER','ADMIN')), message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT, FOREIGN KEY(thread_id) REFERENCES help_chat_threads(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS customer_help_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, subject TEXT NOT NULL, message TEXT NOT NULL, contact_method TEXT NOT NULL DEFAULT 'EMAIL', status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS account_deletion_requests (id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'PENDING',reason TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS admin_activity_logs (id INTEGER PRIMARY KEY AUTOINCREMENT,admin_user_id INTEGER,admin_email TEXT NOT NULL DEFAULT '',action TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT NOT NULL DEFAULT '',details TEXT NOT NULL DEFAULT '{}',ip_address TEXT NOT NULL DEFAULT '',user_agent TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(admin_user_id) REFERENCES users(id) ON DELETE SET NULL); CREATE INDEX IF NOT EXISTS idx_admin_activity_created ON admin_activity_logs(created_at DESC); CREATE INDEX IF NOT EXISTS idx_admin_activity_entity ON admin_activity_logs(entity_type,entity_id);`)}catch(e){console.error('[Admin activity log table]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS store_profile (id INTEGER PRIMARY KEY CHECK(id=1), about_title TEXT NOT NULL DEFAULT 'About Ashwini Clothing', history TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '', pincode TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT 'ashwiniweb88@gmail.com', phone TEXT NOT NULL DEFAULT '', logo_data TEXT NOT NULL DEFAULT '', whatsapp_enabled INTEGER NOT NULL DEFAULT 0, whatsapp_number TEXT NOT NULL DEFAULT '', whatsapp_name TEXT NOT NULL DEFAULT 'Ashwini AI Help Desk', whatsapp_message TEXT NOT NULL DEFAULT 'Hello! 👋 Need help? Chat with us on WhatsApp!', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE store_profile ADD COLUMN logo_data TEXT NOT NULL DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE store_profile ADD COLUMN whatsapp_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
@@ -429,6 +430,7 @@ function auth(req,res,next){
  }catch{res.status(401).json({error:"Login required. Please sign in again."})}
 }
 function admin(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin only"});next()}
+function logAdminActivity(req,action,entityType,entityId,details={}){try{const safeDetails=JSON.stringify(details,(key,value)=>/password|secret|token|signature/i.test(key)?'[REDACTED]':value).slice(0,4000);db.prepare('INSERT INTO admin_activity_logs(admin_user_id,admin_email,action,entity_type,entity_id,details,ip_address,user_agent) VALUES(?,?,?,?,?,?,?,?)').run(req.user?.id||null,String(req.user?.email||'').slice(0,200),String(action).slice(0,80),String(entityType).slice(0,80),String(entityId??'').slice(0,100),safeDetails,clientIp(req).slice(0,100),String(req.headers['user-agent']||'').slice(0,500))}catch(e){console.error('[Admin activity log]',e.message)}}
 async function sendEmail(to,subject,text,html){
  const provider=String(process.env.EMAIL_PROVIDER||'resend').trim().toLowerCase();
  const from=process.env.EMAIL_FROM||'Ashwini Clothing <onboarding@resend.dev>';
@@ -1244,6 +1246,7 @@ app.get("/api/admin/stats",auth,admin,(req,res)=>{
  res.json({revenue,orders:db.prepare("SELECT COUNT(*) n FROM orders").get().n,customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,products:db.prepare("SELECT COUNT(*) n FROM products").get().n});
 });
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id ORDER BY o.id DESC").all()));
+app.get('/api/admin/activity-logs',auth,admin,(req,res)=>{try{const limit=Math.max(1,Math.min(500,Number(req.query?.limit)||200));res.json(db.prepare('SELECT id,admin_user_id,admin_email,action,entity_type,entity_id,details,ip_address,created_at FROM admin_activity_logs ORDER BY id DESC LIMIT ?').all(limit).map(row=>({...row,details:(()=>{try{return JSON.parse(row.details)}catch{return{}}})()})))}catch(e){res.status(500).json({error:'Could not load admin activity logs'})}});
 app.post("/api/admin/orders/:id/cash-received",auth,admin,async(req,res)=>{
  try{
   const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
@@ -1253,6 +1256,7 @@ app.post("/api/admin/orders/:id/cash-received",auth,admin,async(req,res)=>{
   if(order.payment_status==="PAID")return res.json({ok:true,already_paid:true,order});
   db.prepare("UPDATE orders SET payment_status='PAID',updated_at=CURRENT_TIMESTAMP WHERE id=? AND payment_status<>'PAID'").run(order.id);
   const updated=db.prepare("SELECT * FROM orders WHERE id=?").get(order.id);
+  logAdminActivity(req,'COD_PAYMENT_RECEIVED','ORDER',updated.id,{from_payment_status:order.payment_status,to_payment_status:updated.payment_status,amount:updated.total});
   addOrderEvent(updated.id,updated.user_id,'PAYMENT_RECEIVED','Cash payment received',`Cash on Delivery payment for Order #${updated.id} was received and recorded as PAID.`);
   const customer=db.prepare("SELECT name,email FROM users WHERE id=?").get(updated.user_id);
   if(customer?.email)await notifyEmail(customer.email,`Ashwini Clothing Payment Received - Order #${updated.id}`,`Hello ${customer.name||'Customer'},\n\nWe received the Cash on Delivery payment for Order #${updated.id}. Its payment status is now PAID.\n\nThank you for shopping with Ashwini Clothing.`);
@@ -1267,7 +1271,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const nextStatus=String(req.body.status);
  if(nextStatus===before.status)return res.json({ok:true,unchanged:true,order:before});
  if(req.body.status==='CANCELLED'){
-  try{const order=await cancelOrderSafely(before);if(before.status!==order.status){const msg=order.payment_status==='REFUND_PENDING'||order.payment_status==='REFUNDED'?`Order #${order.id} was cancelled and its Razorpay refund was initiated.`:`Order #${order.id} was cancelled.`;addOrderEvent(order.id,order.user_id,'CANCELLED','Order cancelled',msg);const u=db.prepare('SELECT name,email FROM users WHERE id=?').get(order.user_id);if(u?.email)await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} Cancelled`,msg)}return res.json({ok:true,order})}catch(e){return res.status(400).json({error:e.message||'Order cancellation failed'})}
+  try{const order=await cancelOrderSafely(before);if(before.status!==order.status){logAdminActivity(req,'ORDER_CANCELLED','ORDER',order.id,{from_status:before.status,to_status:order.status,from_payment_status:before.payment_status,to_payment_status:order.payment_status,refund_status:order.refund_status||''});const msg=order.payment_status==='REFUND_PENDING'||order.payment_status==='REFUNDED'?`Order #${order.id} was cancelled and its Razorpay refund was initiated.`:`Order #${order.id} was cancelled.`;addOrderEvent(order.id,order.user_id,'CANCELLED','Order cancelled',msg);const u=db.prepare('SELECT name,email FROM users WHERE id=?').get(order.user_id);if(u?.email)await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} Cancelled`,msg)}return res.json({ok:true,order})}catch(e){return res.status(400).json({error:e.message||'Order cancellation failed'})}
  }
  const allowedNext={PLACED:['CONFIRMED'],CONFIRMED:['PACKED'],PACKED:['SHIPPED'],SHIPPED:['OUT_FOR_DELIVERY'],OUT_FOR_DELIVERY:['DELIVERED']};
  if(!allowedNext[String(before.status)]?.includes(nextStatus))return res.status(409).json({error:`Order must move forward one step at a time. ${before.status} cannot change directly to ${nextStatus}.`});
@@ -1275,6 +1279,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?").run(nextStatus,nextStatus,req.params.id,before.status);
  if(!result.changes)return res.status(409).json({error:"Order changed in another request. Refresh and try again."});
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
+ logAdminActivity(req,'ORDER_STATUS_CHANGED','ORDER',order.id,{from_status:before.status,to_status:order.status,payment_status:order.payment_status});
  if(order.status==='CANCELLED'&&order.payment_status!=='PAID')releaseOrderStock(order.id,'CANCELLED');
  if(before.status!==order.status){const label=String(order.status).replaceAll("_"," ");const msg=`Order #${order.id} is now ${label}. Payment status: ${String(order.payment_status||'PENDING').replaceAll('_',' ')}.`;addOrderEvent(order.id,order.user_id,order.status,`Order ${label}`,msg);const u=db.prepare("SELECT name,email FROM users WHERE id=?").get(order.user_id);if(u?.email){await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${u.name||'Customer'},\n\n${msg}\n\nTrack your order from Your Orders in your Ashwini Clothing account.`)}}
  res.json({ok:true,order});
@@ -1282,14 +1287,15 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
 app.post("/api/admin/products",auth,admin,(req,res)=>{
  const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,rating=0,emoji="👕",stock=0,description="",image="",gallery="",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body;
  const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,typeof gallery==="string"?gallery:JSON.stringify(gallery||[]),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0));
+ logAdminActivity(req,'PRODUCT_CREATED','PRODUCT',r.lastInsertRowid,{name:String(name||'').slice(0,200),stock:Number(stock)||0,price:Number(price)||0});
  res.json(db.prepare("SELECT * FROM products WHERE id=?").get(r.lastInsertRowid));
 });
 app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{
  const p=db.prepare("SELECT * FROM products WHERE id=?").get(req.params.id);if(!p)return res.status(404).json({error:"Not found"});
  const x={...p,...req.body};db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=? WHERE id=?")
- .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,x.image,typeof x.gallery==="string"?x.gallery:JSON.stringify(x.gallery||[]),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),p.id);res.json(x);
+ .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,x.image,typeof x.gallery==="string"?x.gallery:JSON.stringify(x.gallery||[]),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:Number(x.stock)||0,from_price:Number(p.price)||0,to_price:Number(x.price)||0});res.json(x);
 });
-app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM products WHERE id=?").run(req.params.id);res.json({ok:true})});
+app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});res.json({ok:true})});
 
 app.get("/api/webhooks/health",(req,res)=>res.json({razorpayConfigured:Boolean(razorpay)}));
 app.use('/api',(req,res)=>res.status(404).json({error:'Not found'}));

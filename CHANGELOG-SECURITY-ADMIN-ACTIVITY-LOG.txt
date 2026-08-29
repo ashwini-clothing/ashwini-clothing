@@ -1,0 +1,11 @@
+ASHWINI CLOTHING - ADMIN ACTIVITY LOG SECURITY ITEM
+
+- Added a persistent append-only admin_activity_logs table.
+- Records the acting admin, timestamp, request IP, action and affected record.
+- Records order status changes, cancellations/refund initiation and COD payment confirmation.
+- Records product creation, deletion, price changes and stock changes.
+- Stores only limited before/after values and redacts secret-like detail keys.
+- Added a read-only Admin Activity Log screen to the existing Admin Dashboard.
+- No delete endpoint is provided for audit records.
+
+Customer mobile/desktop pages, catalogue, cart and checkout layout were not changed.

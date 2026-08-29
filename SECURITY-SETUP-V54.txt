@@ -70,6 +70,14 @@ Personal data and account deletion requests:
 - Admin review shows active order, payment/refund/dispute and return blockers; approval is rejected until those blockers are resolved.
 - Approval does not automatically erase legally required transaction records. Final retention/deletion must follow the store's applicable policy and legal requirements.
 
+Admin activity audit log:
+- Order status changes, admin cancellations/refund initiation and COD payment confirmation are recorded.
+- Product creation, deletion, price changes and stock changes are recorded.
+- Each entry stores the admin account, action time, affected record, request IP and a limited before/after summary.
+- Passwords, tokens, OTPs, API secrets and payment signatures are redacted and must never be written to activity details.
+- Admins can review the latest entries from Admin Dashboard -> Admin Activity Log.
+- Activity entries are append-only through the application; no public or admin delete endpoint is exposed.
+
 Secrets:
 - Never commit .env or API keys to GitHub.
 - Keep .env.example only as a template with placeholder values.
