@@ -108,8 +108,9 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0
 try{
  const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
  const bootstrapAdminPassword=String(process.env.ADMIN_PASSWORD||'');
- if(bootstrapAdminEmail && bootstrapAdminPassword.length>=8){
+ if(bootstrapAdminEmail && bootstrapAdminPassword){
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail))throw new Error('ADMIN_EMAIL is invalid');
+  if(Array.from(bootstrapAdminPassword).length<8||Buffer.byteLength(bootstrapAdminPassword,'utf8')>72)throw new Error('ADMIN_PASSWORD must be 8 or more characters and no more than 72 UTF-8 bytes');
   const hash=bcrypt.hashSync(bootstrapAdminPassword,12);
   const existingAdmin=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
   if(existingAdmin){
@@ -120,7 +121,7 @@ try{
      .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
   }
  }else if(bootstrapAdminEmail){
-  console.warn('[Ashwini Admin Bootstrap] ADMIN_PASSWORD must be set to an 8+ character secret before the admin account can be created or recovered.');
+  console.warn('[Ashwini Admin Bootstrap] ADMIN_PASSWORD must be set before the admin account can be created or recovered.');
  }
 }catch(e){console.error('[Ashwini Admin Bootstrap]',e.message)}
 try{db.exec("ALTER TABLE users ADD COLUMN recovery_otp_hash TEXT DEFAULT ''")}catch{}
@@ -946,6 +947,7 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
   const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||"");
   if(!identifier||!password)return res.status(400).json({error:"Enter admin mobile/email and password"});
   if(!otpVerifyGuard(req,res,identifier))return;
+  if(Buffer.byteLength(password,'utf8')>72){recordOtpFailure(req,identifier);return res.status(401).json({error:"Incorrect admin login details"});}
   const mobile=normalizePhone(identifier),email=identifier.toLowerCase();
   const u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
   // Never attach an unknown mobile number during sign-in. A new admin mobile
@@ -972,6 +974,7 @@ app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
   if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
   if(accessToken.length>4096)return res.status(400).json({error:"MSG91 verification token is invalid."});
   if(!otpVerifyGuard(req,res,phone))return;
+  if(Buffer.byteLength(password,'utf8')>72){recordOtpFailure(req,phone);return res.status(401).json({error:"Incorrect admin login details"});}
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
   if(verifiedPhone!==phone){recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested admin mobile number."});}
