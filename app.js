@@ -19,7 +19,7 @@ function manageBehaviorTracking(){localStorage.removeItem(BEHAVIOR_CONSENT_KEY);
 
 async function api(url,opts={}){
   opts.credentials='same-origin';
-  opts.headers={...(opts.headers||{}),...(token?{Authorization:'Bearer '+token}:{})};
+  opts.headers={...(opts.headers||{})};
   if(opts.body && typeof opts.body!=='string'){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(opts.body)}
   const r=await fetch(url,opts);const d=await r.json().catch(()=>({}));
   if(!r.ok) throw Error(d.error||'Request failed'); return d;

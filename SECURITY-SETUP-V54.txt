@@ -18,10 +18,8 @@ Implemented:
 Production environment variables:
 - NODE_ENV=production
 - SHOW_DEV_OTP=false
-- JWT_SECRET=<long random value> (kept only for legacy Bearer compatibility)
 - SESSION_TTL_DAYS=7
 - MAX_ACTIVE_SESSIONS=10
-- ALLOW_LEGACY_BEARER_AUTH=false
 - EMAIL_PROVIDER=smtp or resend
 - SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_SECURE / EMAIL_FROM, or RESEND_API_KEY / EMAIL_FROM
 - SMS_PROVIDER=twilio

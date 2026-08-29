@@ -3,7 +3,6 @@ import express from "express";
 import cors from "cors";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import Razorpay from "razorpay";
 import path from "path";
@@ -31,13 +30,6 @@ function publishHelpChat(threadId,payload){
   const data=`data: ${JSON.stringify(payload)}\n\n`;
   for(const key of keys){const set=helpChatStreams.get(key);if(!set)continue;for(const res of [...set]){try{res.write(data)}catch{try{res.end()}catch{}set.delete(res)}}}
 }
-const configuredJwtSecret=String(process.env.JWT_SECRET||'').trim();
-const insecureJwtSecret=!configuredJwtSecret||configuredJwtSecret.length<32||/^(change_me|changeme|secret|replace-with)/i.test(configuredJwtSecret);
-if(process.env.NODE_ENV==='production'&&insecureJwtSecret){
- throw new Error('JWT_SECRET must be configured in Render Environment with at least 32 random characters. Refusing to start insecurely.');
-}
-const SECRET=insecureJwtSecret?crypto.randomBytes(48).toString('base64url'):configuredJwtSecret;
-if(insecureJwtSecret)console.warn('[Ashwini security] Development is using a temporary JWT secret; sessions will not survive a restart.');
 
 // Keep customer/order data independent of version folders. If an older version
 // already has an Ashwini database, reuse the newest nearby database on first run.
@@ -387,7 +379,7 @@ app.use((req,res,next)=>{
   if(origin&&!allowedOrigins.has(origin))return res.status(403).json({error:'Origin is not allowed'});
   next();
 });
-app.use(cors({origin:(origin,done)=>done(null,!origin||allowedOrigins.has(String(origin).replace(/\/$/,''))),credentials:true,methods:['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','Idempotency-Key']}));
+app.use(cors({origin:(origin,done)=>done(null,!origin||allowedOrigins.has(String(origin).replace(/\/$/,''))),credentials:true,methods:['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Idempotency-Key']}));
 const standardJsonParser=express.json({limit:'256kb'});
 const imageJsonParser=express.json({limit:'20mb'});
 function isImagePayloadRoute(pathname=''){
@@ -482,7 +474,6 @@ async function sendSmsOtp(to,otp){
  }
  return {sent:false,configured:false,error:`Unsupported SMS provider: ${provider}`};
 }
-function token(u){return jwt.sign({id:u.id,name:u.name,email:u.email,phone:u.phone||"",role:u.role},SECRET,{expiresIn:"15m"})}
 function sessionHash(value){return crypto.createHash("sha256").update(String(value)).digest("hex")}
 // Keep password-check cost similar when an unknown admin identifier is tried,
 // so response timing does not disclose whether the private admin account exists.
@@ -500,7 +491,6 @@ function auth(req,res,next){
  try{
   const raw=readCookie(req,"ashwini_session");let u=null;
    if(raw){const s=db.prepare("SELECT id,user_id,expires_at,absolute_expires_at FROM auth_sessions WHERE session_hash=?").get(sessionHash(raw));const now=Date.now();if(s&&Number(s.expires_at)>now&&Number(s.absolute_expires_at)>now){u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(s.user_id);if(u){req.sessionId=Number(s.id);const newExp=Math.min(now+sessionTtlMs,Number(s.absolute_expires_at));db.prepare("UPDATE auth_sessions SET last_seen_at=?,expires_at=? WHERE session_hash=?").run(now,newExp,sessionHash(raw));setSessionCookie(res,raw);}else db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));}else if(s)db.prepare("DELETE FROM auth_sessions WHERE id=?").run(s.id)}
-   if(!u&&String(process.env.ALLOW_LEGACY_BEARER_AUTH||'').toLowerCase()==='true'){const h=req.headers.authorization||"";if(h.startsWith("Bearer ")){const claims=jwt.verify(h.slice(7),SECRET);u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(claims.id);}}
   if(!u)return res.status(401).json({error:"Login required. Please sign in again."});req.user=u;next();
  }catch{res.status(401).json({error:"Login required. Please sign in again."})}
 }

@@ -12,8 +12,6 @@ services:
         value: 7
       - key: MAX_ACTIVE_SESSIONS
         value: 10
-      - key: ALLOW_LEGACY_BEARER_AUTH
-        value: false
       - key: DB_PATH
         value: /var/data/ashwini.db
       - key: BACKUP_DIR
@@ -33,8 +31,6 @@ services:
       - key: ADMIN_EMAIL
         value: ashwiniweb88@gmail.com
       - key: ADMIN_PASSWORD
-        sync: false
-      - key: JWT_SECRET
         sync: false
       - key: MSG91_WIDGET_ID
         value: 3668776a6531353432363138
