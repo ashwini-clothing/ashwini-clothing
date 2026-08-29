@@ -20,7 +20,7 @@ app.set('trust proxy',1);
 const helpChatStreams=new Map();
 const helpStreamIdentityCounts=new Map();
 function reservePublicHelpStream(identity,res,max=3){
- const key=String(identity||'unknown'),active=Number(helpStreamIdentityCounts.get(key)||0);if(active>=max)return false;
+ const key=String(identity||'unknown'),active=Number(helpStreamIdentityCounts.get(key)||0),total=[...helpStreamIdentityCounts.values()].reduce((sum,count)=>sum+Number(count||0),0);if(active>=max||total>=200)return false;
  helpStreamIdentityCounts.set(key,active+1);let released=false;const release=()=>{if(released)return;released=true;const left=Number(helpStreamIdentityCounts.get(key)||1)-1;if(left>0)helpStreamIdentityCounts.set(key,left);else helpStreamIdentityCounts.delete(key)};
  res.once('close',release);res.once('error',release);return true;
 }
@@ -442,9 +442,9 @@ function otpVerifyGuard(req,res,identifier,blockedMessage="Too many incorrect si
 }
 function recordOtpFailure(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=Number(x.verify_failures)+1;x.updated_at=now;saveOtpLimit(key,x)}
 function clearOtpFailures(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=0;x.updated_at=now;saveOtpLimit(key,x)}
-function publicWriteAllowed(req,res,bucket,max,windowMs,identity=''){
+function publicWriteAllowed(req,res,bucket,max,windowMs,identity='',includeIp=true){
  try{
-  const now=Date.now(),raw=`${bucket}|${clientIp(req)}|${String(identity||'').slice(0,120)}`,key=crypto.createHash('sha256').update(raw).digest('hex');
+  const now=Date.now(),raw=`${bucket}|${includeIp?clientIp(req):'GLOBAL'}|${String(identity||'').slice(0,120)}`,key=crypto.createHash('sha256').update(raw).digest('hex');
   let row=db.prepare('SELECT window_start,request_count FROM public_rate_limits WHERE key_hash=?').get(key);
   if(!row||now-Number(row.window_start)>=windowMs)row={window_start:now,request_count:0};
   if(Number(row.request_count)>=max){res.setHeader('Retry-After',String(Math.max(1,Math.ceil((windowMs-(now-Number(row.window_start)))/1000))));res.status(429).json({error:'Too many requests. Please wait and try again.'});return false}
@@ -454,7 +454,10 @@ function publicWriteAllowed(req,res,bucket,max,windowMs,identity=''){
 }
 app.use((req,res,next)=>{
  if(req.method==='GET'&&req.path==='/api/help-chat'&&!publicWriteAllowed(req,res,'HELP_CHAT_OPEN',30,60*60*1000))return;
- if(req.method==='POST'&&req.path==='/api/help-chat/messages'&&!publicWriteAllowed(req,res,'HELP_CHAT_IP',60,15*60*1000))return;
+ if(req.method==='POST'&&req.path==='/api/help-chat/messages'){
+  if(!publicWriteAllowed(req,res,'HELP_CHAT_IP',60,15*60*1000))return;
+  const thread=getHelpThread(req);if(thread&&!publicWriteAllowed(req,res,'HELP_CHAT_THREAD',120,60*60*1000,String(thread.id),false))return;
+ }
  if(req.method==='POST'&&req.path==='/api/behavior-events'){
   const sessionId=String(req.body?.session_id||'');
   if(!publicWriteAllowed(req,res,'BEHAVIOR_IP',300,15*60*1000)||!publicWriteAllowed(req,res,'BEHAVIOR_SESSION',120,15*60*1000,sessionId))return;
