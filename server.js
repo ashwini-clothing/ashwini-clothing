@@ -381,8 +381,9 @@ app.use((req,res,next)=>{
   next();
 });
 app.use((req,res,next)=>{
-  const origin=String(req.headers.origin||'').replace(/\/$/,'');
+  const origin=String(req.headers.origin||'').replace(/\/$/,''),fetchSite=String(req.headers['sec-fetch-site']||'').toLowerCase();
   if(origin&&!allowedOrigins.has(origin))return res.status(403).json({error:'Origin is not allowed'});
+  if(req.path.startsWith('/api/')&&fetchSite==='cross-site'&&(!origin||!allowedOrigins.has(origin)))return res.status(403).json({error:'Cross-site browser request is not allowed'});
   next();
 });
 app.use(cors({origin:(origin,done)=>done(null,!origin||allowedOrigins.has(String(origin).replace(/\/$/,''))),credentials:true,methods:['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Idempotency-Key']}));
