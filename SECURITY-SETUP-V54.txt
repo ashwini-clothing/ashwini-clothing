@@ -61,6 +61,15 @@ Active sessions and remote sign-out:
 - A customer can have at most 10 active sessions by default; oldest sessions are removed safely when the limit is exceeded.
 - Legacy Bearer authentication is disabled in Render so an old browser token cannot bypass remote sign-out.
 
+Personal data and account deletion requests:
+- Customers can download a JSON copy of their profile, purchases, returns, events, reviews, questions, support conversations, behavior activity and deletion-request history.
+- Internal secrets and processing fields such as Razorpay signatures, checkout idempotency keys and webhook records are excluded from customer exports.
+- Personal-data responses use Cache-Control: no-store.
+- Account deletion requests require the current password, prevent duplicate active requests and show status to the customer.
+- Customers can cancel a pending or in-review request.
+- Admin review shows active order, payment/refund/dispute and return blockers; approval is rejected until those blockers are resolved.
+- Approval does not automatically erase legally required transaction records. Final retention/deletion must follow the store's applicable policy and legal requirements.
+
 Secrets:
 - Never commit .env or API keys to GitHub.
 - Keep .env.example only as a template with placeholder values.

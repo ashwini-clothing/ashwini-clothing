@@ -1,0 +1,14 @@
+ASHWINI CLOTHING - SECURITY POINT 27
+
+Personal-data export and account-deletion request workflow:
+- Replaced broad order export fields with an explicit customer-safe field list.
+- Excluded payment signatures, checkout keys and internal webhook data.
+- Expanded exports with order/return events, support chats and request history.
+- Added no-store caching protection to personal-data downloads.
+- Added customer request-status viewing and safe request cancellation.
+- Prevented duplicate active deletion requests.
+- Added an admin review screen and API for deletion requests.
+- Added mandatory checks for active orders, payments/refunds/disputes and returns before approval.
+- Added customer email notification when admin changes request status.
+
+This workflow handles requests safely without automatically destroying transaction records that may require retention.
