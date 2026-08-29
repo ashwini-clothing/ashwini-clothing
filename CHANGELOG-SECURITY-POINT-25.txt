@@ -1,0 +1,11 @@
+ASHWINI CLOTHING - SECURITY POINT 25
+
+Order/payment transaction state protection:
+- Added a strict forward-only fulfilment state machine.
+- Orders can no longer skip directly from PLACED to DELIVERED or move backwards.
+- Razorpay orders cannot advance before verified PAID status.
+- Concurrent admin updates cannot silently overwrite a newer order status.
+- Repeating the current status remains safely idempotent.
+- Cancellation remains routed through the existing safe cancellation and refund function.
+
+This is a backend validation update. Mobile/desktop layout, catalogue, cart, checkout and customer order display were not changed.

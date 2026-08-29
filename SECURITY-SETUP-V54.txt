@@ -43,6 +43,13 @@ Razorpay production safety:
 - Webhook signatures use the untouched raw request body. Event IDs and Razorpay order/payment/refund IDs are protected against duplicate processing.
 - Do not reuse the Razorpay API key secret as the webhook secret.
 
+Order and payment state safety:
+- Admin fulfilment updates move only one step forward: PLACED, CONFIRMED, PACKED, SHIPPED, OUT_FOR_DELIVERY, DELIVERED.
+- Backward updates and skipped fulfilment steps are rejected by the server.
+- Razorpay orders cannot enter fulfilment until their payment status is PAID through verified payment processing.
+- Status updates use the previously read state as a concurrency condition, preventing two admin requests from silently overwriting each other.
+- Cancellation continues through the dedicated cancellation/refund flow and never through a direct status overwrite.
+
 Secrets:
 - Never commit .env or API keys to GitHub.
 - Keep .env.example only as a template with placeholder values.

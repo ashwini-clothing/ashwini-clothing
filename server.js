@@ -1251,11 +1251,16 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  if(!ok.includes(req.body.status))return res.status(400).json({error:"Invalid status"});
  const before=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
  if(!before)return res.status(404).json({error:"Order not found"});
+ const nextStatus=String(req.body.status);
+ if(nextStatus===before.status)return res.json({ok:true,unchanged:true,order:before});
  if(req.body.status==='CANCELLED'){
   try{const order=await cancelOrderSafely(before);if(before.status!==order.status){const msg=order.payment_status==='REFUND_PENDING'||order.payment_status==='REFUNDED'?`Order #${order.id} was cancelled and its Razorpay refund was initiated.`:`Order #${order.id} was cancelled.`;addOrderEvent(order.id,order.user_id,'CANCELLED','Order cancelled',msg);const u=db.prepare('SELECT name,email FROM users WHERE id=?').get(order.user_id);if(u?.email)await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} Cancelled`,msg)}return res.json({ok:true,order})}catch(e){return res.status(400).json({error:e.message||'Order cancellation failed'})}
  }
- const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,cancelled_at=CASE WHEN ?='CANCELLED' AND COALESCE(cancelled_at,'')='' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(req.body.status,req.body.status,req.body.status,req.params.id);
- if(!result.changes)return res.status(404).json({error:"Order not found"});
+ const allowedNext={PLACED:['CONFIRMED'],CONFIRMED:['PACKED'],PACKED:['SHIPPED'],SHIPPED:['OUT_FOR_DELIVERY'],OUT_FOR_DELIVERY:['DELIVERED']};
+ if(!allowedNext[String(before.status)]?.includes(nextStatus))return res.status(409).json({error:`Order must move forward one step at a time. ${before.status} cannot change directly to ${nextStatus}.`});
+ if(before.payment_method==='RAZORPAY'&&before.payment_status!=='PAID')return res.status(409).json({error:'Online payment must be securely confirmed by Razorpay before fulfilment can continue.'});
+ const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?").run(nextStatus,nextStatus,req.params.id,before.status);
+ if(!result.changes)return res.status(409).json({error:"Order changed in another request. Refresh and try again."});
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
  if(order.status==='CANCELLED'&&order.payment_status!=='PAID')releaseOrderStock(order.id,'CANCELLED');
  if(before.status!==order.status){const label=String(order.status).replaceAll("_"," ");const msg=`Order #${order.id} is now ${label}. Payment status: ${String(order.payment_status||'PENDING').replaceAll('_',' ')}.`;addOrderEvent(order.id,order.user_id,order.status,`Order ${label}`,msg);const u=db.prepare("SELECT name,email FROM users WHERE id=?").get(order.user_id);if(u?.email){await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${u.name||'Customer'},\n\n${msg}\n\nTrack your order from Your Orders in your Ashwini Clothing account.`)}}
