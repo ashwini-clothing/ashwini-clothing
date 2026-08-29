@@ -102,6 +102,14 @@ CREATE TABLE IF NOT EXISTS security_alerts (
 CREATE INDEX IF NOT EXISTS idx_security_alert_status_time ON security_alerts(status,created_at);
 CREATE INDEX IF NOT EXISTS idx_security_alert_key_time ON security_alerts(alert_key,created_at);
 
+CREATE TABLE IF NOT EXISTS public_rate_limits (
+ key_hash TEXT PRIMARY KEY,
+ bucket TEXT NOT NULL,
+ window_start INTEGER NOT NULL,
+ request_count INTEGER NOT NULL DEFAULT 0,
+ updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS returns (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  order_id INTEGER NOT NULL,

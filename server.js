@@ -13,6 +13,9 @@ import { backupDatabase } from "./scripts/backup-db.js";
 
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 const app=express(), PORT=process.env.PORT||3000;
+// Render terminates HTTPS one hop in front of this service. Trust exactly that
+// hop so req.ip cannot be bypassed by prepending a fake X-Forwarded-For value.
+app.set('trust proxy',1);
 
 // Live Help Desk events: Server-Sent Events (SSE) for instant customer/admin updates.
 const helpChatStreams=new Map();
@@ -180,6 +183,7 @@ try{db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (id INTEGER PRIMARY KEY AU
 try{db.exec("ALTER TABLE auth_sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE auth_sessions ADD COLUMN device_label TEXT NOT NULL DEFAULT 'Unknown device'")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_rate_limits (key_hash TEXT PRIMARY KEY,window_start INTEGER NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,last_request INTEGER NOT NULL DEFAULT 0,verify_failures INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)`);db.prepare('DELETE FROM auth_rate_limits WHERE updated_at<?').run(Date.now()-24*60*60*1000)}catch(e){console.error('[Ashwini auth rate limits]',e.message)}
+try{db.exec(`CREATE TABLE IF NOT EXISTS public_rate_limits (key_hash TEXT PRIMARY KEY,bucket TEXT NOT NULL,window_start INTEGER NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)`);db.prepare('DELETE FROM public_rate_limits WHERE updated_at<?').run(Date.now()-2*24*60*60*1000)}catch(e){console.error('[Ashwini public rate limits]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_help_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL DEFAULT '', customer_email TEXT NOT NULL DEFAULT '', message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_threads (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guest_token TEXT NOT NULL DEFAULT '', customer_name TEXT NOT NULL DEFAULT 'Guest customer', customer_email TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'OPEN', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
@@ -395,7 +399,7 @@ app.get(/^\/[^/]+\.(?:png|jpe?g|webp|gif|svg|ico)$/i,(req,res)=>sendPublicFile(r
 
 // Persist rate limits in SQLite so a Render restart cannot clear an attacker's
 // OTP request or verification-attempt counters.
-function clientIp(req){return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"unknown").split(",")[0].trim();}
+function clientIp(req){return String(req.ip||req.socket.remoteAddress||"unknown").trim();}
 function otpKey(req,identifier){return crypto.createHash('sha256').update(clientIp(req)+"|"+String(identifier||"").trim().toLowerCase()).digest('hex');}
 function freshOtpLimit(now=Date.now()){return {window_start:now,request_count:0,last_request:0,verify_failures:0,updated_at:now}}
 function readOtpLimit(key,now=Date.now()){
@@ -418,6 +422,24 @@ function otpVerifyGuard(req,res,identifier){
 }
 function recordOtpFailure(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=Number(x.verify_failures)+1;x.updated_at=now;saveOtpLimit(key,x)}
 function clearOtpFailures(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=0;x.updated_at=now;saveOtpLimit(key,x)}
+function publicWriteAllowed(req,res,bucket,max,windowMs,identity=''){
+ try{
+  const now=Date.now(),raw=`${bucket}|${clientIp(req)}|${String(identity||'').slice(0,120)}`,key=crypto.createHash('sha256').update(raw).digest('hex');
+  let row=db.prepare('SELECT window_start,request_count FROM public_rate_limits WHERE key_hash=?').get(key);
+  if(!row||now-Number(row.window_start)>=windowMs)row={window_start:now,request_count:0};
+  if(Number(row.request_count)>=max){res.setHeader('Retry-After',String(Math.max(1,Math.ceil((windowMs-(now-Number(row.window_start)))/1000))));res.status(429).json({error:'Too many requests. Please wait and try again.'});return false}
+  db.prepare(`INSERT INTO public_rate_limits(key_hash,bucket,window_start,request_count,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(key_hash) DO UPDATE SET bucket=excluded.bucket,window_start=excluded.window_start,request_count=excluded.request_count,updated_at=excluded.updated_at`).run(key,bucket,row.window_start,Number(row.request_count)+1,now);
+  return true;
+ }catch(error){console.error('[Public rate limit]',error.message);res.status(503).json({error:'Request protection is temporarily unavailable.'});return false}
+}
+app.use((req,res,next)=>{
+ if(req.method==='POST'&&req.path==='/api/help-chat/messages'&&!publicWriteAllowed(req,res,'HELP_CHAT_IP',60,15*60*1000))return;
+ if(req.method==='POST'&&req.path==='/api/behavior-events'){
+  const sessionId=String(req.body?.session_id||'');
+  if(!publicWriteAllowed(req,res,'BEHAVIOR_IP',300,15*60*1000)||!publicWriteAllowed(req,res,'BEHAVIOR_SESSION',120,15*60*1000,sessionId))return;
+ }
+ next();
+});
 function publicOtpResponse(otp,channel,message){const dev=process.env.NODE_ENV!=="production" || String(process.env.SHOW_DEV_OTP||"").toLowerCase()==="true";return {ok:true,channel,message,...(dev?{devOtp:otp}:{})};}
 async function sendSmsOtp(to,otp){
  const provider=String(process.env.SMS_PROVIDER||"").trim().toLowerCase();
