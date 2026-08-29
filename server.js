@@ -755,6 +755,12 @@ function makeOtp(){return String(crypto.randomInt(100000,1000000))}
 function hashOtp(otp){return crypto.createHash("sha256").update(String(otp)).digest("hex")}
 function otpMatches(input,stored){try{return Boolean(stored)&&crypto.timingSafeEqual(Buffer.from(hashOtp(input),"hex"),Buffer.from(stored,"hex"))}catch{return false}}
 function normalizePhone(v){return String(v||"").replace(/\D/g,"")}
+function passwordPolicyError(value,label='Password'){
+ const password=String(value||'');
+ if(Array.from(password).length<8)return `${label} must be at least 8 characters`;
+ if(Buffer.byteLength(password,'utf8')>72)return `${label} must not exceed 72 bytes`;
+ return '';
+}
 function findCustomerByIdentifier(identifier){
  const raw=String(identifier||"").trim();
  const phone=normalizePhone(raw);
@@ -825,18 +831,18 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
  const body=req.body||{},normalized=normalizePhone(body.phone);let msg91Verified=false;
  try{
   const {name,email,password,accessToken}=body;
-  const cleanName=String(name||'').trim(),cleanEmail=String(email||'').trim().toLowerCase();
+  const cleanName=String(name||'').trim(),cleanEmail=String(email||'').trim().toLowerCase(),cleanPassword=String(password||'');
   if(!cleanName||!cleanEmail||!password||!/^\d{10}$/.test(normalized)||!accessToken)return res.status(400).json({error:"Name, email, mobile number and MSG91 verification are required"});
   if(cleanName.length>80)return res.status(400).json({error:"Name is too long"});
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail))return res.status(400).json({error:"Enter a valid email address"});
-  if(String(password).length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
+  const passwordError=passwordPolicyError(cleanPassword);if(passwordError)return res.status(400).json({error:passwordError});
   if(String(accessToken).length>4096)return res.status(400).json({error:"MSG91 verification token is invalid."});
   if(!otpVerifyGuard(req,res,normalized))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
   if(verifiedPhone!==normalized){recordOtpFailure(req,normalized);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
   msg91Verified=true;
-  const hash=await bcrypt.hash(password,12);
+  const hash=await bcrypt.hash(cleanPassword,12);
   const createVerifiedAccount=db.transaction(()=>{
    const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
    const pending=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${normalized}@ashwini.local`;
@@ -904,7 +910,7 @@ app.post("/api/auth/forgot-login-id",(req,res)=>{
 app.post("/api/auth/reset-password",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim(), password=String(req.body?.password||"");
  const u=findCustomerByIdentifier(identifier);
- if(password.length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
+ const passwordError=passwordPolicyError(password);if(passwordError)return res.status(400).json({error:passwordError});
  if(!otpVerifyGuard(req,res,identifier))return;
  if(!u||!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
  const hash=await bcrypt.hash(password,12);
@@ -997,7 +1003,7 @@ async function deliverProfileOtp(value,otp){const channel=profileOtpTarget(value
 app.patch('/api/me/name',auth,(req,res)=>{try{const name=String(req.body?.name||'').trim();if(!name)return res.status(400).json({error:'Please enter a valid name'});if(name.length>80)return res.status(400).json({error:'Name is too long'});db.prepare('UPDATE users SET name=? WHERE id=?').run(name,req.user.id);const u=db.prepare('SELECT id,name,email,phone,role,two_step_enabled,two_step_channel FROM users WHERE id=?').get(req.user.id);res.json({ok:true,user:u});}catch(e){res.status(400).json({error:e.message||'Could not save name'})}});
 app.post("/api/me/change-password",auth,async(req,res)=>{try{
  const current=String(req.body?.currentPassword||""), next=String(req.body?.newPassword||""), confirm=String(req.body?.confirmPassword||"");
- if(next.length<8)return res.status(400).json({error:"New password must be at least 8 characters"});
+ const passwordError=passwordPolicyError(next,'New password');if(passwordError)return res.status(400).json({error:passwordError});
  if(next!==confirm)return res.status(400).json({error:"New passwords do not match"});
  const u=db.prepare("SELECT id,password_hash FROM users WHERE id=?").get(req.user.id);
  if(!u||!(await bcrypt.compare(current,u.password_hash)))return res.status(401).json({error:"Current password is incorrect"});
