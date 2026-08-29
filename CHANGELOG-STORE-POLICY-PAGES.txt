@@ -1,0 +1,12 @@
+ASHWINI CLOTHING - CUSTOMER POLICY PAGES
+
+- Added standalone responsive Privacy Policy.
+- Added standalone Terms of Use and Sale.
+- Added standalone Shipping Policy with current configured estimates.
+- Added standalone Cancellation Policy matching order-stage rules.
+- Added standalone Refund, Return and Replacement Policy matching the 4-day account flow.
+- Added real footer links to all five pages.
+- Added only the five policy files and legal stylesheet to the server public allowlist.
+- Kept source code, SQL, environment, deployment and documentation files private.
+
+Policy wording was aligned with current site behavior and India-focused official consumer/data-protection sources. Store management should obtain qualified legal review and update contact/legal identity details when needed.

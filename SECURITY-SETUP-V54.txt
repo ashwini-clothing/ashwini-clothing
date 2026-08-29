@@ -84,6 +84,13 @@ Admin activity audit log:
 - Admins can review the latest entries from Admin Dashboard -> Admin Activity Log.
 - Activity entries are append-only through the application; no public or admin delete endpoint is exposed.
 
+Customer-facing policy pages:
+- Footer links open standalone Privacy, Terms, Shipping, Cancellation and Refund/Return pages.
+- Policies reflect the implemented 4-day return window, order cancellation stages, Razorpay refund states, delivery estimates and account-data controls.
+- Policy files are individually allowlisted; the project directory remains private.
+- Review the policies whenever providers, delivery times, return rules, legal identity/contact information or applicable requirements change.
+- Store management should obtain qualified legal review before relying on these pages as final legal advice.
+
 Secrets:
 - Never commit .env or API keys to GitHub.
 - Keep .env.example only as a template with placeholder values.
