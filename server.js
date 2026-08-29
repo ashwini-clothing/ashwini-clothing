@@ -136,6 +136,9 @@ try{db.exec("ALTER TABLE orders ADD COLUMN dispute_id TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN dispute_status TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN dispute_reason TEXT DEFAULT ''")}catch{}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
+try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_order_id ON orders(razorpay_order_id) WHERE trim(COALESCE(razorpay_order_id,''))<>''")}catch(e){console.error('[Razorpay order uniqueness]',e.message)}
+try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id ON orders(razorpay_payment_id) WHERE trim(COALESCE(razorpay_payment_id,''))<>''")}catch(e){console.error('[Razorpay payment uniqueness]',e.message)}
+try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_refund_id ON orders(razorpay_refund_id) WHERE trim(COALESCE(razorpay_refund_id,''))<>''")}catch(e){console.error('[Razorpay refund uniqueness]',e.message)}
 try{db.exec("UPDATE orders SET stock_reserved_at=created_at WHERE COALESCE(stock_reserved_at,'')='' AND COALESCE(stock_released_at,'')='' ")}catch{}
 try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_order_id INTEGER DEFAULT NULL")}catch{}
@@ -283,9 +286,13 @@ app.post('/api/webhooks/razorpay',express.raw({type:'application/json',limit:'1m
  const eventType=String(event.event||'unknown').slice(0,80);
  const payment=event.payload?.payment?.entity||null,orderEntity=event.payload?.order?.entity||null,refund=event.payload?.refund?.entity||null,dispute=event.payload?.dispute?.entity||null;
  const razorpayOrderId=String(payment?.order_id||orderEntity?.id||'');
- const previous=db.prepare('SELECT status FROM razorpay_webhook_events WHERE event_id=?').get(eventId);
- if(previous&&previous.status!=='ERROR')return res.json({ok:true,duplicate:true});
- if(!previous)db.prepare('INSERT INTO razorpay_webhook_events(event_id,event_type,razorpay_order_id) VALUES(?,?,?)').run(eventId,eventType,razorpayOrderId);
+ const inserted=db.prepare('INSERT OR IGNORE INTO razorpay_webhook_events(event_id,event_type,razorpay_order_id) VALUES(?,?,?)').run(eventId,eventType,razorpayOrderId);
+ if(!inserted.changes){
+  const previous=db.prepare('SELECT status FROM razorpay_webhook_events WHERE event_id=?').get(eventId);
+  if(previous?.status!=='ERROR')return res.json({ok:true,duplicate:true});
+  const retry=db.prepare("UPDATE razorpay_webhook_events SET status='RECEIVED',error='',processed_at=NULL WHERE event_id=? AND status='ERROR'").run(eventId);
+  if(!retry.changes)return res.json({ok:true,duplicate:true});
+ }
  try{
   const finish=(status,error='')=>db.prepare('UPDATE razorpay_webhook_events SET status=?,error=?,processed_at=CURRENT_TIMESTAMP WHERE event_id=?').run(status,String(error).slice(0,500),eventId);
   const paymentEvents=['payment.captured','order.paid','payment.failed'],refundEvents=['refund.created','refund.processed','refund.failed'],disputeEvents=['payment.dispute.created','payment.dispute.won','payment.dispute.lost','payment.dispute.closed'];

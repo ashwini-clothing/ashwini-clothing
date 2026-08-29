@@ -35,6 +35,14 @@ Database backup:
 - Each completed backup is integrity-checked before publication and receives a .sha256 checksum file.
 - Keep at least one encrypted copy outside the application server. Run the restore test periodically. Never test by replacing the live production database.
 
+Razorpay production safety:
+- Configure RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and a separate RAZORPAY_WEBHOOK_SECRET in Render.
+- In Razorpay Dashboard, send webhooks to https://ashwiniweb.com/api/webhooks/razorpay.
+- Enable payment.captured, order.paid, payment.failed, refund.created, refund.processed, refund.failed and payment.dispute events.
+- Browser payment success is never trusted alone: the server verifies the checkout signature and fetches the captured payment from Razorpay.
+- Webhook signatures use the untouched raw request body. Event IDs and Razorpay order/payment/refund IDs are protected against duplicate processing.
+- Do not reuse the Razorpay API key secret as the webhook secret.
+
 Secrets:
 - Never commit .env or API keys to GitHub.
 - Keep .env.example only as a template with placeholder values.
