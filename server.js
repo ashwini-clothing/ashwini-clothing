@@ -52,7 +52,9 @@ console.log(`[Ashwini DB] Using ${dbPath}`);
 const db=new Database(dbPath);
 db.pragma("foreign_keys=ON");
 db.exec(fs.readFileSync(path.join(__dirname,"schema.sql"),"utf8"));
-const backupIntervalHours=Math.max(1,Number(process.env.BACKUP_INTERVAL_HOURS)||24);
+// Node timers accept at most 2^31-1 ms. Cap the interval to one week so an
+// accidental large value cannot overflow into a rapid backup loop.
+const backupIntervalHours=Math.max(1,Math.min(168,Number(process.env.BACKUP_INTERVAL_HOURS)||24));
 let backupRunning=false;
 async function runScheduledBackup(){
  if(backupRunning)return console.warn('[Ashwini backup] Skipped because another backup is still running');
@@ -100,21 +102,22 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
-// Ensure the configured Store Admin can always sign in after Render restarts or a
-// database is recreated.  The previous implementation assigned a random password
-// to a newly-created admin, which made password sign-in impossible.
+// Provision the configured Store Admin only when the account does not yet exist.
+// Never overwrite an existing password, revoke sessions, or promote a customer
+// during startup. Use reset-admin.js for an explicit, auditable recovery action.
 try{
  const bootstrapAdminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
  const bootstrapAdminPassword=String(process.env.ADMIN_PASSWORD||'');
  if(bootstrapAdminEmail && bootstrapAdminPassword){
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(bootstrapAdminEmail))throw new Error('ADMIN_EMAIL is invalid');
   if(Array.from(bootstrapAdminPassword).length<8||Buffer.byteLength(bootstrapAdminPassword,'utf8')>72)throw new Error('ADMIN_PASSWORD must be 8 or more characters and no more than 72 UTF-8 bytes');
-  const hash=bcrypt.hashSync(bootstrapAdminPassword,12);
-  const existingAdmin=db.prepare("SELECT id FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
-  if(existingAdmin){
-   db.prepare("UPDATE users SET password_hash=?,role='admin' WHERE id=?").run(hash,existingAdmin.id);
-   db.prepare("DELETE FROM auth_sessions WHERE user_id=?").run(existingAdmin.id);
+  const existingAccount=db.prepare("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1").get(bootstrapAdminEmail);
+  if(existingAccount?.role==='admin'){
+   console.log('[Ashwini Admin Bootstrap] Existing admin retained; startup password was not reapplied.');
+  }else if(existingAccount){
+   throw new Error('ADMIN_EMAIL belongs to a non-admin account; refusing automatic privilege promotion');
   }else{
+   const hash=bcrypt.hashSync(bootstrapAdminPassword,12);
    db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'admin')")
      .run('Ashwini Store Admin',bootstrapAdminEmail,hash);
   }
@@ -530,7 +533,7 @@ async function sendEmail(to,subject,text,html){
    const host=process.env.SMTP_HOST,port=Number(process.env.SMTP_PORT||465),user=process.env.SMTP_USER,pass=process.env.SMTP_PASS;
    if(!host||!user||!pass)return {sent:false,configured:false,error:'SMTP email is not configured. Add SMTP_HOST, SMTP_USER and SMTP_PASS.'};
    const transporter=nodemailer.createTransport({host,port,secure:String(process.env.SMTP_SECURE||'true').toLowerCase()==='true',auth:{user,pass},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000});
-   await transporter.sendMail({from,to,subject,text,html:safeHtml});
+   await transporter.sendMail({from,to,subject,text,html:safeHtml,disableFileAccess:true,disableUrlAccess:true});
    return {sent:true,configured:true,provider:'smtp'};
   }
   const key=process.env.RESEND_API_KEY;
@@ -607,7 +610,7 @@ app.get('/api/admin/help-chat/stream',auth,admin,(req,res)=>{
 app.post('/api/help-chat/messages',(req,res)=>{try{const text=String(req.body?.message||'').trim().slice(0,1000);if(!text)return res.status(400).json({error:'Please enter a message.'});let thread=getHelpThread(req);if(!thread){return res.status(404).json({error:'Help chat session not found. Please open Help Desk again.'});}const r=db.prepare("INSERT INTO help_chat_messages(thread_id,sender_role,message) VALUES(?,?,?)").run(thread.id,'CUSTOMER',text);db.prepare("UPDATE help_chat_threads SET status='OPEN',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(thread.id);const msg=db.prepare("SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE id=?").get(r.lastInsertRowid);publishHelpChat(thread.id,{type:'message',message:msg});res.json({ok:true,message:msg})}catch(e){res.status(500).json({error:e.message||'Message could not be sent'})}});
 app.get('/api/help-chat/messages',(req,res)=>{try{const thread=getHelpThread(req);if(!thread)return res.json({thread:null,messages:[]});res.json({thread:{id:thread.id,status:thread.status},messages:db.prepare("SELECT id,sender_role,message,created_at FROM help_chat_messages WHERE thread_id=? ORDER BY id ASC").all(thread.id)})}catch(e){res.status(500).json({error:e.message||'Could not load messages'})}});
 
-app.patch("/api/admin/store-profile",auth,admin,(req,res)=>{try{const b=req.body||{};const logo=String(b.logo_data||"");if(logo && !/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/.test(logo))return res.status(400).json({error:"Invalid logo image"});if(logo.length>15*1024*1024)return res.status(400).json({error:"Logo image is too large"});const waEnabled=b.whatsapp_enabled===true||b.whatsapp_enabled===1||String(b.whatsapp_enabled).toLowerCase()==='true';const waNumber=String(b.whatsapp_number??'').replace(/\D/g,'');if(waNumber && waNumber.length<10)return res.status(400).json({error:"Enter a valid WhatsApp number"});db.prepare(`UPDATE store_profile SET about_title=?,history=?,address=?,city=?,state=?,pincode=?,email=?,phone=?,logo_data=CASE WHEN ?='' THEN logo_data ELSE ? END,whatsapp_enabled=?,whatsapp_number=?,whatsapp_name=?,whatsapp_message=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.about_title||"About Ashwini Clothing").trim(),String(b.history||"").trim(),String(b.address||"").trim(),String(b.city||"").trim(),String(b.state||"").trim(),String(b.pincode||"").trim(),String(b.email||"ashwiniweb88@gmail.com").trim(),String(b.phone||"").trim(),logo,logo,waEnabled?1:0,waNumber,String(b.whatsapp_name||"Ashwini AI Help Desk").trim().slice(0,80),String(b.whatsapp_message||"Hello! 👋 Need help? Chat with us on WhatsApp!").trim().slice(0,500));res.json(db.prepare("SELECT * FROM store_profile WHERE id=1").get())}catch(e){res.status(400).json({error:e.message})}});
+app.patch("/api/admin/store-profile",auth,admin,(req,res)=>{try{const b=req.body||{};const logo=validatedImageSource(b.logo_data,{maxDataBytes:10*1024*1024});const waEnabled=b.whatsapp_enabled===true||b.whatsapp_enabled===1||String(b.whatsapp_enabled).toLowerCase()==='true';const waNumber=String(b.whatsapp_number??'').replace(/\D/g,'');if(waNumber && waNumber.length<10)return res.status(400).json({error:"Enter a valid WhatsApp number"});db.prepare(`UPDATE store_profile SET about_title=?,history=?,address=?,city=?,state=?,pincode=?,email=?,phone=?,logo_data=CASE WHEN ?='' THEN logo_data ELSE ? END,whatsapp_enabled=?,whatsapp_number=?,whatsapp_name=?,whatsapp_message=?,updated_at=CURRENT_TIMESTAMP WHERE id=1`).run(String(b.about_title||"About Ashwini Clothing").trim(),String(b.history||"").trim(),String(b.address||"").trim(),String(b.city||"").trim(),String(b.state||"").trim(),String(b.pincode||"").trim(),String(b.email||"ashwiniweb88@gmail.com").trim(),String(b.phone||"").trim(),logo,logo,waEnabled?1:0,waNumber,String(b.whatsapp_name||"Ashwini AI Help Desk").trim().slice(0,80),String(b.whatsapp_message||"Hello! 👋 Need help? Chat with us on WhatsApp!").trim().slice(0,500));res.json(db.prepare("SELECT * FROM store_profile WHERE id=1").get())}catch(e){res.status(400).json({error:e.message})}});
 
 const postalLookupCache=new Map(),postalCacheTtlMs=24*60*60*1000,postalNegativeCacheTtlMs=60*60*1000;
 async function lookupPostalPin(pin){
@@ -651,11 +654,33 @@ app.patch('/api/admin/delivery-blocks/:id',auth,admin,(req,res)=>{try{const acti
 app.delete('/api/admin/delivery-blocks/:id',auth,admin,(req,res)=>{try{db.prepare('DELETE FROM delivery_blocks WHERE id=?').run(Number(req.params.id));res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 
 app.post("/api/coupons/check",auth,(req,res)=>{try{const code=String(req.body?.code||'').trim().toUpperCase();if(code==='NEW2026'){const first=db.prepare("SELECT COUNT(*) n FROM orders WHERE user_id=?").get(req.user.id).n===0;if(!first)throw Error('Coupon already used or not available for this account');return res.json({ok:true,discount_percent:30,code})}const now=new Date().toISOString();const o=db.prepare("SELECT * FROM offers WHERE active=1 AND coupon_code=? AND (start_at='' OR start_at<=?) AND (end_at='' OR end_at>=?) ORDER BY id DESC LIMIT 1").get(code,now,now);if(!o)throw Error('Coupon not recognised or expired');res.json({ok:true,discount_percent:Number(o.discount_percent||0),code:o.coupon_code,title:o.title})}catch(e){res.status(400).json({error:e.message})}});
-app.get("/api/slides",(req,res)=>{res.json(db.prepare("SELECT * FROM homepage_slides WHERE active=1 ORDER BY sort_order,id").all())});
-app.get("/api/admin/slides",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM homepage_slides ORDER BY sort_order,id").all()));
+const promotionActions=new Set(['offersPanel()',"shopSlide('All')","shopSlide('Western Dress')","shopSlide('Party Wear')","shopSlide('Kurta Set')","shopSlide('Lehenga')","shopSlide('Co-ord Set')","shopSlide('Shirt')"]);
+function safePromotionAction(value,fallback='offersPanel()'){const action=String(value||'').trim();return promotionActions.has(action)?action:fallback}
+function safePromotionRow(row){return row?{...row,button_action:safePromotionAction(row.button_action)}:row}
+function validatedImageSource(value,{required=false,maxDataBytes=12*1024*1024}={}){
+ const source=String(value||'').trim();
+ if(!source){if(required)throw Error('Image is required');return ''}
+ if(source.length>18_000_000)throw Error('Image is too large');
+ if(/^https:\/\//i.test(source)||/^\/?[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:png|jpe?g|webp|gif)(?:\?[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?$/i.test(source))return source;
+ const match=/^data:image\/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=\s]+)$/i.exec(source);
+ if(!match)throw Error('Use a safe HTTPS, local JPG/PNG/WebP/GIF URL, or upload an image');
+ let bytes;try{bytes=Buffer.from(match[2].replace(/\s/g,''),'base64')}catch{throw Error('Image data is invalid')}
+ if(!bytes.length||bytes.length>maxDataBytes)throw Error('Image data is too large');
+ const type=match[1].toLowerCase(),valid=type==='png'?bytes.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])):(type==='jpeg'||type==='jpg')?bytes[0]===0xff&&bytes[1]===0xd8&&bytes.at(-2)===0xff&&bytes.at(-1)===0xd9:type==='gif'?['GIF87a','GIF89a'].includes(bytes.subarray(0,6).toString('ascii')):type==='webp'?bytes.subarray(0,4).toString('ascii')==='RIFF'&&bytes.subarray(8,12).toString('ascii')==='WEBP':false;
+ if(!valid)throw Error('Uploaded image contents do not match its declared type');
+ return source;
+}
+function validatedImageGallery(value){
+ let items=value;
+ if(typeof items==='string'){const raw=items.trim();if(!raw)return '[]';try{items=JSON.parse(raw)}catch{items=[raw]}}
+ if(!Array.isArray(items)||items.length>12)throw Error('Product gallery must contain no more than 12 images');
+ return JSON.stringify(items.map(item=>validatedImageSource(item,{maxDataBytes:12*1024*1024})));
+}
+app.get("/api/slides",(req,res)=>{res.json(db.prepare("SELECT * FROM homepage_slides WHERE active=1 ORDER BY sort_order,id").all().map(safePromotionRow))});
+app.get("/api/admin/slides",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM homepage_slides ORDER BY sort_order,id").all().map(safePromotionRow)));
 function slideStyle(b,key){const value=String(b[key]||'').trim();if(value&&!/^#[0-9a-fA-F]{6}$/.test(value))throw Error('Choose valid slide colours');return value}
 function slideSize(value){const n=Number(value||0);if(!Number.isFinite(n)||n<0||n>90)throw Error('Slide text size must be between 0 and 90');return Math.round(n)}
-function slideValues(b){return [String(b.title||'').slice(0,120),String(b.image_url||'').trim(),String(b.button_text||'Shop Now').slice(0,60),String(b.button_action||''),b.active===false?0:1,Math.max(0,Number(b.sort_order||0)),String(b.offer_text||'').slice(0,160),slideStyle(b,'title_color'),slideSize(b.title_size),slideStyle(b,'offer_color'),slideSize(b.offer_size),slideStyle(b,'button_background'),slideStyle(b,'button_color'),slideStyle(b,'button_border')]}
+function slideValues(b){return [String(b.title||'').slice(0,120),validatedImageSource(b.image_url,{required:true}),String(b.button_text||'Shop Now').slice(0,60),safePromotionAction(b.button_action),b.active===false?0:1,Math.max(0,Number(b.sort_order||0)),String(b.offer_text||'').slice(0,160),slideStyle(b,'title_color'),slideSize(b.title_size),slideStyle(b,'offer_color'),slideSize(b.offer_size),slideStyle(b,'button_background'),slideStyle(b,'button_color'),slideStyle(b,'button_border')]}
 app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b),r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text,title_color,title_size,offer_color,offer_size,button_background,button_color,button_border) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...v);res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
 app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b);db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=?,title_color=?,title_size=?,offer_color=?,offer_size=?,button_background=?,button_color=?,button_border=? WHERE id=?").run(...v,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/slides/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM homepage_slides WHERE id=?").run(req.params.id);res.json({ok:true})});
@@ -691,13 +716,13 @@ function offerIsCurrentlyActive(o){
  return true;
 }
 app.get("/api/offers/active",(req,res)=>{
- const rows=db.prepare("SELECT * FROM offers WHERE active=1 ORDER BY id DESC").all().filter(offerIsCurrentlyActive);
- res.json(rows);
+ const rows=db.prepare("SELECT * FROM offers WHERE active=1 ORDER BY id DESC").all().filter(offerIsCurrentlyActive).map(safePromotionRow);
+ res.json(rows.map(safePromotionRow));
 });
 app.get("/api/offers/:id",(req,res)=>{
  const o=db.prepare("SELECT * FROM offers WHERE id=?").get(req.params.id);
  if(!o) return res.status(404).json({error:'Offer not found'});
- res.json({...o,current_active:offerIsCurrentlyActive(o)});
+ res.json({...safePromotionRow(o),current_active:offerIsCurrentlyActive(o)});
 });
 app.get("/api/notifications",auth,(req,res)=>{
  if(req.user.role!=='customer') return res.json([]);
@@ -711,16 +736,16 @@ app.get("/api/notifications",auth,(req,res)=>{
 app.patch("/api/notifications/:id/read",auth,(req,res)=>{
  db.prepare("UPDATE offer_notifications SET read_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").run(req.params.id,req.user.id); res.json({ok:true});
 });
-app.get("/api/admin/offers",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM offers ORDER BY id DESC").all()));
+app.get("/api/admin/offers",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM offers ORDER BY id DESC").all().map(safePromotionRow)));
 app.post("/api/admin/offers",auth,admin,(req,res)=>{
  try{
   const b=req.body||{}; if(!String(b.title||'').trim())throw Error('Offer title is required');
-  const r=db.prepare(`INSERT INTO offers(title,description,coupon_code,discount_percent,banner_url,button_text,button_action,start_at,end_at,active,show_popup) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(String(b.title).trim(),String(b.description||''),String(b.coupon_code||'').trim().toUpperCase(),Number(b.discount_percent||0),String(b.banner_url||''),String(b.button_text||'Shop Now'),String(b.button_action||''),String(b.start_at||''),String(b.end_at||''),b.active===false?0:1,b.show_popup===false?0:1);
+   const r=db.prepare(`INSERT INTO offers(title,description,coupon_code,discount_percent,banner_url,button_text,button_action,start_at,end_at,active,show_popup) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(String(b.title).trim(),String(b.description||''),String(b.coupon_code||'').trim().toUpperCase(),Number(b.discount_percent||0),validatedImageSource(b.banner_url),String(b.button_text||'Shop Now'),safePromotionAction(b.button_action),String(b.start_at||''),String(b.end_at||''),b.active===false?0:1,b.show_popup===false?0:1);
   const created=db.prepare("SELECT * FROM offers WHERE id=?").get(r.lastInsertRowid); if(created.active){ const customers=db.prepare("SELECT id FROM users WHERE role='customer'").all(); const add=db.prepare("INSERT INTO offer_notifications(user_id,offer_id,title,message) VALUES(?,?,?,?)"); const msg=`${created.title}${created.description?` — ${created.description}`:''}${created.coupon_code?` Coupon: ${created.coupon_code}`:''}`; const tx=db.transaction(()=>customers.forEach(c=>add.run(c.id,created.id,created.title,msg))); tx(); } res.json(created);
  }catch(e){res.status(400).json({error:e.message})}
 });
 app.patch("/api/admin/offers/:id",auth,admin,(req,res)=>{
- try{const b=req.body||{};db.prepare(`UPDATE offers SET title=?,description=?,coupon_code=?,discount_percent=?,banner_url=?,button_text=?,button_action=?,start_at=?,end_at=?,active=?,show_popup=? WHERE id=?`).run(String(b.title||''),String(b.description||''),String(b.coupon_code||'').trim().toUpperCase(),Number(b.discount_percent||0),String(b.banner_url||''),String(b.button_text||'Shop Now'),String(b.button_action||''),String(b.start_at||''),String(b.end_at||''),b.active?1:0,b.show_popup?1:0,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}
+ try{const b=req.body||{};db.prepare(`UPDATE offers SET title=?,description=?,coupon_code=?,discount_percent=?,banner_url=?,button_text=?,button_action=?,start_at=?,end_at=?,active=?,show_popup=? WHERE id=?`).run(String(b.title||''),String(b.description||''),String(b.coupon_code||'').trim().toUpperCase(),Number(b.discount_percent||0),validatedImageSource(b.banner_url),String(b.button_text||'Shop Now'),safePromotionAction(b.button_action),String(b.start_at||''),String(b.end_at||''),b.active?1:0,b.show_popup?1:0,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}
 });
 app.delete("/api/admin/offers/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM offers WHERE id=?").run(req.params.id);res.json({ok:true})});
 app.post("/api/admin/offers/:id/send",auth,admin,(req,res)=>{
@@ -1407,18 +1432,18 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
 });
 app.post("/api/admin/products",auth,admin,(req,res)=>{
  const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,rating=0,emoji="👕",stock=0,description="",image="",gallery="",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body;
- const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,typeof gallery==="string"?gallery:JSON.stringify(gallery||[]),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0));
+ const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,stock,description,validatedImageSource(image),validatedImageGallery(gallery),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0));
  logAdminActivity(req,'PRODUCT_CREATED','PRODUCT',r.lastInsertRowid,{name:String(name||'').slice(0,200),stock:Number(stock)||0,price:Number(price)||0});
  res.json(db.prepare("SELECT * FROM products WHERE id=?").get(r.lastInsertRowid));
 });
 app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{
  const p=db.prepare("SELECT * FROM products WHERE id=?").get(req.params.id);if(!p)return res.status(404).json({error:"Not found"});
  const x={...p,...req.body};db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=? WHERE id=?")
- .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,x.image,typeof x.gallery==="string"?x.gallery:JSON.stringify(x.gallery||[]),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:Number(x.stock)||0,from_price:Number(p.price)||0,to_price:Number(x.price)||0});res.json(x);
+ .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:Number(x.stock)||0,from_price:Number(p.price)||0,to_price:Number(x.price)||0});res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
 });
 app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});res.json({ok:true})});
 
-app.get("/api/webhooks/health",(req,res)=>res.json({razorpayConfigured:Boolean(razorpay)}));
+app.get("/api/webhooks/health",auth,admin,(req,res)=>res.json({ok:true,razorpayConfigured:Boolean(razorpay)}));
 app.use('/api',(req,res)=>res.status(404).json({error:'Not found'}));
 app.get(/.*/,(req,res)=>path.extname(req.path)?res.status(404).end():sendPublicFile(res,'index.html'));
 app.use((req,res)=>res.status(404).end());

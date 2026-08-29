@@ -8,3 +8,4 @@
 *.db.enc.sha256
 backups/
 node_modules/
+.npm-cache-security-fix/
