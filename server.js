@@ -413,24 +413,26 @@ app.get(/^\/[^/]+\.(?:png|jpe?g|webp|gif|svg|ico)$/i,(req,res)=>sendPublicFile(r
 // OTP request or verification-attempt counters.
 function clientIp(req){return String(req.ip||req.socket.remoteAddress||"unknown").trim();}
 function otpKey(req,identifier){return crypto.createHash('sha256').update(clientIp(req)+"|"+String(identifier||"").trim().toLowerCase()).digest('hex');}
+function otpDestinationKey(identifier){return crypto.createHash('sha256').update('OTP_DESTINATION|'+String(identifier||'').trim().toLowerCase()).digest('hex')}
 function freshOtpLimit(now=Date.now()){return {window_start:now,request_count:0,last_request:0,verify_failures:0,updated_at:now}}
-function readOtpLimit(key,now=Date.now()){
+function readOtpLimit(key,now=Date.now(),windowMs=15*60*1000){
  const row=db.prepare('SELECT * FROM auth_rate_limits WHERE key_hash=?').get(key);
- return !row||now-Number(row.window_start)>15*60*1000?freshOtpLimit(now):row;
+ return !row||now-Number(row.window_start)>windowMs?freshOtpLimit(now):row;
 }
 function saveOtpLimit(key,x){db.prepare(`INSERT INTO auth_rate_limits(key_hash,window_start,request_count,last_request,verify_failures,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(key_hash) DO UPDATE SET window_start=excluded.window_start,request_count=excluded.request_count,last_request=excluded.last_request,verify_failures=excluded.verify_failures,updated_at=excluded.updated_at`).run(key,x.window_start,x.request_count,x.last_request,x.verify_failures,x.updated_at)}
 function otpGuard(req,res,identifier,kind="request") {
- const key=otpKey(req,identifier), now=Date.now(), windowMs=15*60*1000, cooldown=45*1000, max=5;
- const x=readOtpLimit(key,now);
- if(kind==="request" && now-Number(x.last_request)<cooldown) return res.status(429).json({error:`Please wait ${Math.ceil((cooldown-(now-Number(x.last_request)))/1000)} seconds before requesting another OTP.`});
- if(kind==="request" && Number(x.request_count)>=max) return res.status(429).json({error:"Too many OTP requests. Please try again later."});
- if(kind==="request"){x.request_count=Number(x.request_count)+1;x.last_request=now;x.updated_at=now;saveOtpLimit(key,x);}
- return x;
+ const key=otpKey(req,identifier),destinationKey=otpDestinationKey(identifier),now=Date.now(),windowMs=15*60*1000,destinationWindowMs=60*60*1000,cooldown=45*1000,max=5,destinationMax=10;
+ const x=readOtpLimit(key,now,windowMs),destination=readOtpLimit(destinationKey,now,destinationWindowMs);
+ if(kind==="request"&&now-Number(x.last_request)<cooldown){res.status(429).json({error:`Please wait ${Math.ceil((cooldown-(now-Number(x.last_request)))/1000)} seconds before requesting another OTP.`});return false}
+ if(kind==="request"&&Number(x.request_count)>=max){res.setHeader('Retry-After',String(Math.max(1,Math.ceil((windowMs-(now-Number(x.window_start)))/1000))));res.status(429).json({error:"Too many OTP requests. Please try again later."});return false}
+ if(kind==="request"&&Number(destination.request_count)>=destinationMax){res.setHeader('Retry-After',String(Math.max(1,Math.ceil((destinationWindowMs-(now-Number(destination.window_start)))/1000))));res.status(429).json({error:"Too many OTP requests for this destination. Please try again later."});return false}
+ if(kind==="request"){x.request_count=Number(x.request_count)+1;x.last_request=now;x.updated_at=now;destination.request_count=Number(destination.request_count)+1;destination.last_request=now;destination.updated_at=now;db.transaction(()=>{saveOtpLimit(key,x);saveOtpLimit(destinationKey,destination)})();}
+ return true;
 }
 function otpVerifyGuard(req,res,identifier,blockedMessage="Too many incorrect sign-in attempts. Please wait 15 minutes before trying again."){
  const key=otpKey(req,identifier), x=readOtpLimit(key);
- if(Number(x.verify_failures)>=5)return res.status(429).json({error:blockedMessage});
- return x;
+ if(Number(x.verify_failures)>=5){res.status(429).json({error:blockedMessage});return false}
+ return true;
 }
 function recordOtpFailure(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=Number(x.verify_failures)+1;x.updated_at=now;saveOtpLimit(key,x)}
 function clearOtpFailures(req,identifier){const key=otpKey(req,identifier),now=Date.now(),x=readOtpLimit(key,now);x.verify_failures=0;x.updated_at=now;saveOtpLimit(key,x)}
