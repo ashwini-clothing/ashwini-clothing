@@ -854,12 +854,11 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
 app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
  if(!identifier)return res.status(400).json({error:"Enter your email or mobile number"});
- const u=findCustomerByIdentifier(identifier);
- if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
  if(!otpGuard(req,res,identifier))return;
+ const u=findCustomerByIdentifier(identifier),requested=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
+ if(!u)return res.json({ok:true,channel:requested,message:'If a customer account matches, an OTP has been sent.'});
  const otp=issueOtp(u,'login');
  const configured=String(u.two_step_channel||'AUTO').toUpperCase();
- const requested=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
  const channel=Number(u.two_step_enabled)!==0 ? (configured==='EMAIL'?'email':configured==='MOBILE'?'mobile':requested) : requested;
  const destination=channel==='email'?u.email:u.phone;
  try{
@@ -873,9 +872,8 @@ app.post("/api/auth/request-login-otp",async(req,res)=>{
 app.post("/api/auth/verify-login-otp",(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim();
  const u=findCustomerByIdentifier(identifier);
- if(!u)return res.status(404).json({error:"Customer account not found"});
  if(!otpVerifyGuard(req,res,identifier))return;
- if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||u.login_otp_expires_at<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"});}
+ if(!u||!/^\d{6}$/.test(otp)||!u.login_otp_hash||u.login_otp_expires_at<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"});}
  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
  clearOtpFailures(req,identifier);
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
@@ -884,11 +882,10 @@ app.post("/api/auth/verify-login-otp",(req,res)=>{
 app.post("/api/auth/request-recovery-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
  if(!identifier)return res.status(400).json({error:"Enter your registered email or mobile number"});
- const u=findCustomerByIdentifier(identifier);
- if(!u)return res.status(404).json({error:"No customer account found with this email or mobile number"});
  if(!otpGuard(req,res,identifier))return;
+ const u=findCustomerByIdentifier(identifier),channel=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
+ if(!u)return res.json({ok:true,channel,message:'If a customer account matches, a recovery OTP has been sent.'});
  const otp=issueOtp(u,'recovery');
- const channel=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
  try{
   const delivery=channel==='email' ? await sendEmail(u.email,'Ashwini Clothing account recovery OTP',`Your account recovery OTP is ${otp}. It expires in 5 minutes. Do not share it.`) : await sendSmsOtp(u.phone,otp);
   if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:`${channel==='email'?'Email':'SMS'} OTP service is not configured.`});
@@ -898,9 +895,8 @@ app.post("/api/auth/request-recovery-otp",async(req,res)=>{
 app.post("/api/auth/forgot-login-id",(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim();
  const u=findCustomerByIdentifier(identifier);
- if(!u)return res.status(404).json({error:"Customer account not found"});
  if(!otpVerifyGuard(req,res,identifier))return;
- if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
+ if(!u||!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
  db.prepare("UPDATE users SET recovery_otp_hash='',recovery_otp_expires_at=0 WHERE id=?").run(u.id);
  clearOtpFailures(req,identifier);
  res.json({ok:true,loginId:u.email,message:"Your login ID is your registered email address."});
@@ -908,10 +904,9 @@ app.post("/api/auth/forgot-login-id",(req,res)=>{
 app.post("/api/auth/reset-password",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(), otp=String(req.body?.otp||"").trim(), password=String(req.body?.password||"");
  const u=findCustomerByIdentifier(identifier);
- if(!u)return res.status(404).json({error:"Customer account not found"});
  if(password.length<8)return res.status(400).json({error:"Password must be at least 8 characters"});
  if(!otpVerifyGuard(req,res,identifier))return;
- if(!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
+ if(!u||!/^\d{6}$/.test(otp)||!u.recovery_otp_hash||u.recovery_otp_expires_at<Date.now()||!otpMatches(otp,u.recovery_otp_hash)){recordOtpFailure(req,identifier);return res.status(400).json({error:"Invalid or expired OTP"})}
  const hash=await bcrypt.hash(password,12);
  const resetAccount=db.transaction(()=>{
   db.prepare("UPDATE users SET password_hash=?,recovery_otp_hash='',recovery_otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(hash,u.id);
