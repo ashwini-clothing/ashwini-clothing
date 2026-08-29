@@ -36,7 +36,13 @@ Database backup:
 - Optional BACKUP_DIR selects the backup folder.
 - Schedule `npm run backup` with the hosting provider/OS scheduler for regular backups.
 - Each completed backup is integrity-checked before publication and receives a .sha256 checksum file.
-- Keep at least one encrypted copy outside the application server. Run the restore test periodically. Never test by replacing the live production database.
+- Production backups use authenticated AES-256-GCM encryption and are saved as .db.enc files; plaintext temporary files are deleted before completion.
+- Set BACKUP_REQUIRE_ENCRYPTION=true and BACKUP_ENCRYPTION_KEY to exactly 32 random bytes encoded as 64 hex characters or base64.
+- Generate a suitable hex key locally with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+- Store the same key in Render's secret environment and a separate trusted password manager. Never commit it; losing it makes encrypted backups unrecoverable.
+- `npm run backup:verify` checks the encrypted checksum, authenticates/decrypts into a temporary directory and runs SQLite integrity_check.
+- `npm run backup:restore-test` performs a complete temporary decrypt/open/schema test without replacing the live production database.
+- Keep at least one encrypted copy outside the application server. Test restoration periodically. Never test by replacing the live production database.
 
 Razorpay production safety:
 - Configure RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and a separate RAZORPAY_WEBHOOK_SECRET in Render.

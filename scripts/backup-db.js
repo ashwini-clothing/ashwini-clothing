@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { backupEncryptionKey,decryptBackupFile,encryptBackupFile,sha256File } from './backup-crypto.js';
 
 const projectDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
@@ -12,9 +12,12 @@ export async function backupDatabase(){
   const backupDir=path.resolve(process.env.BACKUP_DIR||path.join(path.dirname(source),'backups'));
   fs.mkdirSync(backupDir,{recursive:true});
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-  const destination=path.join(backupDir,`ashwini-${stamp}.db`);
-  const temporary=`${destination}.partial`;
-  if(destination===source)throw new Error('Backup destination must differ from the live database');
+  const key=backupEncryptionKey();
+  const destination=path.join(backupDir,`ashwini-${stamp}.db${key?'.enc':''}`);
+  const temporary=path.join(backupDir,`.ashwini-${stamp}.db.partial`);
+  const encryptedTemporary=`${destination}.partial`;
+  const roundTripTemporary=path.join(backupDir,`.ashwini-${stamp}.verify.db.partial`);
+  if(path.resolve(destination)===source)throw new Error('Backup destination must differ from the live database');
 
   const database=new Database(source,{readonly:true,fileMustExist:true});
   try{
@@ -24,19 +27,27 @@ export async function backupDatabase(){
       const result=backup.pragma('integrity_check',{simple:true});
       if(result!=='ok')throw new Error(`Backup integrity check failed: ${result}`);
     }finally{backup.close()}
-    fs.renameSync(temporary,destination);
+    if(key){
+      encryptBackupFile(temporary,encryptedTemporary,key);
+      decryptBackupFile(encryptedTemporary,roundTripTemporary,key);
+      const roundTrip=new Database(roundTripTemporary,{readonly:true,fileMustExist:true});
+      try{const result=roundTrip.pragma('integrity_check',{simple:true});if(result!=='ok')throw new Error(`Encrypted backup restore check failed: ${result}`)}finally{roundTrip.close()}
+      fs.renameSync(encryptedTemporary,destination);
+    }else fs.renameSync(temporary,destination);
   }catch(error){
     try{fs.unlinkSync(temporary)}catch{}
+    try{fs.unlinkSync(encryptedTemporary)}catch{}
+    try{fs.unlinkSync(roundTripTemporary)}catch{}
     throw error;
-  }finally{database.close()}
+  }finally{database.close();try{fs.unlinkSync(temporary)}catch{};try{fs.unlinkSync(roundTripTemporary)}catch{}}
   try{fs.chmodSync(destination,0o600)}catch{}
-  const checksum=crypto.createHash('sha256').update(fs.readFileSync(destination)).digest('hex');
+  const checksum=sha256File(destination);
   fs.writeFileSync(`${destination}.sha256`,`${checksum}  ${path.basename(destination)}\n`,{mode:0o600});
 
   const retentionDays=Math.max(1,Number(process.env.BACKUP_RETENTION_DAYS)||14);
   const cutoff=Date.now()-retentionDays*24*60*60*1000;
   for(const entry of fs.readdirSync(backupDir,{withFileTypes:true})){
-    if(!entry.isFile()||!/^ashwini-.*\.db(?:\.sha256)?$/.test(entry.name))continue;
+    if(!entry.isFile()||!/^ashwini-.*\.db(?:\.enc)?(?:\.sha256)?$/.test(entry.name))continue;
     const file=path.join(backupDir,entry.name);
     if(fs.statSync(file).mtimeMs<cutoff)fs.unlinkSync(file);
   }

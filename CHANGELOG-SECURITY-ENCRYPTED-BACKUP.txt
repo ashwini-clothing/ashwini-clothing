@@ -1,0 +1,14 @@
+ASHWINI CLOTHING - DAILY ENCRYPTED DATABASE BACKUP AND RESTORE TEST
+
+- Added authenticated AES-256-GCM encryption using a 32-byte deployment secret.
+- Production and Render configuration require encryption; missing keys fail safely instead of publishing plaintext backups.
+- Backups are SQLite integrity-checked before encryption.
+- Encrypted output is decrypted to a temporary file and integrity-checked again before publication.
+- Published backups use .db.enc plus a SHA-256 checksum sidecar.
+- Verification authenticates, decrypts and checks the SQLite database in a temporary directory.
+- Restore tests decrypt into a temporary directory and never replace the live database.
+- Retention cleanup now includes encrypted backups and checksum files.
+- Backup encryption keys and encrypted database files are excluded from Git.
+
+Deployment action required:
+Set BACKUP_ENCRYPTION_KEY in Render to a securely generated 32-byte hex/base64 secret and preserve a recovery copy in a trusted password manager.

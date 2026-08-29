@@ -3,13 +3,14 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { latestBackup,verifyBackup } from './verify-backup.js';
+import { decryptBackupFile,isEncryptedBackup } from './backup-crypto.js';
 
 const source=verifyBackup(process.argv[2]||latestBackup());
 const testDir=fs.mkdtempSync(path.join(os.tmpdir(),'ashwini-restore-test-'));
 const restored=path.join(testDir,'ashwini-restored.db');
 
 try{
-  fs.copyFileSync(source,restored);
+  if(isEncryptedBackup(source))decryptBackupFile(source,restored);else fs.copyFileSync(source,restored);
   const database=new Database(restored,{fileMustExist:true});
   try{
     const integrity=database.pragma('integrity_check',{simple:true});
