@@ -19,6 +19,9 @@ Production environment variables:
 - NODE_ENV=production
 - SHOW_DEV_OTP=false
 - JWT_SECRET=<long random value> (kept only for legacy Bearer compatibility)
+- SESSION_TTL_DAYS=7
+- MAX_ACTIVE_SESSIONS=10
+- ALLOW_LEGACY_BEARER_AUTH=false
 - EMAIL_PROVIDER=smtp or resend
 - SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_SECURE / EMAIL_FROM, or RESEND_API_KEY / EMAIL_FROM
 - SMS_PROVIDER=twilio
@@ -49,6 +52,14 @@ Order and payment state safety:
 - Razorpay orders cannot enter fulfilment until their payment status is PAID through verified payment processing.
 - Status updates use the previously read state as a concurrency condition, preventing two admin requests from silently overwriting each other.
 - Cancellation continues through the dedicated cancellation/refund flow and never through a direct status overwrite.
+
+Active sessions and remote sign-out:
+- Login & Security lists active devices, their last-active time and the current device.
+- Customers can revoke another device or sign out every device from the account-security screen.
+- Sessions use hashed random tokens in the database and an HttpOnly, SameSite cookie; Secure is added in production.
+- Session expiry defaults to 7 days and is capped at 30 days even if deployment configuration is incorrect.
+- A customer can have at most 10 active sessions by default; oldest sessions are removed safely when the limit is exceeded.
+- Legacy Bearer authentication is disabled in Render so an old browser token cannot bypass remote sign-out.
 
 Secrets:
 - Never commit .env or API keys to GitHub.

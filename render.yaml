@@ -8,6 +8,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SESSION_TTL_DAYS
+        value: 7
+      - key: MAX_ACTIVE_SESSIONS
+        value: 10
+      - key: ALLOW_LEGACY_BEARER_AUTH
+        value: false
       - key: DB_PATH
         value: /var/data/ashwini.db
       - key: BACKUP_DIR
