@@ -456,6 +456,9 @@ app.use((req,res,next)=>{
   const sessionId=String(req.body?.session_id||'');
   if(!publicWriteAllowed(req,res,'BEHAVIOR_IP',300,15*60*1000)||!publicWriteAllowed(req,res,'BEHAVIOR_SESSION',120,15*60*1000,sessionId))return;
  }
+ if(req.method==='POST'&&req.path==='/api/visual-search'){
+  if(!publicWriteAllowed(req,res,'VISUAL_SEARCH_BURST',3,5*60*1000)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_DAILY',20,24*60*60*1000))return;
+ }
  next();
 });
 function publicOtpResponse(otp,channel,message){const dev=process.env.NODE_ENV!=="production" || String(process.env.SHOW_DEV_OTP||"").toLowerCase()==="true";return {ok:true,channel,message,...(dev?{devOtp:otp}:{})};}
