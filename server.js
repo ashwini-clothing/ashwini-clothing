@@ -493,7 +493,16 @@ function auth(req,res,next){
  try{
   const raw=readCookie(req,"ashwini_session");let u=null;
    if(raw){const s=db.prepare("SELECT id,user_id,expires_at,absolute_expires_at FROM auth_sessions WHERE session_hash=?").get(sessionHash(raw));const now=Date.now();if(s&&Number(s.expires_at)>now&&Number(s.absolute_expires_at)>now){u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(s.user_id);if(u){req.sessionId=Number(s.id);const newExp=Math.min(now+sessionTtlMs,Number(s.absolute_expires_at));db.prepare("UPDATE auth_sessions SET last_seen_at=?,expires_at=? WHERE session_hash=?").run(now,newExp,sessionHash(raw));setSessionCookie(res,raw);}else db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));}else if(s)db.prepare("DELETE FROM auth_sessions WHERE id=?").run(s.id)}
-  if(!u)return res.status(401).json({error:"Login required. Please sign in again."});req.user=u;next();
+  if(!u)return res.status(401).json({error:"Login required. Please sign in again."});
+  req.user=u;
+  if(req.method==='POST'&&req.path==='/api/me/profile-change/request'){
+   if(!publicWriteAllowed(req,res,'PROFILE_CHANGE_REQUEST',5,60*60*1000,String(u.id)))return;
+   const account=db.prepare('SELECT email,phone FROM users WHERE id=?').get(u.id)||{},newEmail=String(req.body?.email||account.email||'').trim().toLowerCase(),newPhone=normalizePhone(req.body?.phone||account.phone),targets=[];
+   if(newEmail&&newEmail!==String(account.email||'').toLowerCase())targets.push(account.email,newEmail);
+   if(newPhone&&newPhone!==String(account.phone||''))targets.push(account.phone,newPhone);
+   for(const target of new Set(targets.filter(Boolean)))if(!otpGuard(req,res,`PROFILE_CHANGE:${target}`))return;
+  }
+  next();
  }catch{res.status(401).json({error:"Login required. Please sign in again."})}
 }
 function admin(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin only"});next()}
