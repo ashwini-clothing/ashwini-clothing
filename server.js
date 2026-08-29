@@ -102,6 +102,9 @@ try{db.exec("ALTER TABLE users ADD COLUMN login_otp_hash TEXT DEFAULT ''")}catch
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN two_step_channel TEXT NOT NULL DEFAULT 'AUTO'")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN login_otp_expires_at INTEGER DEFAULT 0")}catch{}
+try{db.exec("ALTER TABLE users ADD COLUMN whatsapp_marketing_opt_in INTEGER NOT NULL DEFAULT 0")}catch{}
+try{db.exec("ALTER TABLE users ADD COLUMN whatsapp_marketing_opt_in_at TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE users ADD COLUMN whatsapp_marketing_prompted INTEGER NOT NULL DEFAULT 0")}catch{}
 // Provision the configured Store Admin only when the account does not yet exist.
 // Never overwrite an existing password, revoke sessions, or promote a customer
 // during startup. Use reset-admin.js for an explicit, auditable recovery action.
@@ -177,6 +180,7 @@ try{
 }catch{}
 
 try{db.exec(`CREATE TABLE IF NOT EXISTS offer_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, offer_id INTEGER, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TEXT DEFAULT '', FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(offer_id) REFERENCES offers(id) ON DELETE SET NULL)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_delivery_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, order_id INTEGER, offer_id INTEGER, template_name TEXT NOT NULL, recipient_last4 TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, provider_message TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL, FOREIGN KEY(offer_id) REFERENCES offers(id) ON DELETE SET NULL)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS returns (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, reason TEXT NOT NULL, request_type TEXT NOT NULL DEFAULT 'REPLACEMENT', replacement_size TEXT DEFAULT '', replacement_color TEXT DEFAULT '', pickup_at TEXT DEFAULT '', admin_note TEXT DEFAULT '', replacement_order_id INTEGER DEFAULT NULL, status TEXT NOT NULL DEFAULT 'REQUESTED', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS return_events (id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(return_id) REFERENCES returns(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, user_id INTEGER NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
@@ -552,6 +556,20 @@ async function notifyEmail(to,subject,details){
  if(!result.sent)console.warn(`[Ashwini Email] ${to} was not notified: ${result.error||'unknown error'}`);
  return result;
 }
+function whatsappRecipient(phone){const digits=String(phone||'').replace(/\D/g,'');if(/^\d{10}$/.test(digits))return `91${digits}`;if(/^91\d{10}$/.test(digits))return digits;return ''}
+function logWhatsAppDelivery({userId=null,orderId=null,offerId=null,templateName,phone,status,message=''}){try{db.prepare('INSERT INTO whatsapp_delivery_logs(user_id,order_id,offer_id,template_name,recipient_last4,status,provider_message) VALUES(?,?,?,?,?,?,?)').run(userId,orderId,offerId,String(templateName||'').slice(0,100),String(phone||'').slice(-4),String(status||'UNKNOWN').slice(0,30),String(message||'').slice(0,1000))}catch(e){console.error('[Ashwini WhatsApp log]',e.message)}}
+async function sendWhatsAppTemplate({phone,userId=null,orderId=null,offerId=null,templateName,bodyValues=[]}){
+ const authkey=String(process.env.MSG91_WHATSAPP_AUTHKEY||process.env.MSG91_AUTHKEY||'').trim(),integratedNumber=String(process.env.MSG91_WHATSAPP_INTEGRATED_NUMBER||'').replace(/\D/g,''),recipient=whatsappRecipient(phone),logoUrl=String(process.env.MSG91_WHATSAPP_LOGO_URL||'https://ashwiniweb.com/ashwini-transparent-logo.png').trim();
+ if(!recipient){const result={sent:false,configured:true,error:'A valid customer mobile number is required'};logWhatsAppDelivery({userId,orderId,offerId,templateName,phone,status:'SKIPPED',message:result.error});return result}
+ if(!authkey||!integratedNumber){const result={sent:false,configured:false,error:'MSG91 WhatsApp is not configured'};logWhatsAppDelivery({userId,orderId,offerId,templateName,phone,status:'NOT_CONFIGURED',message:result.error});return result}
+ const components={header_1:{type:'image',value:logoUrl}};bodyValues.forEach((value,index)=>{components[`body_${index+1}`]={type:'text',value:String(value??'')}});
+ const payload={integrated_number:integratedNumber,content_type:'template',payload:{messaging_product:'whatsapp',type:'template',template:{name:templateName,language:{code:'en',policy:'deterministic'},namespace:null,to_and_components:[{to:[recipient],components}]}}};
+ try{
+  const r=await fetch('https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/',{method:'POST',headers:{'Content-Type':'application/json',authkey},signal:AbortSignal.timeout(15000),body:JSON.stringify(payload)}),text=await r.text();let data={};try{data=JSON.parse(text)}catch{}
+  if(!r.ok||String(data.type||'').toLowerCase()==='error'||data.success===false)throw new Error(data.message||data.error||text||`MSG91 returned ${r.status}`);
+  logWhatsAppDelivery({userId,orderId,offerId,templateName,phone,status:'SENT',message:data.message||data.request_id||'Accepted by MSG91'});return {sent:true,configured:true,provider:'msg91',data};
+ }catch(e){console.error('[Ashwini WhatsApp]',e.message);logWhatsAppDelivery({userId,orderId,offerId,templateName,phone,status:'FAILED',message:e.message});return {sent:false,configured:true,error:e.message}}
+}
 async function sendReturnEmail(to,subject,details){return notifyEmail(to,subject,details)}
 function addReturnEvent(returnId,userId,status,title,message){try{db.prepare('INSERT INTO return_events(return_id,user_id,status,title,message) VALUES(?,?,?,?,?)').run(returnId,userId,status,title,message)}catch(e){console.error('[return event]',e.message)}}
 function addOrderEvent(orderId,userId,status,title,message){try{db.prepare('INSERT INTO order_events(order_id,user_id,status,title,message) VALUES(?,?,?,?,?)').run(orderId,userId,status,title,message)}catch(e){console.error('[order event]',e.message)}}
@@ -737,6 +755,7 @@ app.patch("/api/notifications/:id/read",auth,(req,res)=>{
  db.prepare("UPDATE offer_notifications SET read_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").run(req.params.id,req.user.id); res.json({ok:true});
 });
 app.get("/api/admin/offers",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM offers ORDER BY id DESC").all().map(safePromotionRow)));
+app.get('/api/admin/whatsapp-deliveries',auth,admin,(req,res)=>{try{res.json(db.prepare(`SELECT l.id,l.template_name,l.recipient_last4,l.status,l.provider_message,l.created_at,l.order_id,l.offer_id,u.name AS customer_name FROM whatsapp_delivery_logs l LEFT JOIN users u ON u.id=l.user_id ORDER BY l.id DESC LIMIT 200`).all())}catch(e){res.status(500).json({error:'Could not load WhatsApp delivery report'})}});
 app.post("/api/admin/offers",auth,admin,(req,res)=>{
  try{
   const b=req.body||{}; if(!String(b.title||'').trim())throw Error('Offer title is required');
@@ -748,15 +767,17 @@ app.patch("/api/admin/offers/:id",auth,admin,(req,res)=>{
  try{const b=req.body||{};db.prepare(`UPDATE offers SET title=?,description=?,coupon_code=?,discount_percent=?,banner_url=?,button_text=?,button_action=?,start_at=?,end_at=?,active=?,show_popup=? WHERE id=?`).run(String(b.title||''),String(b.description||''),String(b.coupon_code||'').trim().toUpperCase(),Number(b.discount_percent||0),validatedImageSource(b.banner_url),String(b.button_text||'Shop Now'),safePromotionAction(b.button_action),String(b.start_at||''),String(b.end_at||''),b.active?1:0,b.show_popup?1:0,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}
 });
 app.delete("/api/admin/offers/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM offers WHERE id=?").run(req.params.id);res.json({ok:true})});
-app.post("/api/admin/offers/:id/send",auth,admin,(req,res)=>{
+app.post("/api/admin/offers/:id/send",auth,admin,async(req,res)=>{
  try{
   const o=db.prepare("SELECT * FROM offers WHERE id=?").get(req.params.id); if(!o)throw Error('Offer not found');
   const audience=String(req.body?.audience||'both');
-  const customers=db.prepare("SELECT id,email,phone FROM users WHERE role='customer'").all();
+  const customers=db.prepare("SELECT id,email,phone,whatsapp_marketing_opt_in FROM users WHERE role='customer'").all();
   const message=String(req.body?.message||`${o.title}${o.description?` — ${o.description}`:''}${o.coupon_code?` Coupon: ${o.coupon_code}`:''}`);
   const add=db.prepare("INSERT INTO offer_notifications(user_id,offer_id,title,message) VALUES(?,?,?,?)");
   const tx=db.transaction(()=>{let n=0;for(const c of customers){add.run(c.id,o.id,o.title,message);n++}return n});
-  const n=tx();res.json({ok:true,sent:n,audience,delivery:'in-app'});
+  const n=tx(),eligible=customers.filter(c=>Number(c.whatsapp_marketing_opt_in)===1&&whatsappRecipient(c.phone)),templateName=String(process.env.MSG91_WHATSAPP_OFFER_TEMPLATE||'ashwini_offer_shop_now').trim(),discount=String(Math.max(0,Number(o.discount_percent||0))).replace(/\.0+$/,''),coupon=String(o.coupon_code||'NOCOUPON').trim().toUpperCase();let whatsappSent=0,whatsappFailed=0;
+  for(const c of eligible){const result=await sendWhatsAppTemplate({phone:c.phone,userId:c.id,offerId:o.id,templateName,bodyValues:[discount,coupon]});if(result.sent)whatsappSent++;else whatsappFailed++}
+  res.json({ok:true,sent:n,audience,delivery:'in-app-and-whatsapp',whatsapp:{eligible:eligible.length,sent:whatsappSent,failed:whatsappFailed,not_opted_in:customers.length-eligible.length}});
  }catch(e){res.status(400).json({error:e.message})}
 });
 app.get("/api/products",(req,res)=>{
@@ -893,8 +914,9 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
    if(existing&&!pending)throw Object.assign(Error('This mobile number is already registered. Please sign in.'),{status:409});
    const emailOwner=db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(cleanEmail);
    if(emailOwner&&(!existing||Number(emailOwner.id)!==Number(existing.id)))throw Object.assign(Error('This email is already registered. Please sign in.'),{status:409});
-   if(pending){const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(cleanName,cleanEmail,hash,existing.id,`phone_${normalized}@ashwini.local`);if(changed.changes!==1)throw Object.assign(Error('Account registration state changed. Please sign in or start again.'),{status:409});return Number(existing.id)}
-   return Number(db.prepare("INSERT INTO users(name,email,password_hash,phone,role) VALUES(?,?,?,?,?)").run(cleanName,cleanEmail,hash,normalized,'customer').lastInsertRowid);
+   const marketingOptIn=body.whatsapp_marketing_opt_in===true||body.whatsapp_marketing_opt_in===1;
+   if(pending){const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,whatsapp_marketing_opt_in=?,whatsapp_marketing_opt_in_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,whatsapp_marketing_prompted=1,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(cleanName,cleanEmail,hash,marketingOptIn?1:0,marketingOptIn?1:0,existing.id,`phone_${normalized}@ashwini.local`);if(changed.changes!==1)throw Object.assign(Error('Account registration state changed. Please sign in or start again.'),{status:409});return Number(existing.id)}
+   return Number(db.prepare("INSERT INTO users(name,email,password_hash,phone,role,whatsapp_marketing_opt_in,whatsapp_marketing_opt_in_at,whatsapp_marketing_prompted) VALUES(?,?,?,?,?,?,CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,1)").run(cleanName,cleanEmail,hash,normalized,'customer',marketingOptIn?1:0,marketingOptIn?1:0).lastInsertRowid);
   });
   const userId=createVerifiedAccount(),u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(userId);
   clearOtpFailures(req,normalized);
@@ -1259,7 +1281,8 @@ app.post("/api/checkout/verify",auth,async(req,res)=>{
  }catch(e){console.error('[Razorpay checkout verification]',e.message);res.status(400).json({error:'Payment could not be verified. Please check Your Orders before trying again.'})}
 });
 
-app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
+app.get('/api/me',auth,(req,res)=>{const u=db.prepare("SELECT id,name,email,phone,role,two_step_enabled,two_step_channel,whatsapp_marketing_opt_in,whatsapp_marketing_prompted,created_at FROM users WHERE id=?").get(req.user.id);if(!u)return res.status(404).json({error:'Account not found'});res.json(u)});
+app.patch('/api/me/whatsapp-marketing',auth,(req,res)=>{try{if(req.user.role!=='customer')return res.status(403).json({error:'Customer account required'});const enabled=req.body?.enabled===true||req.body?.enabled===1;db.prepare("UPDATE users SET whatsapp_marketing_opt_in=?,whatsapp_marketing_opt_in_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,whatsapp_marketing_prompted=1 WHERE id=?").run(enabled?1:0,enabled?1:0,req.user.id);res.json({ok:true,enabled})}catch(e){res.status(400).json({error:'Could not update WhatsApp preference'})}});
 app.patch('/api/me',auth,(req,res)=>res.status(410).json({error:'Direct email or mobile changes are disabled. Please use OTP verification.'}));
 app.get('/api/return-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM return_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
 app.get('/api/order-events',auth,(req,res)=>{try{res.json(db.prepare('SELECT e.* FROM order_events e WHERE e.user_id=? ORDER BY e.id DESC LIMIT 100').all(req.user.id))}catch(e){res.status(400).json({error:e.message})}});
@@ -1427,7 +1450,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
  logAdminActivity(req,'ORDER_STATUS_CHANGED','ORDER',order.id,{from_status:before.status,to_status:order.status,payment_status:order.payment_status});
  if(order.status==='CANCELLED'&&order.payment_status!=='PAID')releaseOrderStock(order.id,'CANCELLED');
- if(before.status!==order.status){const label=String(order.status).replaceAll("_"," ");const msg=`Order #${order.id} is now ${label}. Payment status: ${String(order.payment_status||'PENDING').replaceAll('_',' ')}.`;addOrderEvent(order.id,order.user_id,order.status,`Order ${label}`,msg);const u=db.prepare("SELECT name,email FROM users WHERE id=?").get(order.user_id);if(u?.email){await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${u.name||'Customer'},\n\n${msg}\n\nTrack your order from Your Orders in your Ashwini Clothing account.`)}}
+ if(before.status!==order.status){const label=String(order.status).replaceAll("_"," ");const msg=`Order #${order.id} is now ${label}. Payment status: ${String(order.payment_status||'PENDING').replaceAll('_',' ')}.`;addOrderEvent(order.id,order.user_id,order.status,`Order ${label}`,msg);const u=db.prepare("SELECT name,email,phone,whatsapp_marketing_opt_in FROM users WHERE id=?").get(order.user_id);if(u?.email){await notifyEmail(u.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${u.name||'Customer'},\n\n${msg}\n\nTrack your order from Your Orders in your Ashwini Clothing account.`)}if(order.status==='DELIVERED'&&Number(u?.whatsapp_marketing_opt_in)===1){const templateName=String(process.env.MSG91_WHATSAPP_DELIVERED_TEMPLATE||'ashwini_order_delivered_shop_now').trim();await sendWhatsAppTemplate({phone:u.phone,userId:order.user_id,orderId:order.id,templateName,bodyValues:[`ASH${order.id}`]})}}
  res.json({ok:true,order});
 });
 app.post("/api/admin/products",auth,admin,(req,res)=>{

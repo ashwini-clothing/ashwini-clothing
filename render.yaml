@@ -38,6 +38,14 @@ services:
         sync: false
       - key: MSG91_AUTHKEY
         sync: false
+      - key: MSG91_WHATSAPP_INTEGRATED_NUMBER
+        sync: false
+      - key: MSG91_WHATSAPP_OFFER_TEMPLATE
+        value: ashwini_offer_shop_now
+      - key: MSG91_WHATSAPP_DELIVERED_TEMPLATE
+        value: ashwini_order_delivered_shop_now
+      - key: MSG91_WHATSAPP_LOGO_URL
+        value: https://ashwiniweb.com/ashwini-transparent-logo.png
       - key: RESEND_API_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
