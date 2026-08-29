@@ -482,6 +482,9 @@ async function sendSmsOtp(to,otp){
 }
 function token(u){return jwt.sign({id:u.id,name:u.name,email:u.email,phone:u.phone||"",role:u.role},SECRET,{expiresIn:"15m"})}
 function sessionHash(value){return crypto.createHash("sha256").update(String(value)).digest("hex")}
+// Keep password-check cost similar when an unknown admin identifier is tried,
+// so response timing does not disclose whether the private admin account exists.
+const dummyAdminPasswordHash=bcrypt.hashSync(crypto.randomBytes(24).toString('hex'),12);
 function setSessionCookie(res,raw){res.setHeader("Set-Cookie",`ashwini_session=${raw}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${sessionTtlDays*86400}${process.env.NODE_ENV==='production'?'; Secure':''}`)}
 function clearSessionCookie(res){res.setHeader("Set-Cookie","ashwini_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0")}
 function sessionDeviceLabel(userAgent=''){const ua=String(userAgent);const browser=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'Browser';const device=/Android/i.test(ua)?'Android phone':/iPhone/i.test(ua)?'iPhone':/iPad/i.test(ua)?'iPad':/Windows/i.test(ua)?'Windows computer':/Macintosh|Mac OS/i.test(ua)?'Mac computer':/Linux/i.test(ua)?'Linux device':'Device';return `${browser} on ${device}`}
@@ -927,9 +930,9 @@ app.post("/api/auth/setup-admin",(req,res)=>res.status(404).json({error:"Not fou
 app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase();
  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:"Enter a valid admin email address"});
- const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
- if(!u)return res.status(404).json({error:"Admin account not found for this email"});
  if(!otpGuard(req,res,email))return;
+ const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
+ if(!u)return res.json({ok:true,channel:'email',message:'If an authorised admin account matches, an OTP has been sent.'});
  const otp=issueOtp(u,'login');
  try{
   const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
@@ -946,7 +949,8 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
   const u=db.prepare("SELECT * FROM users WHERE role='admin' AND (lower(email)=lower(?) OR phone=?) LIMIT 1").get(email,mobile);
   // Never attach an unknown mobile number during sign-in. A new admin mobile
   // must be added from an authenticated admin session and OTP-verified there.
-  if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,identifier);return res.status(401).json({error:"Incorrect admin login details"})}
+  const passwordMatches=await bcrypt.compare(password,String(u?.password_hash||dummyAdminPasswordHash));
+  if(!u||!passwordMatches){recordOtpFailure(req,identifier);return res.status(401).json({error:"Incorrect admin login details"})}
   clearOtpFailures(req,identifier);
   // A mobile admin sign-in uses the already configured MSG91 secure widget.
   // Email sign-in stays on the existing email-OTP route below.
@@ -981,9 +985,8 @@ app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
  const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
- if(!u)return res.status(404).json({error:"Admin account not found"});
  if(!otpVerifyGuard(req,res,email))return;
- if(!/^\d{6}$/.test(otp)||!u.login_otp_hash||Number(u.login_otp_expires_at)<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,email);return res.status(400).json({error:"Invalid or expired admin OTP"});}
+ if(!u||!/^\d{6}$/.test(otp)||!u.login_otp_hash||Number(u.login_otp_expires_at)<Date.now()||!otpMatches(otp,u.login_otp_hash)){recordOtpFailure(req,email);return res.status(400).json({error:"Invalid or expired admin OTP"});}
  db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
  clearOtpFailures(req,email);
  const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
