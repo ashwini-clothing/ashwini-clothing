@@ -27,10 +27,13 @@ Production environment variables:
 
 Database backup:
 - Run: npm run backup
+- Verify the newest backup and checksum: npm run backup:verify
+- Perform a safe restore drill in a temporary folder: npm run backup:restore-test
 - Optional DB_PATH selects the live SQLite file.
 - Optional BACKUP_DIR selects the backup folder.
 - Schedule `npm run backup` with the hosting provider/OS scheduler for regular backups.
-- Keep at least one copy outside the application server. Test restoration periodically by replacing a test database with a backup copy.
+- Each completed backup is integrity-checked before publication and receives a .sha256 checksum file.
+- Keep at least one encrypted copy outside the application server. Run the restore test periodically. Never test by replacing the live production database.
 
 Secrets:
 - Never commit .env or API keys to GitHub.

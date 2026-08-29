@@ -1,0 +1,13 @@
+ASHWINI CLOTHING - SECURITY POINT 23
+
+Database backup safety upgrade:
+- Existing runtime backup folder and command retained.
+- Backups are first written as .partial files and published only after SQLite integrity_check passes.
+- Every completed backup gets a SHA-256 checksum sidecar.
+- Added `npm run backup:verify` to verify the latest backup.
+- Added `npm run backup:restore-test` to copy the latest backup into a temporary folder and test opening it safely.
+- Scheduled backup jobs no longer overlap.
+- Retention cleanup covers database backups and their checksum files.
+
+Deployment note:
+The Render persistent disk protects data across normal deploys, but it is not an off-site disaster-recovery copy. Keep an encrypted backup copy with a separate trusted storage provider and test restoration regularly.

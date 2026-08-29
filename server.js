@@ -52,7 +52,12 @@ const db=new Database(dbPath);
 db.pragma("foreign_keys=ON");
 db.exec(fs.readFileSync(path.join(__dirname,"schema.sql"),"utf8"));
 const backupIntervalHours=Math.max(1,Number(process.env.BACKUP_INTERVAL_HOURS)||24);
-function runScheduledBackup(){backupDatabase().then(file=>console.log(`[Ashwini backup] Created ${file}`)).catch(error=>console.error('[Ashwini backup] Failed:',error.message))}
+let backupRunning=false;
+async function runScheduledBackup(){
+ if(backupRunning)return console.warn('[Ashwini backup] Skipped because another backup is still running');
+ backupRunning=true;
+ try{console.log(`[Ashwini backup] Created ${await backupDatabase()}`)}catch(error){console.error('[Ashwini backup] Failed:',error.message)}finally{backupRunning=false}
+}
 const backupStartTimer=setTimeout(runScheduledBackup,60*1000);
 const backupIntervalTimer=setInterval(runScheduledBackup,backupIntervalHours*60*60*1000);
 backupStartTimer.unref?.();

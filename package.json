@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "backup": "node scripts/backup-db.js"
+    "backup": "node scripts/backup-db.js",
+    "backup:verify": "node scripts/verify-backup.js",
+    "backup:restore-test": "node scripts/restore-test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
