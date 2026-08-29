@@ -460,6 +460,7 @@ app.use((req,res,next)=>{
   if(!publicWriteAllowed(req,res,'VISUAL_SEARCH_BURST',3,5*60*1000)||!publicWriteAllowed(req,res,'VISUAL_SEARCH_DAILY',20,24*60*60*1000))return;
  }
  if(req.method==='POST'&&req.path==='/api/auth/verify-msg91-login'&&!publicWriteAllowed(req,res,'MSG91_LOGIN_VERIFY',10,15*60*1000))return;
+ if(req.method==='POST'&&req.path==='/api/auth/verify-msg91-admin-login'&&!publicWriteAllowed(req,res,'MSG91_ADMIN_VERIFY',10,15*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/auth/request-msg91-registration'&&!publicWriteAllowed(req,res,'REGISTRATION_START',10,60*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/auth/register-msg91'&&!publicWriteAllowed(req,res,'REGISTRATION_VERIFY',10,60*60*1000))return;
  next();
@@ -954,23 +955,24 @@ app.post("/api/auth/admin-login-start",async(req,res)=>{
  }catch(e){console.error('[Ashwini Admin secure login]',e.message);res.status(503).json({error:"Admin OTP could not be delivered. Please check email configuration."});}
 });
 app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
+ const identifier=String(req.body?.identifier||"").trim(),phone=normalizePhone(identifier);
  try{
-  const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||""),accessToken=String(req.body?.accessToken||"").trim();
-  const phone=normalizePhone(identifier);
+  const password=String(req.body?.password||""),accessToken=String(req.body?.accessToken||"").trim();
   if(!/^\d{10}$/.test(phone))return res.status(400).json({error:"Enter a valid 10-digit admin mobile number."});
   if(!password)return res.status(400).json({error:"Admin password is required."});
   if(!accessToken)return res.status(400).json({error:"MSG91 verification token is missing."});
+  if(accessToken.length>4096)return res.status(400).json({error:"MSG91 verification token is invalid."});
   if(!otpVerifyGuard(req,res,phone))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification);
-  if(verifiedPhone!==phone)return res.status(401).json({error:"MSG91 did not verify the requested admin mobile number."});
+  if(verifiedPhone!==phone){recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested admin mobile number."});}
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
   if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,phone);return res.status(401).json({error:"Incorrect admin login details"})}
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
   clearOtpFailures(req,phone);
   const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
   createSession(req,res,u.id);res.json({user:safe});
- }catch(e){console.error("[MSG91 admin login verification]",e.message);res.status(401).json({error:e.message||"MSG91 admin OTP verification failed."});}
+ }catch(e){if(/^\d{10}$/.test(phone))recordOtpFailure(req,phone);console.error("[MSG91 admin login verification]",e.message);res.status(401).json({error:"MSG91 admin verification failed. Please try again."});}
 });
 app.post("/api/auth/verify-admin-login-otp",(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), otp=String(req.body?.otp||"").trim();
