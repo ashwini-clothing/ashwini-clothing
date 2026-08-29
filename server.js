@@ -354,6 +354,24 @@ const allowedOrigins=new Set([
   ...(process.env.NODE_ENV==='production'?[]:['http://localhost:10000','http://127.0.0.1:10000'])
 ].filter(Boolean));
 app.use((req,res,next)=>{
+  const csp=[
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://verify.msg91.com https://verify.phone91.com",
+    "script-src-attr 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.bigdatacloud.net https://*.razorpay.com https://*.msg91.com https://*.phone91.com wss://*.razorpay.com wss://*.msg91.com wss://*.phone91.com",
+    "frame-src https://*.razorpay.com https://*.msg91.com https://*.phone91.com",
+    "media-src 'self' blob:",
+    "worker-src 'self' blob:",
+    ...(process.env.NODE_ENV==='production'?["upgrade-insecure-requests"]:[])
+  ].join('; ');
+  res.setHeader('Content-Security-Policy',csp);
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');
