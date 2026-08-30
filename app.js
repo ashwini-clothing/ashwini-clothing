@@ -289,7 +289,7 @@ function buyNow(id,btn){if(!user){auth('', 'Please sign in or create an account 
 function activeCheckoutItems(){return checkoutItems||cart}
 
 function wish(id){const adding=!wishlist.includes(id);if(!adding)wishlist=wishlist.filter(x=>x!==id);else wishlist.push(id);localStorage.setItem('ashwiniWishlist',JSON.stringify(wishlist));if(adding)trackBehavior('wishlist_add',id,{source:'product_detail'});toast(wishlist.includes(id)?'♥ Added to Wishlist':'Removed from Wishlist');detail(id)}
-function addWishlist(id,fromCartIndex=null){if(!wishlist.includes(id))wishlist.push(id);if(Number.isInteger(fromCartIndex)&&fromCartIndex>=0&&fromCartIndex<cart.length){cart.splice(fromCartIndex,1);save()}else{localStorage.setItem('ashwiniWishlist',JSON.stringify(wishlist));}toast('♥ Moved to Wishlist');if(document.getElementById('modal')?.innerHTML?.includes('Shopping Cart'))cartView()}
+function addWishlist(id,fromCartIndex=null){const adding=!wishlist.includes(id);if(adding)wishlist.push(id);if(Number.isInteger(fromCartIndex)&&fromCartIndex>=0&&fromCartIndex<cart.length){cart.splice(fromCartIndex,1);save()}else{localStorage.setItem('ashwiniWishlist',JSON.stringify(wishlist));}if(adding)trackBehavior('wishlist_add',id,{source:Number.isInteger(fromCartIndex)?'cart':'wishlist'});toast('♥ Moved to Wishlist');if(document.getElementById('modal')?.innerHTML?.includes('Shopping Cart'))cartView()}
 async function addWishlistToCart(id){
  try{
   const ps=await api('/api/products');
