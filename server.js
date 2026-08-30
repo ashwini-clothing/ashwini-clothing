@@ -789,18 +789,22 @@ app.post("/api/admin/offers/:id/send",auth,admin,async(req,res)=>{
   res.json({ok:true,sent:n,audience,delivery:'in-app-and-whatsapp',whatsapp:{eligible:eligible.length,sent:whatsappSent,failed:whatsappFailed,not_opted_in:customers.length-eligible.length}});
  }catch(e){res.status(400).json({error:e.message})}
 });
+function searchText(value){return String(value||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
+function searchTerms(value){const aliases={kurti:'kurta',kurtis:'kurta',kurtha:'kurta',kurrti:'kurta',lehnga:'lehenga',lengha:'lehenga',lahenga:'lehenga',saree:'sarara',sari:'sarara',sharaara:'sarara',gaun:'gown',goun:'gown',weding:'wedding',weddingg:'wedding',dres:'dress',dresses:'dress',shrt:'shirt',shirts:'shirt',pant:'pants',cord:'coord',koord:'coord',coordinated:'coord',clothe:'clothes',cloths:'clothes'};return searchText(value).split(' ').filter(Boolean).map(x=>aliases[x]||x)}
+function searchDistance(a,b){a=String(a);b=String(b);if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;let previous=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){const current=[i];for(let j=1;j<=b.length;j++)current[j]=Math.min(current[j-1]+1,previous[j]+1,previous[j-1]+(a[i-1]===b[j-1]?0:1));previous=current}return previous[b.length]}
+function smartProductScore(product,query){const terms=searchTerms(query),name=searchText(product.name),category=searchText(product.category),haystack=searchText([product.name,product.category,product.color,product.size_options,product.offer_text,product.description].join(' ')),words=[...new Set(haystack.split(' ').filter(Boolean))];if(!terms.length)return 0;let score=0,matched=0;for(const term of terms){if(name===term){score+=12;matched++;continue}if(name.includes(term)){score+=8;matched++;continue}if(category.includes(term)||haystack.includes(term)){score+=5;matched++;continue}const best=words.reduce((n,word)=>Math.min(n,searchDistance(term,word)),99),allowed=term.length>=7?2:term.length>=4?1:0;if(best<=allowed){score+=Math.max(2,5-best);matched++}}return matched===terms.length?score+terms.length*2:matched?score-3:0}
 app.get("/api/products",(req,res)=>{
- const {q="",category="All",sort="featured",filters=""}=req.query;
- let rows=db.prepare(`SELECT * FROM products
- WHERE (?='' OR name LIKE ? OR category LIKE ?)
- AND (?='All' OR lower(trim(category))=lower(trim(?)))`).all(q,`%${q}%`,`%${q}%`,category,category);
+ const {q="",category="All",sort="featured",filters=""}=req.query,query=String(q).trim().slice(0,100);
+ let rows=db.prepare(`SELECT * FROM products WHERE (?='All' OR lower(trim(category))=lower(trim(?)))`).all(category,category);
+ if(query)rows=rows.map(row=>({...row,__search_score:smartProductScore(row,query)})).filter(row=>row.__search_score>0);
  const selected=String(filters).split(',').map(x=>x.trim()).filter(Boolean);
  if(selected.includes('IN_STOCK'))rows=rows.filter(x=>Number(x.stock)>0);
  if(selected.includes('RATING_4'))rows=rows.filter(x=>Number(x.rating)>=4);
  if(sort==="low")rows.sort((a,b)=>a.price-b.price);
  if(sort==="high")rows.sort((a,b)=>b.price-a.price);
  if(sort==="rating")rows.sort((a,b)=>b.rating-a.rating);
- res.json(rows);
+ if(query&&sort==="featured")rows.sort((a,b)=>b.__search_score-a.__search_score||Number(b.rating||0)-Number(a.rating||0));
+ res.json(rows.map(({__search_score,...row})=>row));
 });
 
 function behaviorUserId(req){try{const raw=readCookie(req,'ashwini_session');if(!raw)return null;const s=db.prepare('SELECT user_id,expires_at,absolute_expires_at FROM auth_sessions WHERE session_hash=?').get(sessionHash(raw)),now=Date.now();return s&&Number(s.expires_at)>now&&Number(s.absolute_expires_at)>now?Number(s.user_id):null}catch{return null}}
