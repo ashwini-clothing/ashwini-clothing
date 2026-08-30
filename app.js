@@ -1338,7 +1338,9 @@ window.trackBehavior=trackBehavior;window.acceptBehaviorTracking=acceptBehaviorT
 window.adminAppearance=adminAppearance;window.saveAppearance=saveAppearance;window.applyAppearance=applyAppearance;window.pickPremiumColour=pickPremiumColour;
 
 document.addEventListener('DOMContentLoaded',()=>{
- showBehaviorConsent();
+ // Keep first visits unobtrusive: optional behaviour tracking stays off until
+ // the customer deliberately opens "Privacy choices" in the footer and opts in.
+ if(!behaviorConsent())localStorage.setItem(BEHAVIOR_CONSENT_KEY,'rejected');
  const searchCat=document.getElementById('searchCat');
  const searchInput=document.getElementById('q');
  const searchBtn=document.querySelector('.search button');
