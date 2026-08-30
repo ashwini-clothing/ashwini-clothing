@@ -61,6 +61,8 @@ async function runScheduledBackup(){
  backupRunning=true;
  try{console.log(`[Ashwini backup] Created ${await backupDatabase()}`)}catch(error){console.error('[Ashwini backup] Failed:',error.message)}finally{backupRunning=false}
 }
+const catalogStreams=new Set();
+function publishCatalogUpdate(action,productId){const data=`data: ${JSON.stringify({type:'catalog_update',action,product_id:Number(productId)||null,at:new Date().toISOString()})}\n\n`;for(const res of [...catalogStreams]){try{res.write(data)}catch{try{res.end()}catch{}catalogStreams.delete(res)}}}
 const backupStartTimer=setTimeout(runScheduledBackup,60*1000);
 const backupIntervalTimer=setInterval(runScheduledBackup,backupIntervalHours*60*60*1000);
 backupStartTimer.unref?.();
@@ -582,6 +584,7 @@ app.get('/api/admin/email-status',auth,admin,(req,res)=>{
  res.json({provider,configured,admin_email:adminEmail(),from:process.env.EMAIL_FROM||'Ashwini Clothing <onboarding@resend.dev>'});
 });
 app.get("/api/store-profile",(req,res)=>{const x=db.prepare("SELECT * FROM store_profile WHERE id=1").get()||{};const {whatsapp_number,...safe}=x;res.json(safe)});
+app.get('/api/catalog/stream',(req,res)=>{if(catalogStreams.size>=200||!reservePublicHelpStream(`catalog:${clientIp(req)}`,res,3))return res.status(503).end();res.setHeader('Content-Type','text/event-stream; charset=utf-8');res.setHeader('Cache-Control','no-cache, no-transform');res.setHeader('Connection','keep-alive');res.flushHeaders?.();res.write(`data: ${JSON.stringify({type:'connected'})}\n\n`);catalogStreams.add(res);const keep=setInterval(()=>{try{res.write(': keep-alive\n\n')}catch{}},25000),cleanup=()=>{clearInterval(keep);catalogStreams.delete(res)};res.once('close',cleanup);res.once('error',cleanup)});
 const appearanceKeys=['button_bg','button_text','button_border','header_bg','header_text','nav_bg','nav_text','search_bg','search_button_bg','search_button_text','shop_now_bg','shop_now_text','shop_now_border','shop_category_bg','shop_category_text','shop_category_border','quick_filter_bg','quick_filter_text','quick_filter_border'];
 function appearanceColor(value,fallback){const x=String(value||fallback).trim();if(!/^#[0-9a-fA-F]{6}$/.test(x))throw Error('Choose a valid colour');return x}
 app.get('/api/appearance',(req,res)=>res.json(db.prepare('SELECT * FROM site_appearance WHERE id=1').get()||{}));
@@ -1459,14 +1462,15 @@ app.post("/api/admin/products",auth,admin,(req,res)=>{
  const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,rating=0,emoji="👕",stock=0,description="",image="",gallery="",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body;
  const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,stock,description,validatedImageSource(image),validatedImageGallery(gallery),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0));
  logAdminActivity(req,'PRODUCT_CREATED','PRODUCT',r.lastInsertRowid,{name:String(name||'').slice(0,200),stock:Number(stock)||0,price:Number(price)||0});
+ publishCatalogUpdate('created',r.lastInsertRowid);
  res.json(db.prepare("SELECT * FROM products WHERE id=?").get(r.lastInsertRowid));
 });
 app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{
  const p=db.prepare("SELECT * FROM products WHERE id=?").get(req.params.id);if(!p)return res.status(404).json({error:"Not found"});
  const x={...p,...req.body};db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=? WHERE id=?")
- .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:Number(x.stock)||0,from_price:Number(p.price)||0,to_price:Number(x.price)||0});res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
+ .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:Number(x.stock)||0,from_price:Number(p.price)||0,to_price:Number(x.price)||0});publishCatalogUpdate('updated',p.id);res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
 });
-app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});res.json({ok:true})});
+app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});publishCatalogUpdate('deleted',product.id);res.json({ok:true})});
 
 app.get("/api/webhooks/health",auth,admin,(req,res)=>res.json({ok:true,razorpayConfigured:Boolean(razorpay)}));
 app.use('/api',(req,res)=>res.status(404).json({error:'Not found'}));
