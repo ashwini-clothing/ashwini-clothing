@@ -11,9 +11,10 @@ const BEHAVIOR_CONSENT_KEY='ashwiniBehaviorConsentV1',BEHAVIOR_CONSENT_VERSION='
 function behaviorConsent(){return localStorage.getItem(BEHAVIOR_CONSENT_KEY)}
 function behaviorSessionId(){let id=localStorage.getItem('ashwiniBehaviorSession');if(!id){id='ash_'+(crypto.randomUUID?.()||Date.now()+'_'+Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9_-]/g,'');localStorage.setItem('ashwiniBehaviorSession',id)}return id}
 function trackBehavior(eventType,productId=null,metadata={},contextProductId=null){if(behaviorConsent()!=='accepted')return;fetch('/api/behavior-events',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:behaviorSessionId(),event_type:eventType,product_id:productId||null,context_product_id:contextProductId||null,metadata,consent:true,consent_version:BEHAVIOR_CONSENT_VERSION}),keepalive:true}).catch(()=>{})}
+async function loadSessionHistory(){let section=document.getElementById('session-history');if(behaviorConsent()!=='accepted'){section?.remove();return}try{const data=await api('/api/behavior-session/history',{method:'POST',body:{session_id:behaviorSessionId(),consent:true,consent_version:BEHAVIOR_CONSENT_VERSION}}),items=Array.isArray(data.results)?data.results:[];if(!items.length){section?.remove();return}if(!section){section=document.createElement('section');section.id='session-history';section.className='session-history section';document.getElementById('products')?.before(section)}section.innerHTML=`<div class="session-history-head"><div><h2>Recently viewed</h2><small>Products viewed during this shopping session</small></div></div><div class="session-history-grid">${items.map(p=>`<button type="button" class="session-history-card" onclick="detail(${p.id})"><span class="session-history-image">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">`:esc(p.emoji||'👗')}</span><span><b>${esc(p.name)}</b><small>₹${Number(p.price||0).toLocaleString('en-IN')}</small></span></button>`).join('')}</div>`}catch{}}
 function removeBehaviorConsentBanner(){document.getElementById('behavior-consent')?.remove()}
 function acceptBehaviorTracking(){localStorage.setItem(BEHAVIOR_CONSENT_KEY,'accepted');removeBehaviorConsentBanner();toast('Personalised recommendations enabled')}
-async function rejectBehaviorTracking(){const sessionId=localStorage.getItem('ashwiniBehaviorSession')||'';localStorage.setItem(BEHAVIOR_CONSENT_KEY,'rejected');localStorage.removeItem('ashwiniBehaviorSession');removeBehaviorConsentBanner();if(user)await api('/api/me/behavior-data',{method:'DELETE'}).catch(()=>{});else if(sessionId)fetch('/api/behavior-data/session',{method:'DELETE',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}).catch(()=>{});toast('Only essential shopping is active')}
+async function rejectBehaviorTracking(){const sessionId=localStorage.getItem('ashwiniBehaviorSession')||'';localStorage.setItem(BEHAVIOR_CONSENT_KEY,'rejected');localStorage.removeItem('ashwiniBehaviorSession');removeBehaviorConsentBanner();document.getElementById('session-history')?.remove();if(user)await api('/api/me/behavior-data',{method:'DELETE'}).catch(()=>{});else if(sessionId)fetch('/api/behavior-data/session',{method:'DELETE',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}).catch(()=>{});toast('Only essential shopping is active')}
 function showBehaviorConsent(){if(behaviorConsent())return;const box=document.createElement('aside');box.id='behavior-consent';box.className='behavior-consent';box.setAttribute('role','dialog');box.setAttribute('aria-label','Personalisation choice');box.innerHTML='<div><b>Your privacy choice</b><p>Allow optional shopping activity to personalise recommendations. Essential account, cart and payment functions work either way. Optional activity is deleted after 90 days.</p><a href="/privacy-policy.html">Privacy Policy</a></div><div class="behavior-consent-actions"><button type="button" onclick="rejectBehaviorTracking()">Only essential shopping</button><button class="gold" type="button" onclick="acceptBehaviorTracking()">Allow personalisation</button></div>';document.body.appendChild(box)}
 function manageBehaviorTracking(){localStorage.removeItem(BEHAVIOR_CONSENT_KEY);showBehaviorConsent()}
 
@@ -208,7 +209,7 @@ function bindImageZoom(id){
 
 
 async function detail(id){
- trackBehavior('product_view',id,{source:'product_detail'});
+ trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
  const ps=await api('/api/products');const p=ps.find(x=>x.id===id);if(!p)return;
  const gallery=getGallery(p), liked=wishlist.includes(id);
  const qaHtml=await qaSection(p.id);
@@ -1335,7 +1336,7 @@ window.adminWhatsappDeliveryReport=adminWhatsappDeliveryReport;
 window.answerWhatsappMarketingPrompt=answerWhatsappMarketingPrompt;
 window.cancelOrder=cancelOrder;window.downloadInvoice=downloadInvoice;
 window.adminSecurityAlerts=adminSecurityAlerts;window.updateSecurityAlert=updateSecurityAlert;
-window.trackBehavior=trackBehavior;window.acceptBehaviorTracking=acceptBehaviorTracking;window.rejectBehaviorTracking=rejectBehaviorTracking;window.manageBehaviorTracking=manageBehaviorTracking;
+window.trackBehavior=trackBehavior;window.acceptBehaviorTracking=acceptBehaviorTracking;window.rejectBehaviorTracking=rejectBehaviorTracking;window.manageBehaviorTracking=manageBehaviorTracking;window.loadSessionHistory=loadSessionHistory;
 window.adminAppearance=adminAppearance;window.saveAppearance=saveAppearance;window.applyAppearance=applyAppearance;window.pickPremiumColour=pickPremiumColour;
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1358,5 +1359,5 @@ document.addEventListener('DOMContentLoaded',()=>{
  const admin=document.getElementById('admin');if(admin&&user?.role==='admin')admin.style.display='inline';
  document.getElementById('accountTopLink')?.addEventListener('pointerdown',()=>{warmMsg91().catch(()=>{})},{passive:true});
  document.getElementById('accountTopLink')?.addEventListener('pointerenter',()=>{warmMsg91().catch(()=>{})},{passive:true});
- restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{warmMsg91().catch(()=>{})},400);});
+ restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSessionHistory();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{warmMsg91().catch(()=>{})},400);});
 });
