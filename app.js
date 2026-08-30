@@ -4,7 +4,7 @@ let token='';
 let user=JSON.parse(localStorage.getItem('ashwiniUser')||'null');
 let cart=[];
 let wishlist=JSON.parse(localStorage.getItem('ashwiniWishlist')||'[]');
-let category='All', sizes={}, adIndex=0, adTimer, adPaused=false, checkoutItems=null, checkoutIdempotencyKey='', checkoutInProgress=false, quickFilters=new Set();
+let category='All', sizes={}, adIndex=0, adTimer, adPaused=false, checkoutItems=null, checkoutIdempotencyKey='', checkoutInProgress=false, quickFilters=new Set(),loadRequestId=0;
 let automaticDeliveryEstimate=null, automaticDeliveryPromise=null, automaticDeliveryFailed=false;
 const stages=['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED'];
 const BEHAVIOR_CONSENT_KEY='ashwiniBehaviorConsentV1',BEHAVIOR_CONSENT_VERSION='2026-08-29-v1';
@@ -73,14 +73,16 @@ function addressPinChanged(){
 function cat(c){category=(c||'All').trim();const q=document.getElementById('q');if(q)q.value='';const s=document.getElementById('searchCat');if(s)s.value=category;document.querySelectorAll('input[name="c"]').forEach(r=>r.checked=(r.value||'')===category);load();document.getElementById('products')?.scrollIntoView({behavior:'smooth',block:'start'})}
 
 async function load(){
+ const requestId=++loadRequestId;
  try{
   const q=document.getElementById('q')?.value||'', sort=document.getElementById('sort')?.value||'featured';
   const p=await api(`/api/products?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}&sort=${sort}&filters=${encodeURIComponent([...quickFilters].join(','))}`);
+  if(requestId!==loadRequestId)return p;
   const grid=document.getElementById('grid'); if(!grid)return;
   document.getElementById('resultCount').textContent=`(${p.length} results)`;
   grid.innerHTML=p.map(productCard).join('');
   return p;
- }catch(e){console.error(e);const g=document.getElementById('grid');if(g)g.innerHTML=`<div style="padding:20px"><b>Products could not load.</b><br>${esc(e.message)}<br><br>Please refresh the page.</div>`;return []}
+ }catch(e){if(requestId!==loadRequestId)return [];console.error(e);const g=document.getElementById('grid');if(g)g.innerHTML=`<div style="padding:20px"><b>Products could not load.</b><br>${esc(e.message)}<br><br>Please refresh the page.</div>`;return []}
 }
 function connectCatalogUpdates(){if(!window.EventSource||window.__catalogStream)return;const stream=new EventSource('/api/catalog/stream');window.__catalogStream=stream;stream.onmessage=e=>{try{const update=JSON.parse(e.data||'{}');if(update.type!=='catalog_update')return;clearTimeout(window.__catalogRefreshTimer);window.__catalogRefreshTimer=setTimeout(()=>{load();loadSessionHistory()},180)}catch{}};stream.onerror=()=>{} }
 function voiceSearchTerms(value){const text=String(value||'').toLowerCase().replace(/[^a-z0-9\s-]/g,' '),aliases={kurti:'kurta',kurtis:'kurta',saree:'sarara',sari:'sarara',gown:'wedding gown',dress:'western dress',dresses:'western dress',shirt:'shirts',pants:'formal ladies gents pants',coat:'coat set',lehnga:'lehenga',party:'party wear'};return [...new Set(text.split(/\s+/).filter(x=>x.length>1&&!['show','find','search','please','product','products','item','items','mujhe','dikhao','dikhana','chahiye','ka','ki','ke','for','me'].includes(x)).flatMap(x=>(aliases[x]||x).split(' ')))]}
