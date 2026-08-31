@@ -345,7 +345,7 @@ async function reviewsSection(id){
   const stars=(n,cls='')=>`<span class="review-stars ${cls}" aria-label="${n} out of 5 stars">${[1,2,3,4,5].map(i=>`<span class="star ${i<=n?'on':''}">★</span>`).join('')}</span>`;
   const list=(d.reviews||[]).map(r=>`<div class="review"><div>${stars(r.rating)} <b>${esc(r.customer_name||'Customer')}</b>${r.verified_purchase?' <span class="status-pill">✓ Verified Purchase</span>':''}</div><div style="margin-top:5px">${esc(r.feedback)}</div><small>${new Date(r.created_at).toLocaleDateString('en-IN')}</small></div>`).join('')||'<div class="review">No customer reviews yet.</div>';
   const form=user?.role==='customer'?(d.can_review?`<div class="review-form"><h4>Write a review</h4><p><small>✓ Verified Purchase</small></p><div class="star-picker" id="review-stars-${id}">${[1,2,3,4,5].map(i=>`<button type="button" class="pick-star" aria-label="${i} stars" onclick="pickReviewStar(${id},${i})">★</button>`).join('')}</div><input type="hidden" id="review-rating-${id}" value="0"><textarea id="review-feedback-${id}" rows="3" maxlength="1000" placeholder="Share your experience with this product"></textarea><button class="gold" type="button" onclick="submitReview(${id})">Submit Review</button></div>`:`<p><small>Reviews can be written after this product is delivered and its payment is confirmed.</small></p>`):`<p><button class="wishlist" type="button" onclick="auth()">Login to review a verified purchase</button></p>`;
-  return `<div class="reviews"><h3>Customer Reviews & Feedback ${d.count?`(${d.count})`:''}</h3><div style="margin:6px 0 12px">${d.count?`${stars(Math.round(d.average))} <b>${Number(d.average).toFixed(1)}/5</b>`:'No ratings yet'}</div>${form}<div class="review-list">${list}</div></div>`;
+  return `<div class="reviews"><h3>Customer Reviews & Feedback ${d.count?`(${d.count})`:''}</h3>${form}<div class="review-list">${list}</div></div>`;
  }catch(e){return `<div class="reviews"><h3>Customer Reviews & Feedback</h3><p>Reviews could not load.</p></div>`}
 }
 function pickReviewStar(id,n){const input=document.getElementById(`review-rating-${id}`);if(input)input.value=n;document.querySelectorAll(`#review-stars-${id} .pick-star`).forEach((b,i)=>b.classList.toggle('selected',i<n))}
@@ -961,7 +961,6 @@ async function productEditor(id=null){
  <div><label>Selling Price (₹)<input id="ap_price" type="number" min="0" value="${Number(p.price)||0}"></label></div>
  <div><label>MRP (₹)<input id="ap_mrp" type="number" min="0" value="${Number(p.mrp)||0}"></label></div>
  <div><label>Stock Quantity<input id="ap_stock" type="number" min="0" value="${Number(p.stock)||0}"></label></div>
- <div><label>Rating<input id="ap_rating" type="number" min="0" max="5" step="0.1" value="${Number(p.rating)||0}"></label></div>
  <div><label>🏷️ Product Sticker / Badge<input id="ap_badge" value="${esc(p.badge_text||'')}" placeholder="Ashwini Choice (leave blank to remove)"></label></div>
  <div><label>🎁 Extra Product Offer<input id="ap_offer_text" value="${esc(p.offer_text||'')}" placeholder="Extra 10% off"></label></div>
  <div><label>Offer Discount %<input id="ap_offer_discount" type="number" min="0" max="100" step="0.1" value="${Number(p.offer_discount)||0}"></label></div>
@@ -1075,7 +1074,7 @@ function initAdminPhotoPreview(){
 }
 async function saveProduct(id){
  try{
-  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:ap_sizes.value.trim(),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),rating:Number(ap_rating.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0)};
+  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:ap_sizes.value.trim(),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0)};
   if(!body.name||!body.category||body.price<0||body.mrp<0||body.stock<0)throw Error('Please fill product name, category, prices and stock correctly');
   JSON.parse(body.gallery);JSON.parse(body.size_chart);
   const d=await api(id?`/api/admin/products/${id}`:'/api/admin/products',{method:id?'PATCH':'POST',body});
