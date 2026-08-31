@@ -715,7 +715,7 @@ function auth(prefill='',notice=''){
  if(user){accountMenu();return}
  openM(`<div class="amazon-login-wrap">
  <div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div>
- <h2>Sign in or create account</h2>
+ <h2>Sign in</h2>
  <div class="form">
    <label class="login-label"><b>Enter mobile number or email</b></label>
    <input id="loginIdentifier" value="${esc(prefill)}" placeholder="Mobile number or email" autocomplete="username" autofocus>
