@@ -863,6 +863,14 @@ app.get("/api/auth/msg91-config",(req,res)=>{
  if(!widgetId||!tokenAuth)return res.status(503).json({error:"MSG91 OTP is not configured. Add MSG91_WIDGET_ID and MSG91_WIDGET_TOKEN in Render."});
  res.json({widgetId,tokenAuth});
 });
+app.post("/api/auth/check-customer-login",(req,res)=>{
+ const identifier=String(req.body?.identifier||'').trim();
+ if(!identifier)return res.status(400).json({error:'Enter your mobile number or email'});
+ if(!publicWriteAllowed(req,res,'CUSTOMER_LOGIN_LOOKUP_IP',20,15*60*1000)||!publicWriteAllowed(req,res,'CUSTOMER_LOGIN_LOOKUP_ID',5,15*60*1000,identifier,false))return;
+ const customer=findCustomerByIdentifier(identifier);
+ if(!customer)return res.status(404).json({error:"We couldn't find an Ashwini account with this mobile number or email. Please check your details or create a new account first."});
+ res.json({ok:true});
+});
 async function verifyMsg91AccessToken(accessToken){
  const authkey=String(process.env.MSG91_AUTHKEY||"").trim();
  if(!authkey)throw new Error("MSG91 server AuthKey is not configured.");
@@ -981,7 +989,7 @@ app.post("/api/auth/request-login-otp",async(req,res)=>{
  if(!identifier)return res.status(400).json({error:"Enter your email or mobile number"});
  if(!otpGuard(req,res,identifier))return;
  const u=findCustomerByIdentifier(identifier),requested=/^\d{10}$/.test(normalizePhone(identifier))?'mobile':'email';
- if(!u)return res.json({ok:true,channel:requested,message:'If a customer account matches, an OTP has been sent.'});
+ if(!u)return res.status(404).json({error:"We couldn't find an Ashwini account with this mobile number or email. Please check your details or create a new account first."});
  const otp=issueOtp(u,'login');
  const configured=String(u.two_step_channel||'AUTO').toUpperCase();
  const channel=Number(u.two_step_enabled)!==0 ? (configured==='EMAIL'?'email':configured==='MOBILE'?'mobile':requested) : requested;
