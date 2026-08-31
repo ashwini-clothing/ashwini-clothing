@@ -890,22 +890,31 @@ function msg91AccessTokenClaims(accessToken){
 }
 function msg91VerifiedPhone(data,accessToken=''){
  const phoneKeys=new Set(['mobile','mobileno','mobilenumber','mobile_number','phone','phoneno','phonenumber','phone_number','identifier','useridentifier','user_identifier','identity','sub']);
+ const indianPhone=value=>{
+  const digits=normalizePhone(value);
+  if(/^91[6-9]\d{9}$/.test(digits))return digits.slice(2);
+  if(/^[6-9]\d{9}$/.test(digits))return digits;
+  return '';
+ };
  const seen=new Set(),find=value=>{
-  if(!value||typeof value!=='object'||seen.has(value))return '';
+  if(value===null||value===undefined)return '';
+  if(['string','number'].includes(typeof value))return indianPhone(value);
+  if(typeof value!=='object'||seen.has(value))return '';
   seen.add(value);
   for(const [key,candidate] of Object.entries(value)){
    const normalizedKey=String(key).replace(/[-\s]/g,'').toLowerCase();
    if(phoneKeys.has(normalizedKey)&&['string','number'].includes(typeof candidate)){
-    const digits=normalizePhone(candidate);
-    if(digits.length===10)return digits;
-    if(digits.length===12&&digits.startsWith('91'))return digits.slice(2);
-    if(digits.length>10&&digits.startsWith('91'))return digits.slice(-10);
+    const phone=indianPhone(candidate);if(phone)return phone;
    }
   }
   for(const candidate of Object.values(value)){const found=find(candidate);if(found)return found}
   return '';
  };
  return find(data)||find(msg91AccessTokenClaims(accessToken));
+}
+function logMsg91Mismatch(label,data,accessToken){
+ const claims=msg91AccessTokenClaims(accessToken),keys=value=>value&&typeof value==='object'?Object.keys(value).slice(0,30):[];
+ console.warn(`[MSG91 ${label} mismatch]`,{responseKeys:keys(data),dataKeys:keys(data?.data),claimKeys:keys(claims),tokenParts:String(accessToken||'').split('.').length});
 }
 app.post("/api/auth/verify-msg91-login",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(),phone=normalizePhone(identifier);
@@ -917,7 +926,7 @@ app.post("/api/auth/verify-msg91-login",async(req,res)=>{
   if(!otpVerifyGuard(req,res,phone))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification,accessToken);
-  if(verifiedPhone!==phone){recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
+  if(verifiedPhone!==phone){logMsg91Mismatch('login',verification,accessToken);recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);
   if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
@@ -949,7 +958,7 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
   if(!otpVerifyGuard(req,res,normalized))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification,accessToken);
-  if(verifiedPhone!==normalized){recordOtpFailure(req,normalized);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
+  if(verifiedPhone!==normalized){logMsg91Mismatch('registration',verification,accessToken);recordOtpFailure(req,normalized);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
   msg91Verified=true;
   const hash=await bcrypt.hash(cleanPassword,12);
   const createVerifiedAccount=db.transaction(()=>{
@@ -1086,7 +1095,7 @@ app.post("/api/auth/verify-msg91-admin-login",async(req,res)=>{
   if(Buffer.byteLength(password,'utf8')>72){recordOtpFailure(req,phone);return res.status(401).json({error:"Incorrect admin login details"});}
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification,accessToken);
-  if(verifiedPhone!==phone){recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested admin mobile number."});}
+  if(verifiedPhone!==phone){logMsg91Mismatch('admin',verification,accessToken);recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested admin mobile number."});}
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='admin'").get(phone);
   if(!u||!await bcrypt.compare(password,String(u.password_hash||""))){recordOtpFailure(req,phone);return res.status(401).json({error:"Incorrect admin login details"})}
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0 WHERE id=?").run(u.id);
