@@ -211,6 +211,79 @@ function bindImageZoom(id){
  window.addEventListener('resize',()=>{if(zoomState[id]){clampPan(id);applyZoom(id)}});
 }
 
+const productImageViewerState={scale:1,x:0,y:0,pointers:new Map(),lastDistance:0,lastCenter:null,previousBodyOverflow:''};
+function ensureProductImageViewer(){
+ let viewer=document.getElementById('product-image-viewer');
+ if(viewer)return viewer;
+ viewer=document.createElement('div');
+ viewer.id='product-image-viewer';
+ viewer.className='product-image-viewer';
+ viewer.setAttribute('role','dialog');
+ viewer.setAttribute('aria-modal','true');
+ viewer.setAttribute('aria-label','Full product photo viewer');
+ viewer.innerHTML=`<button class="product-image-viewer-close" type="button" aria-label="Close full photo" title="Close">×</button><div class="product-image-viewer-stage"><img id="product-image-viewer-photo" alt=""></div><div class="product-image-viewer-help">Pinch to zoom · Drag to adjust · Double-tap to zoom</div><div class="product-image-viewer-controls"><button type="button" data-viewer-zoom="out" aria-label="Zoom out">−</button><span id="product-image-viewer-level">100%</span><button type="button" data-viewer-zoom="in" aria-label="Zoom in">+</button><button type="button" data-viewer-zoom="fit">Fit</button></div>`;
+ document.body.appendChild(viewer);
+ const stage=viewer.querySelector('.product-image-viewer-stage'),img=viewer.querySelector('#product-image-viewer-photo');
+ const points=productImageViewerState.pointers;
+ const centerOf=values=>({x:values.reduce((n,p)=>n+p.x,0)/values.length,y:values.reduce((n,p)=>n+p.y,0)/values.length});
+ stage.addEventListener('pointerdown',e=>{
+   if(e.target.closest('button'))return;
+   points.set(e.pointerId,{x:e.clientX,y:e.clientY});
+   try{stage.setPointerCapture(e.pointerId)}catch{}
+   const values=[...points.values()];
+   productImageViewerState.lastCenter=centerOf(values);
+   productImageViewerState.lastDistance=values.length>1?Math.hypot(values[0].x-values[1].x,values[0].y-values[1].y):0;
+   e.preventDefault();
+ },{passive:false});
+ stage.addEventListener('pointermove',e=>{
+   if(!points.has(e.pointerId))return;
+   points.set(e.pointerId,{x:e.clientX,y:e.clientY});
+   const values=[...points.values()],center=centerOf(values),previous=productImageViewerState.lastCenter||center;
+   if(values.length>1){
+     const distance=Math.hypot(values[0].x-values[1].x,values[0].y-values[1].y);
+     if(productImageViewerState.lastDistance>0)productImageViewerState.scale=Math.max(1,Math.min(5,productImageViewerState.scale*(distance/productImageViewerState.lastDistance)));
+     productImageViewerState.lastDistance=distance;
+   }
+   if(productImageViewerState.scale>1){productImageViewerState.x+=center.x-previous.x;productImageViewerState.y+=center.y-previous.y}
+   productImageViewerState.lastCenter=center;
+   applyProductImageViewerTransform();
+   e.preventDefault();
+ },{passive:false});
+ const endPointer=e=>{points.delete(e.pointerId);const values=[...points.values()];productImageViewerState.lastCenter=values.length?centerOf(values):null;productImageViewerState.lastDistance=values.length>1?Math.hypot(values[0].x-values[1].x,values[0].y-values[1].y):0;try{stage.releasePointerCapture(e.pointerId)}catch{}};
+ stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);stage.addEventListener('lostpointercapture',endPointer);
+ stage.addEventListener('wheel',e=>{e.preventDefault();zoomProductImageViewer(e.deltaY<0?.25:-.25)},{passive:false});
+ stage.addEventListener('dblclick',e=>{e.preventDefault();productImageViewerState.scale>1?fitProductImageViewer():zoomProductImageViewer(1)});
+ img.addEventListener('dragstart',e=>e.preventDefault());
+ img.addEventListener('load',applyProductImageViewerTransform);
+ viewer.querySelector('.product-image-viewer-close').addEventListener('click',closeProductImageViewer);
+ viewer.querySelector('[data-viewer-zoom="out"]').addEventListener('click',()=>zoomProductImageViewer(-.25));
+ viewer.querySelector('[data-viewer-zoom="in"]').addEventListener('click',()=>zoomProductImageViewer(.25));
+ viewer.querySelector('[data-viewer-zoom="fit"]').addEventListener('click',fitProductImageViewer);
+ viewer.addEventListener('click',e=>{if(e.target===viewer)closeProductImageViewer()});
+ return viewer;
+}
+function applyProductImageViewerTransform(){
+ const viewer=document.getElementById('product-image-viewer'),stage=viewer?.querySelector('.product-image-viewer-stage'),img=viewer?.querySelector('#product-image-viewer-photo'),label=viewer?.querySelector('#product-image-viewer-level');
+ if(!stage||!img)return;
+ const st=productImageViewerState,ratio=(img.naturalWidth&&img.naturalHeight)?img.naturalWidth/img.naturalHeight:1;
+ const baseW=Math.min(stage.clientWidth,stage.clientHeight*ratio),baseH=Math.min(stage.clientHeight,stage.clientWidth/ratio);
+ const maxX=Math.max(0,(baseW*(st.scale-1))/2),maxY=Math.max(0,(baseH*(st.scale-1))/2);
+ if(st.scale<=1){st.scale=1;st.x=0;st.y=0}else{st.x=Math.max(-maxX,Math.min(maxX,st.x));st.y=Math.max(-maxY,Math.min(maxY,st.y))}
+ img.style.transform=`translate3d(${st.x}px,${st.y}px,0) scale(${st.scale})`;
+ if(label)label.textContent=`${Math.round(st.scale*100)}%`;
+}
+function zoomProductImageViewer(delta){productImageViewerState.scale=Math.max(1,Math.min(5,productImageViewerState.scale+delta));applyProductImageViewerTransform()}
+function fitProductImageViewer(){productImageViewerState.scale=1;productImageViewerState.x=0;productImageViewerState.y=0;applyProductImageViewerTransform()}
+function openProductImageViewer(id){
+ const source=document.getElementById(`gallery-main-${id}`),viewer=ensureProductImageViewer(),img=viewer.querySelector('#product-image-viewer-photo');
+ if(!source||!img)return;
+ productImageViewerState.previousBodyOverflow=document.body.style.overflow;
+ fitProductImageViewer();img.src=source.currentSrc||source.src;img.alt=source.alt||'Full product photo';viewer.classList.add('open');document.body.style.overflow='hidden';viewer.querySelector('.product-image-viewer-close')?.focus();
+}
+function closeProductImageViewer(){const viewer=document.getElementById('product-image-viewer');if(!viewer?.classList.contains('open'))return;viewer.classList.remove('open');productImageViewerState.pointers.clear();fitProductImageViewer();document.body.style.overflow=productImageViewerState.previousBodyOverflow||'hidden'}
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('product-image-viewer')?.classList.contains('open'))closeProductImageViewer()});
+window.addEventListener('resize',()=>{if(document.getElementById('product-image-viewer')?.classList.contains('open'))applyProductImageViewerTransform()});
+
 
 async function detail(id){
  trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
@@ -223,7 +296,7 @@ async function detail(id){
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
  openM(`<div class="detail">
-  <div><div class="gallery"><div class="gallery-thumbs">${gallery.map((src,i)=>`<button type="button" class="gallery-thumb ${i===0?'active':''}" onclick="stop(event);setGalleryImage(${p.id},'${esc(src)}',this)"><img src="${esc(src)}" alt="${esc(p.name)} view ${i+1}"></button>`).join('')}</div><div><div class="gallery-main" id="gallery-main-wrap-${p.id}"><img id="gallery-main-${p.id}" src="${esc(gallery[0]||p.image||'')}" alt="${esc(p.name)}"><div class="zoom-controls"><button class="zoom-btn" type="button" title="Zoom out" onclick="stop(event);zoomImage(${p.id},-.2)">−</button><span class="zoom-level" id="zoom-level-${p.id}">100%</span><button class="zoom-btn" type="button" title="Zoom in" onclick="stop(event);zoomImage(${p.id},.2)">+</button><button class="zoom-btn" type="button" title="Reset" onclick="stop(event);resetZoom(${p.id})">↺</button></div></div><div class="gallery-count">${gallery.length} photo${gallery.length===1?'':'s'} · maximum 5 views · Use +/−, wheel or pinch to zoom</div></div></div></div>
+  <div><div class="gallery"><div class="gallery-thumbs">${gallery.map((src,i)=>`<button type="button" class="gallery-thumb ${i===0?'active':''}" onclick="stop(event);setGalleryImage(${p.id},'${esc(src)}',this)"><img src="${esc(src)}" alt="${esc(p.name)} view ${i+1}"></button>`).join('')}</div><div><div class="gallery-main" id="gallery-main-wrap-${p.id}"><img id="gallery-main-${p.id}" class="product-photo-open-full" src="${esc(gallery[0]||p.image||'')}" alt="${esc(p.name)}" title="Open full photo" onclick="stop(event);openProductImageViewer(${p.id})"><div class="zoom-controls"><button class="zoom-btn" type="button" title="Zoom out" onclick="stop(event);zoomImage(${p.id},-.2)">−</button><span class="zoom-level" id="zoom-level-${p.id}">100%</span><button class="zoom-btn" type="button" title="Zoom in" onclick="stop(event);zoomImage(${p.id},.2)">+</button><button class="zoom-btn" type="button" title="Reset" onclick="stop(event);resetZoom(${p.id})">↺</button></div></div><div class="gallery-count">${gallery.length} photo${gallery.length===1?'':'s'} · Tap photo for full view · Pinch or use +/− to zoom</div></div></div></div>
   <div>${p.badge_text?`<div style="margin-bottom:8px"><span class="badge" style="position:static;display:inline-block">${esc(p.badge_text)}</span></div>`:''}<h1>${esc(p.name)}</h1><div class="stars">${p.rating>0?'★★★★★ '+p.rating+' customer rating':'New product'}</div><p style="font-size:27px;font-weight:bold">₹${Number(p.price||0).toLocaleString('en-IN')} <span class="mrp">₹${Number(p.mrp||0).toLocaleString('en-IN')}</span></p><p>Inclusive of all taxes</p>${p.offer_text?`<div class="coupon-box"><b>🎁 ${esc(p.offer_text)}</b>${Number(p.offer_discount||0)>0?`<div style="font-size:18px;font-weight:700;margin-top:4px">${Number(p.offer_discount)}% OFF</div>`:''}</div>`:''}<hr>
   <p><b>Colour:</b> ${esc(p.color)}</p><p><b>Size:</b></p><div class="sizebox" id="sizes-detail-${p.id}">${(p.size_options||'S,M,L,XL').split(',').map(s=>`<button class="size" type="button" onclick="stop(event);pick(${p.id},'${esc(s.trim())}',this)">${esc(s.trim())}</button>`).join('')}</div>
   <p><button class="size-chart-link" type="button" onclick="stop(event);sizeChart(${p.id})">📏 View Size Chart</button></p>
