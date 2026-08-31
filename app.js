@@ -215,7 +215,7 @@ function bindImageZoom(id){
  window.addEventListener('resize',()=>{if(zoomState[id]){clampPan(id);applyZoom(id)}});
 }
 
-const productImageViewerState={scale:1,x:0,y:0,pointers:new Map(),lastDistance:0,lastCenter:null,previousBodyOverflow:''};
+const productImageViewerState={scale:1,x:0,y:0,pointers:new Map(),lastDistance:0,lastCenter:null,previousBodyOverflow:'',images:[],index:0};
 function ensureProductImageViewer(){
  let viewer=document.getElementById('product-image-viewer');
  if(viewer)return viewer;
@@ -225,7 +225,7 @@ function ensureProductImageViewer(){
  viewer.setAttribute('role','dialog');
  viewer.setAttribute('aria-modal','true');
  viewer.setAttribute('aria-label','Full product photo viewer');
- viewer.innerHTML=`<button class="product-image-viewer-close" type="button" aria-label="Close full photo" title="Close">×</button><div class="product-image-viewer-stage"><img id="product-image-viewer-photo" alt=""></div><div class="product-image-viewer-help">Pinch to zoom · Drag to adjust · Double-tap to zoom</div><div class="product-image-viewer-controls"><button type="button" data-viewer-zoom="out" aria-label="Zoom out">−</button><span id="product-image-viewer-level">100%</span><button type="button" data-viewer-zoom="in" aria-label="Zoom in">+</button><button type="button" data-viewer-zoom="fit">Fit</button></div>`;
+ viewer.innerHTML=`<button class="product-image-viewer-close" type="button" aria-label="Close full photo" title="Close">×</button><button class="product-image-viewer-nav product-image-viewer-prev" type="button" aria-label="Previous product photo" title="Previous photo">‹</button><div class="product-image-viewer-stage"><img id="product-image-viewer-photo" alt=""></div><button class="product-image-viewer-nav product-image-viewer-next" type="button" aria-label="Next product photo" title="Next photo">›</button><div class="product-image-viewer-help">Pinch to zoom · Drag to adjust · Double-tap to zoom</div><div class="product-image-viewer-controls"><button type="button" data-viewer-zoom="out" aria-label="Zoom out">−</button><span id="product-image-viewer-level">100%</span><button type="button" data-viewer-zoom="in" aria-label="Zoom in">+</button><button type="button" data-viewer-zoom="fit">Fit</button></div>`;
  document.body.appendChild(viewer);
  const stage=viewer.querySelector('.product-image-viewer-stage'),img=viewer.querySelector('#product-image-viewer-photo');
  const points=productImageViewerState.pointers;
@@ -260,6 +260,8 @@ function ensureProductImageViewer(){
  img.addEventListener('dragstart',e=>e.preventDefault());
  img.addEventListener('load',applyProductImageViewerTransform);
  viewer.querySelector('.product-image-viewer-close').addEventListener('click',closeProductImageViewer);
+ viewer.querySelector('.product-image-viewer-prev').addEventListener('click',()=>moveProductImageViewer(-1));
+ viewer.querySelector('.product-image-viewer-next').addEventListener('click',()=>moveProductImageViewer(1));
  viewer.querySelector('[data-viewer-zoom="out"]').addEventListener('click',()=>zoomProductImageViewer(-.25));
  viewer.querySelector('[data-viewer-zoom="in"]').addEventListener('click',()=>zoomProductImageViewer(.25));
  viewer.querySelector('[data-viewer-zoom="fit"]').addEventListener('click',fitProductImageViewer);
@@ -278,14 +280,17 @@ function applyProductImageViewerTransform(){
 }
 function zoomProductImageViewer(delta){productImageViewerState.scale=Math.max(1,Math.min(5,productImageViewerState.scale+delta));applyProductImageViewerTransform()}
 function fitProductImageViewer(){productImageViewerState.scale=1;productImageViewerState.x=0;productImageViewerState.y=0;applyProductImageViewerTransform()}
+function showProductImageViewerAt(index){const viewer=document.getElementById('product-image-viewer'),img=viewer?.querySelector('#product-image-viewer-photo'),images=productImageViewerState.images;if(!img||!images.length)return;productImageViewerState.index=(index+images.length)%images.length;fitProductImageViewer();img.src=images[productImageViewerState.index];const hidden=images.length<2;viewer.querySelectorAll('.product-image-viewer-nav').forEach(button=>{button.hidden=hidden;button.disabled=hidden})}
+function moveProductImageViewer(step){showProductImageViewerAt(productImageViewerState.index+step)}
 function openProductImageViewer(id){
  const source=document.getElementById(`gallery-main-${id}`),viewer=ensureProductImageViewer(),img=viewer.querySelector('#product-image-viewer-photo');
  if(!source||!img)return;
  productImageViewerState.previousBodyOverflow=document.body.style.overflow;
- fitProductImageViewer();img.src=source.currentSrc||source.src;img.alt=source.alt||'Full product photo';viewer.classList.add('open');document.body.style.overflow='hidden';viewer.querySelector('.product-image-viewer-close')?.focus();
+ const current=source.currentSrc||source.src,thumbs=[...document.querySelectorAll('.gallery-thumb img')].map(x=>x.currentSrc||x.src).filter(Boolean);productImageViewerState.images=[...new Set(thumbs.length?thumbs:[current])];productImageViewerState.index=Math.max(0,productImageViewerState.images.indexOf(current));
+ img.alt=source.alt||'Full product photo';viewer.classList.add('open');showProductImageViewerAt(productImageViewerState.index);document.body.style.overflow='hidden';viewer.querySelector('.product-image-viewer-close')?.focus();
 }
 function closeProductImageViewer(){const viewer=document.getElementById('product-image-viewer');if(!viewer?.classList.contains('open'))return;viewer.classList.remove('open');productImageViewerState.pointers.clear();fitProductImageViewer();document.body.style.overflow=productImageViewerState.previousBodyOverflow||'hidden'}
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.getElementById('product-image-viewer')?.classList.contains('open'))closeProductImageViewer()});
+window.addEventListener('keydown',e=>{if(!document.getElementById('product-image-viewer')?.classList.contains('open'))return;if(e.key==='Escape')closeProductImageViewer();else if(e.key==='ArrowLeft')moveProductImageViewer(-1);else if(e.key==='ArrowRight')moveProductImageViewer(1)});
 window.addEventListener('resize',()=>{if(document.getElementById('product-image-viewer')?.classList.contains('open'))applyProductImageViewerTransform()});
 
 
