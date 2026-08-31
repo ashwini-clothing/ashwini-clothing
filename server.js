@@ -926,9 +926,9 @@ app.post("/api/auth/verify-msg91-login",async(req,res)=>{
   if(!otpVerifyGuard(req,res,phone))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification,accessToken);
-  if(verifiedPhone!==phone){logMsg91Mismatch('login',verification,accessToken);recordOtpFailure(req,phone);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
+  if(verifiedPhone!==phone){logMsg91Mismatch('login',verification,accessToken);recordOtpFailure(req,phone);return res.status(401).json({error:"We couldn't find an Ashwini account linked to this mobile number or email. Please check your details or create a new account."});}
   const u=db.prepare("SELECT * FROM users WHERE phone=? AND role='customer'").get(phone);
-  if(!u)return res.status(404).json({error:"Customer account not found. Please register first."});
+  if(!u)return res.status(404).json({error:"We couldn't find an Ashwini account linked to this mobile number or email. Please check your details or create a new account."});
   db.prepare("UPDATE users SET login_otp_hash='',login_otp_expires_at=0,otp_hash='',otp_expires_at=0 WHERE id=?").run(u.id);
   clearOtpFailures(req,phone);
   const safe={id:u.id,name:u.name,email:u.email,role:u.role,phone:u.phone||''};
@@ -958,7 +958,7 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
   if(!otpVerifyGuard(req,res,normalized))return;
   const verification=await verifyMsg91AccessToken(accessToken);
   const verifiedPhone=msg91VerifiedPhone(verification,accessToken);
-  if(verifiedPhone!==normalized){logMsg91Mismatch('registration',verification,accessToken);recordOtpFailure(req,normalized);return res.status(401).json({error:"MSG91 did not verify the requested mobile number."});}
+  if(verifiedPhone!==normalized){logMsg91Mismatch('registration',verification,accessToken);recordOtpFailure(req,normalized);return res.status(401).json({error:"Mobile verification could not be completed. Please request a new OTP and try again."});}
   msg91Verified=true;
   const hash=await bcrypt.hash(cleanPassword,12);
   const createVerifiedAccount=db.transaction(()=>{
