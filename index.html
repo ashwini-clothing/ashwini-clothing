@@ -463,7 +463,7 @@ button:active{transform:translateY(1px)}
 
 <div id="lensCameraOverlay" class="lens-camera-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Search products using a photo"><div class="lens-camera-shell"><div class="lens-camera-topbar"><strong class="lens-camera-title">Ashwini Lens</strong><button class="lens-camera-close" type="button" onclick="closeLensExperience()" aria-label="Close camera">×</button></div><div class="lens-camera-stage"><video id="lensCameraVideo" class="lens-camera-video" autoplay muted playsinline></video><div id="lensCameraStatus" class="lens-camera-status">Allow camera access or upload a photo.</div></div><div class="lens-camera-controls"><label class="lens-camera-upload" for="photoUploadInput" title="Upload from files" aria-label="Upload from files"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 18 4.5-4.5 3 3 2.5-2.5 4 4M12 3v7M9 6l3-3 3 3"/></svg></label><button class="lens-camera-capture" type="button" onclick="captureLensPhoto()" aria-label="Take photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg></button><span class="lens-camera-spacer" aria-hidden="true"></span></div></div></div>
 
-<script src="/app.js?v=20260901-customer-ratings-v14" defer></script>
+<script src="/app.js?v=20260901-product-info-dropdown-v15" defer></script>
 <script>
 function openLensCamera(){
   closeLensSourceMenu();
@@ -648,6 +648,7 @@ function handleLensPhoto(input){
 .admin-page-launch .admin-notif-badge,.admin-page-launch .status-pill{position:static;transform:none;font-size:inherit;line-height:inherit;margin-left:8px}
 </style>
 <style id="product-image-viewer-style">
+.product-info-dropdown{margin:10px 0;border:1px solid #d8c7cc;border-radius:10px;background:#fffaf7;overflow:hidden}.product-info-dropdown>summary{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;padding:14px 16px;color:#5a2e40;font-size:17px;font-weight:800;cursor:pointer}.product-info-dropdown>summary::-webkit-details-marker{display:none}.product-info-dropdown>summary span{font-size:25px;line-height:1;color:#8f3b4e;transition:transform .2s ease}.product-info-dropdown[open]>summary span{transform:rotate(180deg)}.product-info-dropdown[open]>summary{border-bottom:1px solid #eaded8;background:#f9edf0}.product-info-dropdown-body{padding:12px}.product-info-dropdown .product-history{margin:0}.stars,.review-stars .star.on,.pick-star.selected{color:#9b294b!important}.review-stars .star{color:#b9a8ae}.pick-star:hover{color:#9b294b!important}
 .product-page-size-toggle{display:none;position:absolute;top:9px;right:66px;z-index:31;width:40px;height:40px;border:0;border-radius:50%;background:#fff;color:#24151c;font-size:23px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 #modal.product-page-mode{padding:0;align-items:stretch}
 #modal.product-page-mode .box{width:100%;max-width:none;height:100dvh;min-height:100dvh;max-height:100dvh;border-radius:0;box-sizing:border-box;padding:24px 30px 50px}
