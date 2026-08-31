@@ -107,9 +107,10 @@ function productCard(p){
  <button class="add" type="button" style="margin-top:7px;background:#fff;border-color:#caa6ae" onclick="stop(event);detail(${p.id})">View Details</button>
  </article>`;
 }
-function pick(id,s,b){const box=b?.parentElement;if(sizes[id]===s){sizes[id]='';b?.classList.remove('sel');return}sizes[id]=s;if(box)box.querySelectorAll('.size').forEach(x=>x.classList.remove('sel'));b?.classList.add('sel')}
+function pick(id,s,b){const box=b?.parentElement,isSelected=!!b?.classList.contains('sel');if(isSelected){sizes[id]='';b.classList.remove('sel');return}sizes[id]=s;if(box)box.querySelectorAll('.size').forEach(x=>x.classList.remove('sel'));b?.classList.add('sel')}
+function selectedSizeForAction(id,btn){const scope=btn?.closest('.product-card,.detail')||document,selected=scope.querySelector(`#sizes-card-${id} .size.sel,#sizes-detail-${id} .size.sel`),chosen=String(selected?.textContent||'').trim();if(!chosen||chosen!==String(sizes[id]||'').trim()){sizes[id]='';return ''}return chosen}
 function flash(btn,text='✓ Added to Cart'){if(!btn)return;const old=btn.textContent;btn.textContent=text;btn.classList.add('added');setTimeout(()=>{if(btn.isConnected){btn.textContent=old;btn.classList.remove('added')}},1400)}
-function add(id,btn){if(!user){auth('', 'Please sign in to add items to your cart.');return false}let chosen=sizes[id];if(!chosen){toast('Please select a size');return false}let x=cart.find(a=>a.id===id&&a.size===chosen);if(x)x.quantity++;else cart.push({id,quantity:1,size:chosen});save();trackBehavior('add_to_cart',id,{source:'product'});flash(btn);toast(`✓ Added to Cart · Size ${chosen}`);return true}
+function add(id,btn){if(!user){auth('', 'Please sign in to add items to your cart.');return false}const chosen=selectedSizeForAction(id,btn);if(!chosen){toast('Please select a size');return false}let x=cart.find(a=>a.id===id&&a.size===chosen);if(x)x.quantity++;else cart.push({id,quantity:1,size:chosen});save();trackBehavior('add_to_cart',id,{source:'product'});flash(btn);toast(`✓ Added to Cart · Size ${chosen}`);return true}
 function cartStorageKey(){if(!user)return '';return user.role==='admin'?'ashwiniAdminCart':`ashwiniCart_${user.id}`}
 function loadCartForCurrentUser(){const key=cartStorageKey();try{cart=key?JSON.parse(localStorage.getItem(key)||'[]'):[];if(!Array.isArray(cart))cart=[]}catch{cart=[]}const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
 function save(){const key=cartStorageKey();if(key)localStorage.setItem(key,JSON.stringify(cart));const c=document.getElementById('count');if(c)c.textContent=cart.reduce((s,x)=>s+x.quantity,0)}
@@ -368,7 +369,7 @@ function sizeChart(id){
 }
 
 function addFromDetail(id,btn){if(add(id,btn))setTimeout(closeM,450)}
-function buyNow(id,btn){if(!user){auth('', 'Please sign in or create an account before buying this product.');return}if(!sizes[id]){toast('Please select a size first');return}checkoutItems=[{id,quantity:1,size:sizes[id]}];checkout(checkoutItems)}
+function buyNow(id,btn){if(!user){auth('', 'Please sign in or create an account before buying this product.');return}const chosen=selectedSizeForAction(id,btn);if(!chosen){toast('Please select a size first');return}checkoutItems=[{id,quantity:1,size:chosen}];checkout(checkoutItems)}
 function activeCheckoutItems(){return checkoutItems||cart}
 
 function wish(id){const adding=!wishlist.includes(id);if(!adding)wishlist=wishlist.filter(x=>x!==id);else wishlist.push(id);localStorage.setItem('ashwiniWishlist',JSON.stringify(wishlist));if(adding)trackBehavior('wishlist_add',id,{source:'product_detail'});toast(wishlist.includes(id)?'♥ Added to Wishlist':'Removed from Wishlist');detail(id)}
