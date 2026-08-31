@@ -4,7 +4,7 @@ let token='';
 let user=JSON.parse(localStorage.getItem('ashwiniUser')||'null');
 let cart=[];
 let wishlist=JSON.parse(localStorage.getItem('ashwiniWishlist')||'[]');
-let category='All', sizes={}, adIndex=0, adTimer, adPaused=false, checkoutItems=null, checkoutIdempotencyKey='', checkoutInProgress=false, quickFilters=new Set(),loadRequestId=0;
+let category='All', sizes={}, adIndex=0, adTimer, adPaused=false, checkoutItems=null, checkoutIdempotencyKey='', checkoutInProgress=false, quickFilters=new Set(),loadRequestId=0,productDetailRequestId=0;
 let automaticDeliveryEstimate=null, automaticDeliveryPromise=null, automaticDeliveryFailed=false;
 const stages=['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED'];
 const BEHAVIOR_CONSENT_KEY='ashwiniBehaviorConsentV1',BEHAVIOR_CONSENT_VERSION='2026-08-29-v1';
@@ -122,7 +122,7 @@ function enhancePasswordInputs(root=document){
   const scope=root||document;scope.querySelectorAll?.('input[type="password"]:not([data-ash-eye])').forEach(input=>{const wrap=document.createElement('span');wrap.className='ash-pw-wrap';input.parentNode.insertBefore(wrap,input);wrap.appendChild(input);input.dataset.ashEye='1';const b=document.createElement('button');b.type='button';b.className='ash-pw-eye';b.setAttribute('aria-label','Show password');b.textContent='Show';b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';b.textContent=show?'Hide':'Show';b.setAttribute('aria-label',show?'Hide password':'Show password')});wrap.appendChild(b)})
  }catch{}
 }
-function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';if(String(html).includes('Ashwini Admin Dashboard'))requestAnimationFrame(addAppearanceDashboardBox);document.getElementById('modalClose')?.focus()}
+function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;b.innerHTML=html;b.scrollTop=0;m.scrollTop=0;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';if(String(html).includes('Ashwini Admin Dashboard'))requestAnimationFrame(addAppearanceDashboardBox);document.getElementById('modalClose')?.focus()}
 function closeM(fromHistory=false){if(window.__productHistoryActive&&!fromHistory){history.back();return}if(window.__helpChatTimer){clearInterval(window.__helpChatTimer);window.__helpChatTimer=null}if(window.__helpChatStream){window.__helpChatStream.close();window.__helpChatStream=null}const m=document.getElementById('modal');if(!m)return;m.style.display='none';m.style.zIndex='';m.setAttribute('aria-hidden','true');document.body.style.overflow='';window.__productHistoryActive=false}
 function markProductHistory(id){if(window.__productHistoryActive){history.replaceState({...history.state,ashwiniProduct:Number(id)},'',location.href);return}history.pushState({...history.state,ashwiniProduct:Number(id)},'',location.href);window.__productHistoryActive=true}
 window.addEventListener('popstate',()=>{if(window.__productHistoryActive){window.__productHistoryActive=false;closeM(true)}});
@@ -286,6 +286,7 @@ window.addEventListener('resize',()=>{if(document.getElementById('product-image-
 
 
 async function detail(id){
+ const requestId=++productDetailRequestId;
  trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
  const ps=await api('/api/products');const p=ps.find(x=>x.id===id);if(!p)return;
  const gallery=getGallery(p), liked=wishlist.includes(id);
@@ -293,6 +294,7 @@ async function detail(id){
  const reviewsHtml=await reviewsSection(p.id);
  const recommendationsHtml=await itemRecommendationsSection(p.id);
  const highlights=await api('/api/product-highlights').catch(()=>[]);
+ if(requestId!==productDetailRequestId)return;
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
  openM(`<div class="detail">
@@ -313,6 +315,7 @@ async function detail(id){
  bindImageZoom(p.id);
  if(user?.role==='customer'&&!automaticDeliveryEstimate)detectCustomerDelivery();
 }
+function openRecommendedProduct(event,id,contextId){stop(event);trackBehavior('recommendation_click',id,{source:'product_detail'},contextId);detail(id)}
 async function itemRecommendationsSection(id){
  try{
   const data=await api(`/api/recommendations/items/${id}?limit=6`),items=Array.isArray(data.results)?data.results:[];
@@ -321,7 +324,7 @@ async function itemRecommendationsSection(id){
   setTimeout(()=>items.forEach(p=>trackBehavior('recommendation_impression',p.id,{source:data.strategy},id)),0);
   const heading=data.strategy==='behavior'?'Shoppers also viewed':data.strategy==='attribute'?'Similar styles':'Customers also bought';
   const subtitle=collaborative?'Matched from product details, recent shopper activity and valid purchases':data.strategy==='behavior'?'Updated from recent shopper activity':data.strategy==='attribute'?'Matched by category, colour, sizes and price range':'Popular related products while history grows';
-  return `<section class="item-recommendations" aria-label="Recommended products"><div class="item-recommendations-head"><div><h3>${heading}</h3><small>${subtitle}</small></div></div><div class="item-recommendations-grid">${items.map(p=>`<article class="item-recommendation-card" tabindex="0" onclick="trackBehavior('recommendation_click',${p.id},{source:'product_detail'},${id});detail(${p.id})" onkeydown="if(event.key==='Enter'){trackBehavior('recommendation_click',${p.id},{source:'product_detail'},${id});detail(${p.id})}"><div class="item-recommendation-image">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">`:esc(p.emoji||'👗')}</div><div class="item-recommendation-copy"><b>${esc(p.name)}</b><span>₹${Number(p.price||0).toLocaleString('en-IN')}</span>${Number(p.together||0)>0?`<small>Bought together ${Number(p.together)} time${Number(p.together)===1?'':'s'}</small>`:Array.isArray(p.attribute_matches)&&p.attribute_matches.length?`<small>Matches ${esc(p.attribute_matches.join(' · '))}</small>`:data.strategy==='behavior'?'<small>Viewed by similar shoppers</small>':`<small>${esc(p.category||'Recommended')}</small>`}</div></article>`).join('')}</div></section>`;
+  return `<section class="item-recommendations" aria-label="Recommended products"><div class="item-recommendations-head"><div><h3>${heading}</h3><small>${subtitle}</small></div></div><div class="item-recommendations-grid">${items.map(p=>`<button type="button" class="item-recommendation-card" aria-label="Open ${esc(p.name)} product details" onclick="openRecommendedProduct(event,${p.id},${id})"><div class="item-recommendation-image">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">`:esc(p.emoji||'👗')}</div><span class="item-recommendation-copy"><b>${esc(p.name)}</b><span>₹${Number(p.price||0).toLocaleString('en-IN')}</span>${Number(p.together||0)>0?`<small>Bought together ${Number(p.together)} time${Number(p.together)===1?'':'s'}</small>`:Array.isArray(p.attribute_matches)&&p.attribute_matches.length?`<small>Matches ${esc(p.attribute_matches.join(' · '))}</small>`:data.strategy==='behavior'?'<small>Viewed by similar shoppers</small>':`<small>${esc(p.category||'Recommended')}</small>`}</span></button>`).join('')}</div></section>`;
  }catch{return ''}
 }
 async function reviewsSection(id){

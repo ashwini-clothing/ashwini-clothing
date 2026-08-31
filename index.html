@@ -449,7 +449,7 @@ button:active{transform:translateY(1px)}
 
 <div id="lensCameraOverlay" class="lens-camera-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Search products using a photo"><div class="lens-camera-shell"><div class="lens-camera-topbar"><strong class="lens-camera-title">Ashwini Lens</strong><button class="lens-camera-close" type="button" onclick="closeLensExperience()" aria-label="Close camera">×</button></div><div class="lens-camera-stage"><video id="lensCameraVideo" class="lens-camera-video" autoplay muted playsinline></video><div id="lensCameraStatus" class="lens-camera-status">Allow camera access or upload a photo.</div></div><div class="lens-camera-controls"><label class="lens-camera-upload" for="photoUploadInput" title="Upload from files" aria-label="Upload from files"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 18 4.5-4.5 3 3 2.5-2.5 4 4M12 3v7M9 6l3-3 3 3"/></svg></label><button class="lens-camera-capture" type="button" onclick="captureLensPhoto()" aria-label="Take photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg></button><span class="lens-camera-spacer" aria-hidden="true"></span></div></div></div>
 
-<script src="/app.js?v=20260831-fullscreen-zoom-v1" defer></script>
+<script src="/app.js?v=20260831-product-nav-v2" defer></script>
 <script>
 function openLensCamera(){
   closeLensSourceMenu();
@@ -641,7 +641,7 @@ function handleLensPhoto(input){
 <link rel="stylesheet" href="/desktop-search-fix.css?v=20260827-desktop-v1">
 <link rel="stylesheet" href="/lens-camera.css?v=20260828-lens-v1">
 <link rel="stylesheet" href="/visual-search.css?v=20260828-hybrid-v2">
-<link rel="stylesheet" href="/recommendations.css?v=20260828-item-cf-v1">
+<link rel="stylesheet" href="/recommendations.css?v=20260831-product-nav-v2">
 <style id="behavior-consent-style">
 .behavior-consent{position:fixed;z-index:10050;left:18px;right:18px;bottom:18px;max-width:980px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:22px;padding:18px 20px;background:#fff;border:1px solid #d7b8c2;border-radius:14px;box-shadow:0 12px 38px rgba(20,10,15,.25);color:#2d1b22}.behavior-consent p{margin:5px 0;font-size:14px;line-height:1.45}.behavior-consent a{color:#0066c0;font-weight:700}.behavior-consent-actions{display:flex;gap:9px;flex:0 0 auto}.behavior-consent-actions button{min-height:44px;white-space:nowrap}
 @media(max-width:600px){.behavior-consent{left:10px;right:10px;bottom:10px;display:block;padding:16px}.behavior-consent-actions{display:grid;grid-template-columns:1fr;margin-top:13px}.behavior-consent-actions button{width:100%;white-space:normal}}
