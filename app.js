@@ -42,7 +42,8 @@ async function lookupDeliveryPin(pin){
   localStorage.setItem('ashwiniDeliveryPin',pin);
   localStorage.setItem('ashwiniDeliveryLocation',JSON.stringify(d));
   const h=document.getElementById('deliverLocation');if(h)h.textContent=pin+' ▾';
-  if(x)x.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)}, ${esc(d.state)}<br><small>PIN ${esc(d.pin)}</small>`;
+  if(x)x.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)}, ${esc(d.state)}<br><small>Checking expected delivery date…</small>`;
+  try{const estimate=await api('/api/delivery-estimate/'+encodeURIComponent(pin));updateAutomaticDeliveryUi(pin,estimate,d);if(x)x.innerHTML=estimate.deliverable===false?`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)}, ${esc(d.state)}<br><small>PIN ${esc(d.pin)} · ${esc(estimate.message||'Delivery is unavailable for this location.')}</small>`:`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)}, ${esc(d.state)}<br><small>PIN ${esc(d.pin)} · Expected delivery: <b>${esc(deliveryDateText(estimate))}</b></small>`}catch{if(x)x.innerHTML=`<b>${esc(d.area)}</b>, ${esc(d.city||d.district)}, ${esc(d.state)}<br><small>PIN ${esc(d.pin)} · Expected delivery date is temporarily unavailable.</small>`}
  }catch(e){if(x)x.textContent=e.message||'PIN code location not found.'}
 }
 async function saveDeliveryLocation(){
