@@ -879,7 +879,25 @@ async function verifyMsg91AccessToken(accessToken){
  if(!r.ok||String(data.type||"").toLowerCase()==="error"||data.success===false)throw new Error(data.message||data.error||"MSG91 access token verification failed");
  return data;
 }
-function msg91VerifiedPhone(data){let phone=normalizePhone(data.mobile||data.phone||data.identifier||data.data?.mobile||data.data?.phone||data.data?.identifier);if(phone.length===12&&phone.startsWith('91'))phone=phone.slice(2);return phone}
+function msg91VerifiedPhone(data){
+ const phoneKeys=new Set(['mobile','mobileno','mobilenumber','mobile_number','phone','phoneno','phonenumber','phone_number','identifier','useridentifier','user_identifier']);
+ const seen=new Set(),find=value=>{
+  if(!value||typeof value!=='object'||seen.has(value))return '';
+  seen.add(value);
+  for(const [key,candidate] of Object.entries(value)){
+   const normalizedKey=String(key).replace(/[-\s]/g,'').toLowerCase();
+   if(phoneKeys.has(normalizedKey)&&['string','number'].includes(typeof candidate)){
+    const digits=normalizePhone(candidate);
+    if(digits.length===10)return digits;
+    if(digits.length===12&&digits.startsWith('91'))return digits.slice(2);
+    if(digits.length>10&&digits.startsWith('91'))return digits.slice(-10);
+   }
+  }
+  for(const candidate of Object.values(value)){const found=find(candidate);if(found)return found}
+  return '';
+ };
+ return find(data);
+}
 app.post("/api/auth/verify-msg91-login",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim(),phone=normalizePhone(identifier);
  try{
