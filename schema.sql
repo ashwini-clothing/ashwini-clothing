@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS orders (
  razorpay_order_id TEXT,
  razorpay_payment_id TEXT,
  razorpay_signature TEXT,
+ razorpay_refund_id TEXT DEFAULT '',
+ refund_status TEXT DEFAULT '',
+ refund_amount INTEGER DEFAULT 0,
+ refund_requested_at TEXT DEFAULT '',
+ dispute_id TEXT DEFAULT '',
+ dispute_status TEXT DEFAULT '',
+ dispute_reason TEXT DEFAULT '',
  address TEXT NOT NULL,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -70,12 +77,38 @@ CREATE TABLE IF NOT EXISTS behavior_events (
  product_id INTEGER,
  context_product_id INTEGER,
  metadata TEXT NOT NULL DEFAULT '{}',
+ consent_version TEXT NOT NULL DEFAULT '',
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
  FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_behavior_session_time ON behavior_events(session_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_behavior_product_type ON behavior_events(product_id,event_type);
+
+CREATE TABLE IF NOT EXISTS security_alerts (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ alert_key TEXT NOT NULL,
+ severity TEXT NOT NULL DEFAULT 'HIGH',
+ alert_type TEXT NOT NULL,
+ order_id INTEGER,
+ title TEXT NOT NULL,
+ details TEXT NOT NULL DEFAULT '{}',
+ status TEXT NOT NULL DEFAULT 'OPEN',
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ resolved_at TEXT DEFAULT '',
+ FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_security_alert_status_time ON security_alerts(status,created_at);
+CREATE INDEX IF NOT EXISTS idx_security_alert_key_time ON security_alerts(alert_key,created_at);
+
+CREATE TABLE IF NOT EXISTS public_rate_limits (
+ key_hash TEXT PRIMARY KEY,
+ bucket TEXT NOT NULL,
+ window_start INTEGER NOT NULL,
+ request_count INTEGER NOT NULL DEFAULT 0,
+ updated_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS returns (
  id INTEGER PRIMARY KEY AUTOINCREMENT,

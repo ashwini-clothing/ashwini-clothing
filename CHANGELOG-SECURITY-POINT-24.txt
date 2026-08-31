@@ -1,0 +1,12 @@
+ASHWINI CLOTHING - SECURITY POINT 24
+
+Razorpay production payment safety:
+- Retained raw-body HMAC verification for Razorpay webhooks.
+- Retained server-side fetch and captured-status verification for browser checkout callbacks.
+- Retained amount, currency, Razorpay order ID and authenticated customer checks.
+- Made simultaneous webhook event claims atomic with INSERT OR IGNORE.
+- Failed webhook events can be retried safely; completed events remain idempotent.
+- Added unique database protection for Razorpay order, payment and refund IDs.
+- Documented the required production webhook URL, event list and separate webhook secret.
+
+This is a backend-only security update. No mobile/desktop layout, cart, catalogue or customer-facing checkout contract was changed.

@@ -3,20 +3,34 @@ services:
     name: ashwini-clothing
     runtime: node
     plan: starter
-    buildCommand: npm install
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: SESSION_TTL_DAYS
+        value: 7
+      - key: MAX_ACTIVE_SESSIONS
+        value: 10
       - key: DB_PATH
         value: /var/data/ashwini.db
+      - key: BACKUP_DIR
+        value: /var/data/backups
+      - key: BACKUP_INTERVAL_HOURS
+        value: 24
+      - key: BACKUP_RETENTION_DAYS
+        value: 14
+      - key: BACKUP_REQUIRE_ENCRYPTION
+        value: true
+      - key: BEHAVIOR_RETENTION_DAYS
+        value: 90
+      - key: BACKUP_ENCRYPTION_KEY
+        sync: false
       - key: EMAIL_PROVIDER
         value: resend
       - key: ADMIN_EMAIL
         value: ashwiniweb88@gmail.com
       - key: ADMIN_PASSWORD
-        sync: false
-      - key: JWT_SECRET
         sync: false
       - key: MSG91_WIDGET_ID
         value: 3668776a6531353432363138
@@ -24,7 +38,21 @@ services:
         sync: false
       - key: MSG91_AUTHKEY
         sync: false
+      - key: MSG91_WHATSAPP_INTEGRATED_NUMBER
+        sync: false
+      - key: MSG91_WHATSAPP_OFFER_TEMPLATE
+        value: ashwini_offer_shop_now
+      - key: MSG91_WHATSAPP_DELIVERED_TEMPLATE
+        value: ashwini_order_delivered_shop_now
+      - key: MSG91_WHATSAPP_LOGO_URL
+        value: https://ashwiniweb.com/ashwini-transparent-logo.png
       - key: RESEND_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
       - key: EMAIL_FROM
         sync: false

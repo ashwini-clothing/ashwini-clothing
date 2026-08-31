@@ -18,7 +18,8 @@ Implemented:
 Production environment variables:
 - NODE_ENV=production
 - SHOW_DEV_OTP=false
-- JWT_SECRET=<long random value> (kept only for legacy Bearer compatibility)
+- SESSION_TTL_DAYS=7
+- MAX_ACTIVE_SESSIONS=10
 - EMAIL_PROVIDER=smtp or resend
 - SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_SECURE / EMAIL_FROM, or RESEND_API_KEY / EMAIL_FROM
 - SMS_PROVIDER=twilio
@@ -27,10 +28,66 @@ Production environment variables:
 
 Database backup:
 - Run: npm run backup
+- Verify the newest backup and checksum: npm run backup:verify
+- Perform a safe restore drill in a temporary folder: npm run backup:restore-test
 - Optional DB_PATH selects the live SQLite file.
 - Optional BACKUP_DIR selects the backup folder.
 - Schedule `npm run backup` with the hosting provider/OS scheduler for regular backups.
-- Keep at least one copy outside the application server. Test restoration periodically by replacing a test database with a backup copy.
+- Each completed backup is integrity-checked before publication and receives a .sha256 checksum file.
+- Production backups use authenticated AES-256-GCM encryption and are saved as .db.enc files; plaintext temporary files are deleted before completion.
+- Set BACKUP_REQUIRE_ENCRYPTION=true and BACKUP_ENCRYPTION_KEY to exactly 32 random bytes encoded as 64 hex characters or base64.
+- Generate a suitable hex key locally with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+- Store the same key in Render's secret environment and a separate trusted password manager. Never commit it; losing it makes encrypted backups unrecoverable.
+- `npm run backup:verify` checks the encrypted checksum, authenticates/decrypts into a temporary directory and runs SQLite integrity_check.
+- `npm run backup:restore-test` performs a complete temporary decrypt/open/schema test without replacing the live production database.
+- Keep at least one encrypted copy outside the application server. Test restoration periodically. Never test by replacing the live production database.
+
+Razorpay production safety:
+- Configure RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and a separate RAZORPAY_WEBHOOK_SECRET in Render.
+- In Razorpay Dashboard, send webhooks to https://ashwiniweb.com/api/webhooks/razorpay.
+- Enable payment.captured, order.paid, payment.failed, refund.created, refund.processed, refund.failed and payment.dispute events.
+- Browser payment success is never trusted alone: the server verifies the checkout signature and fetches the captured payment from Razorpay.
+- Webhook signatures use the untouched raw request body. Event IDs and Razorpay order/payment/refund IDs are protected against duplicate processing.
+- Do not reuse the Razorpay API key secret as the webhook secret.
+
+Order and payment state safety:
+- Admin fulfilment updates move only one step forward: PLACED, CONFIRMED, PACKED, SHIPPED, OUT_FOR_DELIVERY, DELIVERED.
+- Backward updates and skipped fulfilment steps are rejected by the server.
+- Razorpay orders cannot enter fulfilment until their payment status is PAID through verified payment processing.
+- Status updates use the previously read state as a concurrency condition, preventing two admin requests from silently overwriting each other.
+- Cancellation continues through the dedicated cancellation/refund flow and never through a direct status overwrite.
+
+Active sessions and remote sign-out:
+- Login & Security lists active devices, their last-active time and the current device.
+- Customers can revoke another device or sign out every device from the account-security screen.
+- Sessions use hashed random tokens in the database and an HttpOnly, SameSite cookie; Secure is added in production.
+- Session expiry defaults to 7 days and is capped at 30 days even if deployment configuration is incorrect.
+- A customer can have at most 10 active sessions by default; oldest sessions are removed safely when the limit is exceeded.
+- Legacy Bearer authentication is disabled in Render so an old browser token cannot bypass remote sign-out.
+
+Personal data and account deletion requests:
+- Customers can download a JSON copy of their profile, purchases, returns, events, reviews, questions, support conversations, behavior activity and deletion-request history.
+- Internal secrets and processing fields such as Razorpay signatures, checkout idempotency keys and webhook records are excluded from customer exports.
+- Personal-data responses use Cache-Control: no-store.
+- Account deletion requests require the current password, prevent duplicate active requests and show status to the customer.
+- Customers can cancel a pending or in-review request.
+- Admin review shows active order, payment/refund/dispute and return blockers; approval is rejected until those blockers are resolved.
+- Approval does not automatically erase legally required transaction records. Final retention/deletion must follow the store's applicable policy and legal requirements.
+
+Admin activity audit log:
+- Order status changes, admin cancellations/refund initiation and COD payment confirmation are recorded.
+- Product creation, deletion, price changes and stock changes are recorded.
+- Each entry stores the admin account, action time, affected record, request IP and a limited before/after summary.
+- Passwords, tokens, OTPs, API secrets and payment signatures are redacted and must never be written to activity details.
+- Admins can review the latest entries from Admin Dashboard -> Admin Activity Log.
+- Activity entries are append-only through the application; no public or admin delete endpoint is exposed.
+
+Customer-facing policy pages:
+- Footer links open standalone Privacy, Terms, Shipping, Cancellation and Refund/Return pages.
+- Policies reflect the implemented 4-day return window, order cancellation stages, Razorpay refund states, delivery estimates and account-data controls.
+- Policy files are individually allowlisted; the project directory remains private.
+- Review the policies whenever providers, delivery times, return rules, legal identity/contact information or applicable requirements change.
+- Store management should obtain qualified legal review before relying on these pages as final legal advice.
 
 Secrets:
 - Never commit .env or API keys to GitHub.

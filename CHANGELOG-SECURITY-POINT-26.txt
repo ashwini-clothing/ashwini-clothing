@@ -1,0 +1,12 @@
+ASHWINI CLOTHING - SECURITY POINT 26
+
+Active-device and remote sign-out protection:
+- Verified the existing active-session list, individual device revocation and sign-out-all flow.
+- Reduced the default sliding session lifetime from 30 days to 7 days.
+- Made the browser cookie lifetime match the server-side session lifetime.
+- Added a configurable maximum of 10 active sessions per account.
+- New login creation and oldest-session cleanup now run in one database transaction.
+- Disabled legacy Bearer-token authentication by default and explicitly disabled it in Render.
+- Kept password-change and password-reset behavior that revokes all existing sessions.
+
+No mobile/desktop layout, shopping, cart, checkout, order, return or admin-dashboard behavior was changed.
