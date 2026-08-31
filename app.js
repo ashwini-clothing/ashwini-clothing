@@ -290,10 +290,12 @@ async function detail(id){
  trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
  const ps=await api('/api/products');const p=ps.find(x=>x.id===id);if(!p)return;
  const gallery=getGallery(p), liked=wishlist.includes(id);
- const qaHtml=await qaSection(p.id);
- const reviewsHtml=await reviewsSection(p.id);
- const recommendationsHtml=await itemRecommendationsSection(p.id);
- const highlights=await api('/api/product-highlights').catch(()=>[]);
+ const [qaHtml,reviewsHtml,recommendationsHtml,highlights]=await Promise.all([
+  qaSection(p.id),
+  reviewsSection(p.id),
+  itemRecommendationsSection(p.id),
+  api('/api/product-highlights').catch(()=>[])
+ ]);
  if(requestId!==productDetailRequestId)return;
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
@@ -315,7 +317,7 @@ async function detail(id){
  bindImageZoom(p.id);
  if(user?.role==='customer'&&!automaticDeliveryEstimate)detectCustomerDelivery();
 }
-function openRecommendedProduct(event,id,contextId){stop(event);trackBehavior('recommendation_click',id,{source:'product_detail'},contextId);detail(id)}
+function openRecommendedProduct(event,id,contextId){stop(event);const button=event?.currentTarget;if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.querySelector('.item-recommendation-copy b')?.insertAdjacentHTML('afterend','<small class="item-recommendation-loading">Opening…</small>')}trackBehavior('recommendation_click',id,{source:'product_detail'},contextId);detail(id).catch(e=>{if(button){button.disabled=false;button.removeAttribute('aria-busy');button.querySelector('.item-recommendation-loading')?.remove()}toast(e.message||'Product could not open')})}
 async function itemRecommendationsSection(id){
  try{
   const data=await api(`/api/recommendations/items/${id}?limit=6`),items=Array.isArray(data.results)?data.results:[];
