@@ -445,11 +445,11 @@ button:active{transform:translateY(1px)}
 
 <div class="ashwini-whatsapp-wrap" aria-label="Ashwini Help Desk"><button class="ashwini-whatsapp-help" type="button" onclick="whatsappHelp()" aria-label="Ashwini Help Desk" title="Ashwini Help Desk"><span class="ashwini-help-unread-badge" id="ashwiniHelpUnreadBadge" aria-label="Unread Help Desk replies"></span><span class="ashwini-ai-avatar ashwini-robot-avatar" aria-hidden="true"><i class="robot-antenna"></i><i class="robot-face"><i></i><i></i></i></span></button></div>
 
-<div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true" onclick="if(event.target===this)closeM()"><div class="box" onclick="event.stopPropagation()"><button type="button" id="modalClose" class="close" aria-label="Close">×</button><div id="body"></div></div></div><div class="toast" id="toast"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true" onclick="if(event.target===this)closeM()"><div class="box" onclick="event.stopPropagation()"><button type="button" id="productPageSizeToggle" class="product-page-size-toggle" onclick="toggleProductPageSize()" aria-label="Restore product page size" title="Restore product page size">❐</button><button type="button" id="modalClose" class="close" aria-label="Close">×</button><div id="body"></div></div></div><div class="toast" id="toast"></div>
 
 <div id="lensCameraOverlay" class="lens-camera-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Search products using a photo"><div class="lens-camera-shell"><div class="lens-camera-topbar"><strong class="lens-camera-title">Ashwini Lens</strong><button class="lens-camera-close" type="button" onclick="closeLensExperience()" aria-label="Close camera">×</button></div><div class="lens-camera-stage"><video id="lensCameraVideo" class="lens-camera-video" autoplay muted playsinline></video><div id="lensCameraStatus" class="lens-camera-status">Allow camera access or upload a photo.</div></div><div class="lens-camera-controls"><label class="lens-camera-upload" for="photoUploadInput" title="Upload from files" aria-label="Upload from files"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 18 4.5-4.5 3 3 2.5-2.5 4 4M12 3v7M9 6l3-3 3 3"/></svg></label><button class="lens-camera-capture" type="button" onclick="captureLensPhoto()" aria-label="Take photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg></button><span class="lens-camera-spacer" aria-hidden="true"></span></div></div></div>
 
-<script src="/app.js?v=20260831-admin-pages-v9" defer></script>
+<script src="/app.js?v=20260831-product-full-page-v10" defer></script>
 <script>
 function openLensCamera(){
   closeLensSourceMenu();
@@ -634,6 +634,12 @@ function handleLensPhoto(input){
 .admin-page-launch .admin-notif-badge,.admin-page-launch .status-pill{position:static;transform:none;font-size:inherit;line-height:inherit;margin-left:8px}
 </style>
 <style id="product-image-viewer-style">
+.product-page-size-toggle{display:none;position:absolute;top:9px;right:66px;z-index:31;width:40px;height:40px;border:0;border-radius:50%;background:#fff;color:#24151c;font-size:23px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+#modal.product-page-mode{padding:0;align-items:stretch}
+#modal.product-page-mode .box{width:100%;max-width:none;height:100dvh;min-height:100dvh;max-height:100dvh;border-radius:0;box-sizing:border-box;padding:24px 30px 50px}
+#modal.product-page-mode .product-page-size-toggle{display:block}
+@media (min-width:701px){#modal.product-page-mode.product-page-restored{padding:15px;align-items:center}#modal.product-page-mode.product-page-restored .box{width:min(1050px,100%);height:auto;min-height:0;max-height:94vh;border-radius:10px;padding:24px}.product-page-size-toggle:hover{background:#f6e9ed}}
+@media (max-width:700px){#modal.product-page-mode .product-page-size-toggle{position:sticky;top:0;float:right;margin-right:50px}#modal.product-page-mode .box{padding:18px 14px 104px}}
 .product-photo-open-full{cursor:zoom-in!important}
 .product-image-viewer{position:fixed;inset:0;z-index:40000;display:none;align-items:stretch;justify-content:stretch;background:rgba(0,0,0,.94);touch-action:none;overscroll-behavior:contain}
 .product-image-viewer.open{display:flex}
