@@ -1250,10 +1250,19 @@ app.patch('/api/admin/cod-settings',auth,admin,(req,res)=>{try{const enabled=req
 app.post("/api/checkout/create",auth,async(req,res)=>{
  let createdOrderId=null;
  try{
-  const {items,address,payment_method="RAZORPAY",coupon="",delivery_state="",idempotency_key=""}=req.body||{};
+  const {items,payment_method="RAZORPAY",coupon="",idempotency_key=""}=req.body||{};
   const checkoutKey=String(idempotency_key||'').trim();
   if(!/^[A-Za-z0-9_-]{16,100}$/.test(checkoutKey))throw Error("Secure checkout key is missing. Please reopen checkout and try again.");
-  if(!address?.trim())throw Error("Delivery address required");
+  const fullName=String(req.body?.full_name||'').trim(),addressLine=String(req.body?.address_line||'').trim(),pin=String(req.body?.pin||'').trim(),enteredCity=String(req.body?.city||'').trim(),enteredState=String(req.body?.state||'').trim();
+  if(fullName.length<2||fullName.length>100)throw Error("Please enter the customer full name");
+  if(addressLine.length<8||addressLine.length>500)throw Error("Please enter a complete house, street and landmark address");
+  if(!/^\d{6}$/.test(pin))throw Error("Please enter a valid 6-digit delivery PIN code");
+  const verifiedPlace=await lookupPostalPin(pin);if(!verifiedPlace)throw Error("PIN code location could not be found. Please check the 6-digit PIN.");
+  const normalizePlace=value=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' '),verifiedState=normalizePlace(verifiedPlace.state),verifiedCities=[verifiedPlace.city,verifiedPlace.district].map(normalizePlace).filter(Boolean),cityValue=normalizePlace(enteredCity),stateValue=normalizePlace(enteredState);
+  if(!cityValue||!verifiedCities.includes(cityValue)||!stateValue||stateValue!==verifiedState)throw Error("City or state does not match the verified PIN code. Please enter the PIN again.");
+  const cityText=`${verifiedPlace.city} ${verifiedPlace.district}`.toLowerCase(),blocked=db.prepare("SELECT * FROM delivery_blocks WHERE active=1 ORDER BY CASE block_type WHEN 'PIN' THEN 0 WHEN 'CITY' THEN 1 ELSE 2 END").all().find(x=>x.block_type==='PIN'?x.block_value===pin:x.block_type==='CITY'?cityText.includes(String(x.block_value||'').toLowerCase()):verifiedState===normalizePlace(x.block_value));
+  if(blocked)throw Error("Delivery is not available for this PIN code");
+  const address=[fullName,String(req.body?.mobile||'').replace(/\D/g,''),addressLine,enteredCity,enteredState,pin].join(', '),delivery_state=enteredState;
   if(!['RAZORPAY','COD'].includes(String(payment_method).toUpperCase()))throw Error("Invalid payment method");
   if(String(payment_method).toUpperCase()==='RAZORPAY'&&!razorpay)throw Error("Razorpay not configured. Add keys in Render Environment");
   if(String(payment_method).toUpperCase()==='COD'){
