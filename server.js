@@ -149,6 +149,7 @@ try{db.exec("ALTER TABLE orders ADD COLUMN courier_name TEXT DEFAULT ''")}catch{
 try{db.exec("ALTER TABLE orders ADD COLUMN tracking_number TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN tracking_url TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN dispatched_at TEXT DEFAULT ''")}catch{}
+for(const [column,type] of [['delivery_name','TEXT DEFAULT \'\''],['delivery_address_line','TEXT DEFAULT \'\''],['delivery_city','TEXT DEFAULT \'\''],['delivery_state','TEXT DEFAULT \'\''],['delivery_pincode','TEXT DEFAULT \'\''],['shiprocket_order_id','TEXT DEFAULT \'\''],['shiprocket_shipment_id','TEXT DEFAULT \'\''],['shiprocket_awb','TEXT DEFAULT \'\''],['shiprocket_courier_id','TEXT DEFAULT \'\''],['shiprocket_status','TEXT DEFAULT \'\'']])try{db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${type}`)}catch{}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_order_id ON orders(razorpay_order_id) WHERE trim(COALESCE(razorpay_order_id,''))<>''")}catch(e){console.error('[Razorpay order uniqueness]',e.message)}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id ON orders(razorpay_payment_id) WHERE trim(COALESCE(razorpay_payment_id,''))<>''")}catch(e){console.error('[Razorpay payment uniqueness]',e.message)}
@@ -590,6 +591,37 @@ async function sendEmail(to,subject,text,html){
  }
 }
 function adminEmail(){return process.env.ADMIN_EMAIL||db.prepare('SELECT email FROM store_profile WHERE id=1').get()?.email||'ashwiniweb88@gmail.com'}
+let shiprocketToken='',shiprocketTokenExpiresAt=0;
+function shiprocketConfigured(){return Boolean(String(process.env.SHIPROCKET_EMAIL||'').trim()&&String(process.env.SHIPROCKET_PASSWORD||''))}
+async function shiprocketRequest(pathname,{method='GET',body,authenticate=true}={}){
+ if(!shiprocketConfigured())throw Error('Shiprocket API credentials are not configured in Render');
+ if(authenticate&&(!shiprocketToken||Date.now()>=shiprocketTokenExpiresAt)){
+  const r=await fetch('https://apiv2.shiprocket.in/v1/external/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(15000),body:JSON.stringify({email:String(process.env.SHIPROCKET_EMAIL).trim(),password:String(process.env.SHIPROCKET_PASSWORD)})}),data=await r.json().catch(()=>({}));
+  if(!r.ok||!data.token)throw Error(data.message||'Shiprocket API login failed');
+  shiprocketToken=String(data.token);shiprocketTokenExpiresAt=Date.now()+8*24*60*60*1000;
+ }
+ const r=await fetch(`https://apiv2.shiprocket.in/v1/external${pathname}`,{method,headers:{Authorization:`Bearer ${shiprocketToken}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(20000),...(body===undefined?{}:{body:JSON.stringify(body)})}),data=await r.json().catch(()=>({}));
+ if(r.status===401&&authenticate){shiprocketToken='';shiprocketTokenExpiresAt=0;throw Error('Shiprocket session expired. Please retry once.');}
+ if(!r.ok||data.status_code>=400)throw Error(data.message||data.error||`Shiprocket request failed (${r.status})`);
+ return data;
+}
+async function shiprocketPickupLocation(){
+ return String(process.env.SHIPROCKET_PICKUP_LOCATION||'Home').trim()||'Home';
+}
+async function ensureShiprocketShipment(orderId){
+ let order=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(orderId);if(!order)throw Error('Order not found');
+ if(!order.delivery_address_line||!order.delivery_city||!order.delivery_state||!/^\d{6}$/.test(String(order.delivery_pincode||'')))throw Error('This older order does not have structured delivery details. Add courier details manually.');
+ const items=db.prepare(`SELECT oi.product_id,oi.size,oi.quantity,oi.unit_price,p.name FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?`).all(order.id);if(!items.length)throw Error('Order has no shipment items');
+ let shipmentId=String(order.shiprocket_shipment_id||''),shiprocketOrderId=String(order.shiprocket_order_id||'');
+ if(!shipmentId){
+  const pickup=await shiprocketPickupLocation(),qty=items.reduce((n,x)=>n+Number(x.quantity||0),0),weight=Math.max(.1,Number(process.env.SHIPROCKET_DEFAULT_WEIGHT_KG)||.5)*Math.max(1,qty),shipmentValue=Math.max(Number(order.total)||0,items.reduce((n,x)=>n+Number(x.unit_price||0)*Number(x.quantity||0),0)),created=await shiprocketRequest('/orders/create/adhoc',{method:'POST',body:{order_id:`ASH-${order.id}`,order_date:new Date(order.created_at||Date.now()).toISOString().slice(0,19).replace('T',' '),pickup_location:pickup,billing_customer_name:String(order.delivery_name||order.customer_name||'Customer').slice(0,100),billing_last_name:'',billing_address:String(order.delivery_address_line).slice(0,200),billing_city:String(order.delivery_city).slice(0,100),billing_pincode:String(order.delivery_pincode),billing_state:String(order.delivery_state).slice(0,100),billing_country:'India',billing_email:String(order.customer_email||'').slice(0,150),billing_phone:String(order.customer_phone||'').replace(/\D/g,'').slice(-10),shipping_is_billing:true,order_items:items.map(x=>({name:String(x.name||`Product ${x.product_id}`).slice(0,100),sku:`ASH-${x.product_id}-${String(x.size||'NA').replace(/\s+/g,'-')}`,units:Number(x.quantity),selling_price:Number(x.unit_price),discount:'',tax:'',hsn:''})),payment_method:order.payment_method==='COD'?'COD':'Prepaid',shipping_charges:0,giftwrap_charges:0,transaction_charges:0,total_discount:0,sub_total:shipmentValue,length:Number(process.env.SHIPROCKET_DEFAULT_LENGTH_CM)||25,breadth:Number(process.env.SHIPROCKET_DEFAULT_BREADTH_CM)||20,height:Number(process.env.SHIPROCKET_DEFAULT_HEIGHT_CM)||5,weight:Number(weight.toFixed(2))}});
+  shiprocketOrderId=String(created.order_id||''),shipmentId=String(created.shipment_id||'');if(!shipmentId)throw Error(created.message||'Shiprocket did not create a shipment');
+  db.prepare("UPDATE orders SET shiprocket_order_id=?,shiprocket_shipment_id=?,shiprocket_status='CREATED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(shiprocketOrderId,shipmentId,order.id);
+ }
+ order=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);let awb=String(order.shiprocket_awb||'');
+ if(!awb){const assigned=await shiprocketRequest('/courier/assign/awb',{method:'POST',body:{shipment_id:Number(shipmentId)}}),response=assigned?.response?.data||assigned?.data||assigned;awb=String(response?.awb_code||response?.awb||'');if(!awb)throw Error(assigned.message||'Shiprocket could not assign an AWB');const courier=String(response?.courier_name||'Shiprocket'),courierId=String(response?.courier_company_id||response?.courier_id||'');db.prepare("UPDATE orders SET shiprocket_awb=?,shiprocket_courier_id=?,shiprocket_status='AWB_ASSIGNED',courier_name=?,tracking_number=?,tracking_url=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(awb,courierId,courier,awb,`https://shiprocket.co/tracking/${encodeURIComponent(awb)}`,order.id);}
+ const pickup=await shiprocketRequest('/courier/generate/pickup',{method:'POST',body:{shipment_id:[Number(shipmentId)]}});db.prepare("UPDATE orders SET shiprocket_status='PICKUP_SCHEDULED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);return{awb,pickup};
+}
 async function notifyEmail(to,subject,details){
  const result=await sendEmail(to,subject,`Ashwini Clothing\n\n${details}\n\nFor help, contact ${adminEmail()}.`);
  if(!result.sent)console.warn(`[Ashwini Email] ${to} was not notified: ${result.error||'unknown error'}`);
@@ -1340,8 +1372,8 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
    // Explicitly verify the parent row before the FK insert.
    const parent=db.prepare("SELECT id FROM users WHERE id=?").get(currentUser.id);
    if(!parent)throw Error("Customer account was not found. Please sign in again.");
-   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,checkout_key,stock_reserved_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)")
-    .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone,checkoutKey);
+   const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,checkout_key,stock_reserved_at,delivery_name,delivery_address_line,delivery_city,delivery_state,delivery_pincode) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?)")
+    .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone,checkoutKey,fullName,addressLine,enteredCity,enteredState,pin);
    const add=db.prepare("INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)");
    const dec=db.prepare("UPDATE products SET stock=stock-? WHERE id=?");
    for(const x of out){
@@ -1402,9 +1434,9 @@ function createReplacementOrderForReturn(returnRow){
    for(const item of originalItems)required.set(Number(item.product_id),Number(required.get(Number(item.product_id))||0)+Number(item.quantity||0));
    for(const [productId,quantity] of required){const product=db.prepare('SELECT stock FROM products WHERE id=?').get(productId);if(!product||Number(product.stock)<quantity)throw Error(`Replacement stock is unavailable for product #${productId}`)}
    const total=0;
-   const ins=db.prepare(`INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,stock_reserved_at,created_at,updated_at,replacement_for_order_id,replacement_for_return_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`);
+   const ins=db.prepare(`INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,stock_reserved_at,created_at,updated_at,replacement_for_order_id,replacement_for_return_id,delivery_name,delivery_address_line,delivery_city,delivery_state,delivery_pincode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
    const now=new Date().toISOString();
-   const result=ins.run(original.user_id,total,'PLACED','PAID','REPLACEMENT',original.address,original.customer_phone||'',now,now,now,original.id,returnRow.id);
+   const result=ins.run(original.user_id,total,'PLACED','PAID','REPLACEMENT',original.address,original.customer_phone||'',now,now,now,original.id,returnRow.id,original.delivery_name||'',original.delivery_address_line||'',original.delivery_city||'',original.delivery_state||'',original.delivery_pincode||'');
    const newOrderId=Number(result.lastInsertRowid);
    const add=db.prepare('INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)');
    for(const item of originalItems){
@@ -1584,6 +1616,9 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const allowedNext={PLACED:['CONFIRMED'],CONFIRMED:['PACKED'],PACKED:['SHIPPED'],SHIPPED:['OUT_FOR_DELIVERY'],OUT_FOR_DELIVERY:['DELIVERED']};
  if(!allowedNext[String(before.status)]?.includes(nextStatus))return res.status(409).json({error:`Order must move forward one step at a time. ${before.status} cannot change directly to ${nextStatus}.`});
  if(before.payment_method==='RAZORPAY'&&before.payment_status!=='PAID')return res.status(409).json({error:'Online payment must be securely confirmed by Razorpay before fulfilment can continue.'});
+ if(nextStatus==='PACKED'&&shiprocketConfigured()){
+  try{await ensureShiprocketShipment(before.id)}catch(e){createSecurityAlert({key:`SHIPROCKET_BOOKING:${before.id}`,type:'SHIPROCKET_BOOKING_FAILED',title:'Automatic courier booking failed',orderId:before.id,severity:'HIGH',details:{error:String(e.message||e).slice(0,500)}});return res.status(502).json({error:`Order was not marked PACKED because automatic courier booking failed: ${e.message}`})}
+ }
  const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?").run(nextStatus,nextStatus,req.params.id,before.status);
  if(!result.changes)return res.status(409).json({error:"Order changed in another request. Refresh and try again."});
  const order=db.prepare("SELECT * FROM orders WHERE id=?").get(req.params.id);
@@ -1606,7 +1641,7 @@ app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{
 });
 app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});publishCatalogUpdate('deleted',product.id);res.json({ok:true})});
 
-app.get("/api/webhooks/health",auth,admin,(req,res)=>res.json({ok:true,razorpayConfigured:Boolean(razorpay)}));
+app.get("/api/webhooks/health",auth,admin,(req,res)=>res.json({ok:true,razorpayConfigured:Boolean(razorpay),shiprocketConfigured:shiprocketConfigured(),shiprocketPickupLocation:String(process.env.SHIPROCKET_PICKUP_LOCATION||'Home')}));
 app.use('/api',(req,res)=>res.status(404).json({error:'Not found'}));
 app.get(/.*/,(req,res)=>path.extname(req.path)?res.status(404).end():sendPublicFile(res,'index.html'));
 app.use((req,res)=>res.status(404).end());
