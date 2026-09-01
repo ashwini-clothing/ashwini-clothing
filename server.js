@@ -1090,19 +1090,9 @@ app.post("/api/auth/reset-password",async(req,res)=>{
 // ADMIN_PASSWORD in the private Render Environment; startup bootstrap above
 // will then restore the authorised store-admin account.
 app.post("/api/auth/setup-admin",(req,res)=>res.status(404).json({error:"Not found"}));
-app.post("/api/auth/request-admin-login-otp",async(req,res)=>{
- const email=String(req.body?.email||"").trim().toLowerCase();
- if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return res.status(400).json({error:"Enter a valid admin email address"});
- if(!otpGuard(req,res,email))return;
- const u=db.prepare("SELECT * FROM users WHERE lower(email)=lower(?) AND role='admin'").get(email);
- if(!u)return res.json({ok:true,channel:'email',message:'If an authorised admin account matches, an OTP has been sent.'});
- const otp=issueOtp(u,'login');
- try{
-  const delivery=await sendEmail(u.email,'Ashwini Clothing admin login OTP',`Your Ashwini Clothing admin login OTP is ${otp}. It expires in 5 minutes. Do not share this OTP.`);
-  if(!delivery.sent && process.env.NODE_ENV==='production' && String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true')return res.status(503).json({error:"Admin Email OTP service is not configured. Please check Render Email environment variables."});
-  res.json(publicOtpResponse(otp,'email','Admin Email OTP sent. It expires in 5 minutes.'));
- }catch(e){console.error('[Ashwini Admin OTP delivery]',e.message);res.status(503).json({error:"Admin Email OTP could not be delivered. Please check email configuration."});}
-});
+// Retired legacy OTP-only entry point. Admin OTPs may be issued only after
+// the password has been verified by /api/auth/admin-login-start below.
+app.post("/api/auth/request-admin-login-otp",(req,res)=>res.status(404).json({error:"Not found"}));
 app.post("/api/auth/admin-login-start",async(req,res)=>{
  try{
   const identifier=String(req.body?.identifier||"").trim(),password=String(req.body?.password||"");
