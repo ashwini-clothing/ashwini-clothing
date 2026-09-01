@@ -125,6 +125,13 @@ CREATE TABLE IF NOT EXISTS razorpay_refunds (
 );
 CREATE INDEX IF NOT EXISTS idx_razorpay_refunds_order ON razorpay_refunds(order_id,status);
 
+CREATE TABLE IF NOT EXISTS shiprocket_webhook_events (
+ event_hash TEXT PRIMARY KEY,
+ awb TEXT NOT NULL DEFAULT '',
+ shipment_status TEXT NOT NULL DEFAULT '',
+ received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS public_rate_limits (
  key_hash TEXT PRIMARY KEY,
  bucket TEXT NOT NULL,
