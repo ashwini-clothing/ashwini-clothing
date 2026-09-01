@@ -1642,7 +1642,7 @@ app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{
 });
 app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});publishCatalogUpdate('deleted',product.id);res.json({ok:true})});
 
-app.post('/api/webhooks/shiprocket',async(req,res)=>{
+app.post('/api/webhooks/courier-status',async(req,res)=>{
  try{
   const expected=String(process.env.SHIPROCKET_WEBHOOK_TOKEN||'').trim(),supplied=String(req.headers['x-api-key']||req.headers['x-shiprocket-token']||'').trim();
   if(!expected)return res.status(503).json({error:'Shiprocket webhook is not configured'});
