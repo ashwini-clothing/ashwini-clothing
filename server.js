@@ -157,6 +157,7 @@ try{db.exec("UPDATE orders SET stock_reserved_at=created_at WHERE COALESCE(stock
 try{db.exec("UPDATE orders SET delivered_at=updated_at WHERE status='DELIVERED' AND COALESCE(delivered_at,'')=''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_order_id INTEGER DEFAULT NULL")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_return_id INTEGER DEFAULT NULL")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN return_refund_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER, question TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER NOT NULL, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5), feedback TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS offers (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT DEFAULT '', coupon_code TEXT DEFAULT '', discount_percent REAL DEFAULT 0, banner_url TEXT DEFAULT '', button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', start_at TEXT DEFAULT '', end_at TEXT DEFAULT '', active INTEGER DEFAULT 1, show_popup INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
@@ -536,6 +537,20 @@ function auth(req,res,next){
  }catch{res.status(401).json({error:"Login required. Please sign in again."})}
 }
 function admin(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin only"});next()}
+// Return/refund is exceptional. Admin must open it for this customer's
+// specific delivered order; replacement and exchange remain available.
+app.use('/api/returns',(req,res,next)=>{
+ if(req.method!=='POST'||String(req.body?.request_type||'').toUpperCase()!=='RETURN_REFUND')return next();
+ auth(req,res,()=>{
+  const orderId=Number(req.body?.order_id);
+  const order=db.prepare('SELECT id,status,return_refund_enabled FROM orders WHERE id=? AND user_id=?').get(orderId,req.user.id);
+  if(!order)return res.status(404).json({error:'Order not found'});
+  if(order.status!=='DELIVERED')return res.status(400).json({error:'Return can be requested after delivery'});
+  if(Number(order.return_refund_enabled)!==1)return res.status(403).json({error:'Return for refund is available only when Ashwini Admin opens it for this order. Replacement or exchange remains available under the standard policy.'});
+  res.once('finish',()=>{if(res.statusCode>=200&&res.statusCode<300)try{db.prepare('UPDATE orders SET return_refund_enabled=0,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(order.id)}catch{}});
+  next();
+ });
+});
 function logAdminActivity(req,action,entityType,entityId,details={}){try{const safeDetails=JSON.stringify(details,(key,value)=>/password|secret|token|signature/i.test(key)?'[REDACTED]':value).slice(0,4000);db.prepare('INSERT INTO admin_activity_logs(admin_user_id,admin_email,action,entity_type,entity_id,details,ip_address,user_agent) VALUES(?,?,?,?,?,?,?,?)').run(req.user?.id||null,String(req.user?.email||'').slice(0,200),String(action).slice(0,80),String(entityType).slice(0,80),String(entityId??'').slice(0,100),safeDetails,clientIp(req).slice(0,100),String(req.headers['user-agent']||'').slice(0,500))}catch(e){console.error('[Admin activity log]',e.message)}}
 async function sendEmail(to,subject,text,html){
  const provider=String(process.env.EMAIL_PROVIDER||'resend').trim().toLowerCase();
@@ -1493,6 +1508,7 @@ app.get("/api/admin/stats",auth,admin,(req,res)=>{
  res.json({revenue,orders:db.prepare("SELECT COUNT(*) n FROM orders").get().n,customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,products:db.prepare("SELECT COUNT(*) n FROM products").get().n});
 });
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id ORDER BY o.id DESC").all()));
+app.patch('/api/admin/orders/:id/return-refund-access',auth,admin,(req,res)=>{try{const order=db.prepare('SELECT * FROM orders WHERE id=?').get(Number(req.params.id));if(!order)return res.status(404).json({error:'Order not found'});if(order.status!=='DELIVERED')return res.status(409).json({error:'Return/refund access can be changed only after the order is delivered'});const enabled=req.body?.enabled===true||req.body?.enabled===1||String(req.body?.enabled).toLowerCase()==='true';db.prepare('UPDATE orders SET return_refund_enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(enabled?1:0,order.id);logAdminActivity(req,enabled?'RETURN_REFUND_ACCESS_ENABLED':'RETURN_REFUND_ACCESS_DISABLED','ORDER',order.id,{customer_id:order.user_id});res.json({ok:true,enabled,order:db.prepare('SELECT * FROM orders WHERE id=?').get(order.id)})}catch(e){res.status(400).json({error:e.message||'Return/refund access could not be updated'})}});
 app.patch('/api/admin/orders/:id/shipping',auth,admin,async(req,res)=>{try{
  const before=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(req.params.id);
  if(!before)return res.status(404).json({error:'Order not found'});

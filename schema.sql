@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS orders (
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  replacement_for_order_id INTEGER DEFAULT NULL,
  replacement_for_return_id INTEGER DEFAULT NULL,
+ return_refund_enabled INTEGER NOT NULL DEFAULT 0,
  FOREIGN KEY(user_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS order_items (
