@@ -103,6 +103,18 @@ CREATE TABLE IF NOT EXISTS security_alerts (
 CREATE INDEX IF NOT EXISTS idx_security_alert_status_time ON security_alerts(status,created_at);
 CREATE INDEX IF NOT EXISTS idx_security_alert_key_time ON security_alerts(alert_key,created_at);
 
+CREATE TABLE IF NOT EXISTS razorpay_refunds (
+ refund_id TEXT PRIMARY KEY,
+ order_id INTEGER NOT NULL,
+ payment_id TEXT NOT NULL,
+ amount_paise INTEGER NOT NULL DEFAULT 0,
+ status TEXT NOT NULL DEFAULT 'PENDING',
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_razorpay_refunds_order ON razorpay_refunds(order_id,status);
+
 CREATE TABLE IF NOT EXISTS public_rate_limits (
  key_hash TEXT PRIMARY KEY,
  bucket TEXT NOT NULL,
