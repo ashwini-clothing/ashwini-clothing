@@ -149,7 +149,7 @@ try{db.exec("ALTER TABLE orders ADD COLUMN courier_name TEXT DEFAULT ''")}catch{
 try{db.exec("ALTER TABLE orders ADD COLUMN tracking_number TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN tracking_url TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN dispatched_at TEXT DEFAULT ''")}catch{}
-for(const [column,type] of [['delivery_name','TEXT DEFAULT \'\''],['delivery_address_line','TEXT DEFAULT \'\''],['delivery_city','TEXT DEFAULT \'\''],['delivery_state','TEXT DEFAULT \'\''],['delivery_pincode','TEXT DEFAULT \'\''],['shiprocket_order_id','TEXT DEFAULT \'\''],['shiprocket_shipment_id','TEXT DEFAULT \'\''],['shiprocket_awb','TEXT DEFAULT \'\''],['shiprocket_courier_id','TEXT DEFAULT \'\''],['shiprocket_status','TEXT DEFAULT \'\'']])try{db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${type}`)}catch{}
+for(const [column,type] of [['delivery_name','TEXT DEFAULT \'\''],['delivery_address_line','TEXT DEFAULT \'\''],['delivery_city','TEXT DEFAULT \'\''],['delivery_state','TEXT DEFAULT \'\''],['delivery_pincode','TEXT DEFAULT \'\''],['shiprocket_order_id','TEXT DEFAULT \'\''],['shiprocket_shipment_id','TEXT DEFAULT \'\''],['shiprocket_awb','TEXT DEFAULT \'\''],['shiprocket_courier_id','TEXT DEFAULT \'\''],['shiprocket_status','TEXT DEFAULT \'\''],['shiprocket_label_url','TEXT DEFAULT \'\'']])try{db.exec(`ALTER TABLE orders ADD COLUMN ${column} ${type}`)}catch{}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_order_id ON orders(razorpay_order_id) WHERE trim(COALESCE(razorpay_order_id,''))<>''")}catch(e){console.error('[Razorpay order uniqueness]',e.message)}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id ON orders(razorpay_payment_id) WHERE trim(COALESCE(razorpay_payment_id,''))<>''")}catch(e){console.error('[Razorpay payment uniqueness]',e.message)}
@@ -609,6 +609,11 @@ async function shiprocketRequest(pathname,{method='GET',body,authenticate=true}=
 async function shiprocketPickupLocation(){
  return String(process.env.SHIPROCKET_PICKUP_LOCATION||'Home').trim()||'Home';
 }
+async function generateShiprocketLabel(orderId,shipmentId){
+ const generated=await shiprocketRequest('/courier/generate/label',{method:'POST',body:{shipment_id:[Number(shipmentId)]}}),rawUrl=String(generated?.label_url||generated?.response?.data?.label_url||generated?.data?.label_url||'').trim();
+ let labelUrl='';try{const parsed=new URL(rawUrl);if(parsed.protocol!=='https:')throw Error();labelUrl=parsed.href.slice(0,1000)}catch{throw Error(generated?.message||'Shiprocket did not return a secure shipping-label PDF')}
+ db.prepare("UPDATE orders SET shiprocket_label_url=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(labelUrl,orderId);return labelUrl;
+}
 async function ensureShiprocketShipment(orderId){
  let order=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(orderId);if(!order)throw Error('Order not found');
  if(!order.delivery_address_line||!order.delivery_city||!order.delivery_state||!/^\d{6}$/.test(String(order.delivery_pincode||'')))throw Error('This older order does not have structured delivery details. Add courier details manually.');
@@ -621,7 +626,8 @@ async function ensureShiprocketShipment(orderId){
  }
  order=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);let awb=String(order.shiprocket_awb||'');
  if(!awb){const assigned=await shiprocketRequest('/courier/assign/awb',{method:'POST',body:{shipment_id:Number(shipmentId)}}),response=assigned?.response?.data||assigned?.data||assigned;awb=String(response?.awb_code||response?.awb||'');if(!awb)throw Error(assigned.message||'Shiprocket could not assign an AWB');const courier=String(response?.courier_name||'Shiprocket'),courierId=String(response?.courier_company_id||response?.courier_id||'');db.prepare("UPDATE orders SET shiprocket_awb=?,shiprocket_courier_id=?,shiprocket_status='AWB_ASSIGNED',courier_name=?,tracking_number=?,tracking_url=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(awb,courierId,courier,awb,`https://shiprocket.co/tracking/${encodeURIComponent(awb)}`,order.id);}
- const pickup=await shiprocketRequest('/courier/generate/pickup',{method:'POST',body:{shipment_id:[Number(shipmentId)]}});db.prepare("UPDATE orders SET shiprocket_status='PICKUP_SCHEDULED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);return{awb,pickup};
+ order=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);const labelUrl=String(order.shiprocket_label_url||'')||await generateShiprocketLabel(order.id,shipmentId);
+ const pickup=await shiprocketRequest('/courier/generate/pickup',{method:'POST',body:{shipment_id:[Number(shipmentId)]}});db.prepare("UPDATE orders SET shiprocket_status='PICKUP_SCHEDULED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);return{awb,pickup,labelUrl};
 }
 async function notifyEmail(to,subject,details){
  const result=await sendEmail(to,subject,`Ashwini Clothing\n\n${details}\n\nFor help, contact ${adminEmail()}.`);
@@ -1568,6 +1574,11 @@ app.patch('/api/admin/orders/:id/shipping',auth,admin,async(req,res)=>{try{
  if(changed){addOrderEvent(before.id,before.user_id,'COURIER_ASSIGNED','Courier tracking updated',`Order #${before.id} will be handled by ${courierName}. Tracking number: ${trackingNumber}.`);logAdminActivity(req,'ORDER_SHIPPING_UPDATED','ORDER',before.id,{courier_name:courierName,tracking_number:trackingNumber,dispatched_at:dispatchedAt});if(before.customer_email)await notifyEmail(before.customer_email,`Ashwini Clothing Tracking - Order #${before.id}`,`Hello ${before.customer_name||'Customer'},\n\nCourier: ${courierName}\nTracking/AWB: ${trackingNumber}${trackingUrl?`\nTrack: ${trackingUrl}`:''}\n\nYou can also view the latest status from My Orders on Ashwini Clothing.`)}
  res.json({ok:true,order:db.prepare('SELECT * FROM orders WHERE id=?').get(before.id)});
 }catch(e){console.error('[Ashwini shipping details]',e);res.status(400).json({error:e.message||'Shipping details could not be saved'})}});
+app.post('/api/admin/orders/:id/shiprocket-label',auth,admin,async(req,res)=>{try{
+ const order=db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id);if(!order)return res.status(404).json({error:'Order not found'});
+ if(!order.shiprocket_shipment_id||!order.shiprocket_awb)return res.status(409).json({error:'Mark this order PACKED first so Shiprocket can create its shipment and AWB'});
+ const label_url=await generateShiprocketLabel(order.id,order.shiprocket_shipment_id);logAdminActivity(req,'SHIPROCKET_LABEL_GENERATED','ORDER',order.id,{awb:String(order.shiprocket_awb||'')});res.json({ok:true,label_url});
+ }catch(e){console.error('[Shiprocket label]',e.message);res.status(502).json({error:e.message||'Shiprocket shipping label could not be generated'})}});
 app.get('/api/admin/orders/:id/print-data',auth,admin,(req,res)=>{try{
  const order=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email,u.phone AS account_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(req.params.id);
  if(!order)return res.status(404).json({error:'Order not found'});
