@@ -145,6 +145,10 @@ try{db.exec("ALTER TABLE orders ADD COLUMN refund_requested_at TEXT DEFAULT ''")
 try{db.exec("ALTER TABLE orders ADD COLUMN dispute_id TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN dispute_status TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE orders ADD COLUMN dispute_reason TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN courier_name TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN tracking_number TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN tracking_url TEXT DEFAULT ''")}catch{}
+try{db.exec("ALTER TABLE orders ADD COLUMN dispatched_at TEXT DEFAULT ''")}catch{}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_checkout_key ON orders(user_id,checkout_key) WHERE trim(COALESCE(checkout_key,''))<>''")}catch(e){console.error('[Ashwini checkout idempotency]',e.message)}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_order_id ON orders(razorpay_order_id) WHERE trim(COALESCE(razorpay_order_id,''))<>''")}catch(e){console.error('[Razorpay order uniqueness]',e.message)}
 try{db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id ON orders(razorpay_payment_id) WHERE trim(COALESCE(razorpay_payment_id,''))<>''")}catch(e){console.error('[Razorpay payment uniqueness]',e.message)}
@@ -1487,6 +1491,20 @@ app.get("/api/admin/stats",auth,admin,(req,res)=>{
  res.json({revenue,orders:db.prepare("SELECT COUNT(*) n FROM orders").get().n,customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,products:db.prepare("SELECT COUNT(*) n FROM products").get().n});
 });
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id ORDER BY o.id DESC").all()));
+app.patch('/api/admin/orders/:id/shipping',auth,admin,async(req,res)=>{try{
+ const before=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(req.params.id);
+ if(!before)return res.status(404).json({error:'Order not found'});
+ if(!['CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED'].includes(String(before.status))||(before.payment_method!=='COD'&&before.payment_status!=='PAID'))return res.status(409).json({error:'Confirm the order and its payment before adding courier details'});
+ const courierName=String(req.body?.courier_name||'').trim().slice(0,80),trackingNumber=String(req.body?.tracking_number||'').trim().slice(0,80),rawUrl=String(req.body?.tracking_url||'').trim(),rawDispatch=String(req.body?.dispatched_at||'').trim();
+ if(courierName.length<2)return res.status(400).json({error:'Enter the courier company name'});
+ if(!/^[A-Za-z0-9][A-Za-z0-9._\/-]{3,79}$/.test(trackingNumber))return res.status(400).json({error:'Enter a valid AWB or tracking number'});
+ let trackingUrl='';if(rawUrl){try{const parsed=new URL(rawUrl);if(!['http:','https:'].includes(parsed.protocol))throw Error();trackingUrl=parsed.href.slice(0,500)}catch{return res.status(400).json({error:'Enter a complete courier tracking link beginning with https://'})}}
+ const parsedDispatch=rawDispatch?Date.parse(rawDispatch):Date.now();if(!Number.isFinite(parsedDispatch))return res.status(400).json({error:'Enter a valid dispatch date and time'});const dispatchedAt=new Date(parsedDispatch).toISOString();
+ db.prepare('UPDATE orders SET courier_name=?,tracking_number=?,tracking_url=?,dispatched_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(courierName,trackingNumber,trackingUrl,dispatchedAt,before.id);
+ const changed=before.courier_name!==courierName||before.tracking_number!==trackingNumber||before.tracking_url!==trackingUrl||before.dispatched_at!==dispatchedAt;
+ if(changed){addOrderEvent(before.id,before.user_id,'COURIER_ASSIGNED','Courier tracking updated',`Order #${before.id} will be handled by ${courierName}. Tracking number: ${trackingNumber}.`);logAdminActivity(req,'ORDER_SHIPPING_UPDATED','ORDER',before.id,{courier_name:courierName,tracking_number:trackingNumber,dispatched_at:dispatchedAt});if(before.customer_email)await notifyEmail(before.customer_email,`Ashwini Clothing Tracking - Order #${before.id}`,`Hello ${before.customer_name||'Customer'},\n\nCourier: ${courierName}\nTracking/AWB: ${trackingNumber}${trackingUrl?`\nTrack: ${trackingUrl}`:''}\n\nYou can also view the latest status from My Orders on Ashwini Clothing.`)}
+ res.json({ok:true,order:db.prepare('SELECT * FROM orders WHERE id=?').get(before.id)});
+}catch(e){console.error('[Ashwini shipping details]',e);res.status(400).json({error:e.message||'Shipping details could not be saved'})}});
 app.get('/api/admin/orders/:id/print-data',auth,admin,(req,res)=>{try{
  const order=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email,u.phone AS account_phone FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(req.params.id);
  if(!order)return res.status(404).json({error:'Order not found'});
