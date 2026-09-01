@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS products (
  badge_text TEXT DEFAULT 'Ashwini Choice',
  offer_text TEXT DEFAULT '',
  offer_discount REAL DEFAULT 0,
+ packed_weight_kg REAL NOT NULL DEFAULT 0.5,
+ packed_length_cm REAL NOT NULL DEFAULT 25,
+ packed_breadth_cm REAL NOT NULL DEFAULT 20,
+ packed_height_cm REAL NOT NULL DEFAULT 5,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS orders (
@@ -56,6 +60,11 @@ CREATE TABLE IF NOT EXISTS orders (
  shiprocket_awb TEXT DEFAULT '',
  shiprocket_courier_id TEXT DEFAULT '',
  shiprocket_status TEXT DEFAULT '',
+ shiprocket_label_url TEXT DEFAULT '',
+ shipment_weight_kg REAL DEFAULT 0,
+ shipment_length_cm REAL DEFAULT 0,
+ shipment_breadth_cm REAL DEFAULT 0,
+ shipment_height_cm REAL DEFAULT 0,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  replacement_for_order_id INTEGER DEFAULT NULL,

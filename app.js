@@ -961,7 +961,7 @@ function addSizeChartRow(row={size:'',bust:'',waist:'',hip:'',length:''}){
 async function productEditor(id=null){
  if(user?.role!=='admin')return alert('Admin only');
  const [ps,cats]=await Promise.all([api('/api/products'),api('/api/admin/categories')]);
- const p=id?ps.find(x=>x.id===id):{name:'',category:(cats[0]?.name||'Western Dress'),size_options:'S,M,L,XL',color:'',price:0,mrp:0,rating:0,emoji:'👗',stock:0,description:'',image:'',gallery:'',product_history:'',size_chart:'[]',care_instructions:'',badge_text:'Ashwini Choice',offer_text:'',offer_discount:0};
+ const p=id?ps.find(x=>x.id===id):{name:'',category:(cats[0]?.name||'Western Dress'),size_options:'S,M,L,XL',color:'',price:0,mrp:0,rating:0,emoji:'👗',stock:0,description:'',image:'',gallery:'',product_history:'',size_chart:'[]',care_instructions:'',badge_text:'Ashwini Choice',offer_text:'',offer_discount:0,packed_weight_kg:.5,packed_length_cm:25,packed_breadth_cm:20,packed_height_cm:5};
  if(!p)return;
  const rows=normalizeSizeChart(p.size_chart);
  openM(`<h2>${id?'✎ Edit Product':'＋ Add New Product'}</h2>
@@ -973,6 +973,11 @@ async function productEditor(id=null){
  <div><label>Selling Price (₹)<input id="ap_price" type="number" min="0" value="${Number(p.price)||0}"></label></div>
  <div><label>MRP (₹)<input id="ap_mrp" type="number" min="0" value="${Number(p.mrp)||0}"></label></div>
  <div><label>Stock Quantity<input id="ap_stock" type="number" min="0" value="${Number(p.stock)||0}"></label></div>
+ <div class="full"><label><b>📦 Packed Shipping Details</b></label><div class="admin-note">Measure one fully packed unit. These values are used automatically for Shiprocket orders.</div></div>
+ <div><label>Packed Weight (kg)<input id="ap_packed_weight" type="number" min="0.05" max="50" step="0.01" value="${Number(p.packed_weight_kg)||.5}"></label></div>
+ <div><label>Length (cm)<input id="ap_packed_length" type="number" min="1" max="200" step="0.1" value="${Number(p.packed_length_cm)||25}"></label></div>
+ <div><label>Breadth (cm)<input id="ap_packed_breadth" type="number" min="1" max="200" step="0.1" value="${Number(p.packed_breadth_cm)||20}"></label></div>
+ <div><label>Height (cm)<input id="ap_packed_height" type="number" min="0.5" max="200" step="0.1" value="${Number(p.packed_height_cm)||5}"></label></div>
  <div><label>🏷️ Product Sticker / Badge<input id="ap_badge" value="${esc(p.badge_text||'')}" placeholder="Ashwini Choice (leave blank to remove)"></label></div>
  <div><label>🎁 Extra Product Offer<input id="ap_offer_text" value="${esc(p.offer_text||'')}" placeholder="Extra 10% off"></label></div>
  <div><label>Offer Discount %<input id="ap_offer_discount" type="number" min="0" max="100" step="0.1" value="${Number(p.offer_discount)||0}"></label></div>
@@ -1086,8 +1091,9 @@ function initAdminPhotoPreview(){
 }
 async function saveProduct(id){
  try{
-  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:ap_sizes.value.trim(),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0)};
+  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:ap_sizes.value.trim(),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0),packed_weight_kg:Number(ap_packed_weight.value),packed_length_cm:Number(ap_packed_length.value),packed_breadth_cm:Number(ap_packed_breadth.value),packed_height_cm:Number(ap_packed_height.value)};
   if(!body.name||!body.category||body.price<0||body.mrp<0||body.stock<0)throw Error('Please fill product name, category, prices and stock correctly');
+  if(!Number.isFinite(body.packed_weight_kg)||body.packed_weight_kg<.05||!Number.isFinite(body.packed_length_cm)||body.packed_length_cm<1||!Number.isFinite(body.packed_breadth_cm)||body.packed_breadth_cm<1||!Number.isFinite(body.packed_height_cm)||body.packed_height_cm<.5)throw Error('Please enter valid packed weight and dimensions');
   JSON.parse(body.gallery);JSON.parse(body.size_chart);
   const d=await api(id?`/api/admin/products/${id}`:'/api/admin/products',{method:id?'PATCH':'POST',body});
   toast('✓ Product saved');dashboard();load();
