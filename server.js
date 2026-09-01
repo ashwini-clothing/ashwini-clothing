@@ -1397,9 +1397,13 @@ function createReplacementOrderForReturn(returnRow){
  const originalItems=db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').all(original.id);
  if(!originalItems.length)throw Error('Original order has no items for replacement');
  const tx=db.transaction(()=>{
+   const required=new Map();
+   for(const item of originalItems)required.set(Number(item.product_id),Number(required.get(Number(item.product_id))||0)+Number(item.quantity||0));
+   for(const [productId,quantity] of required){const product=db.prepare('SELECT stock FROM products WHERE id=?').get(productId);if(!product||Number(product.stock)<quantity)throw Error(`Replacement stock is unavailable for product #${productId}`)}
    const total=0;
-   const ins=db.prepare(`INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,created_at,updated_at,replacement_for_order_id,replacement_for_return_id) VALUES(?,?,?,?,?,?,?,?,?,?)`);
-   const result=ins.run(original.user_id,total,'PLACED','PAID','REPLACEMENT',original.address,new Date().toISOString(),new Date().toISOString(),original.id,returnRow.id);
+   const ins=db.prepare(`INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,stock_reserved_at,created_at,updated_at,replacement_for_order_id,replacement_for_return_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`);
+   const now=new Date().toISOString();
+   const result=ins.run(original.user_id,total,'PLACED','PAID','REPLACEMENT',original.address,original.customer_phone||'',now,now,now,original.id,returnRow.id);
    const newOrderId=Number(result.lastInsertRowid);
    const add=db.prepare('INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)');
    for(const item of originalItems){
@@ -1407,6 +1411,8 @@ function createReplacementOrderForReturn(returnRow){
      const size=requestedSize||item.size;
      add.run(newOrderId,item.product_id,size,item.quantity,item.unit_price);
    }
+   const deduct=db.prepare('UPDATE products SET stock=stock-? WHERE id=? AND stock>=?');
+   for(const [productId,quantity] of required)if(!deduct.run(quantity,productId,quantity).changes)throw Error(`Replacement stock changed for product #${productId}. Refresh and try again.`);
    return newOrderId;
  });
  return tx();
