@@ -425,11 +425,13 @@ app.use((err,req,res,next)=>{
 // files must never be downloadable from the website.
 const publicCssFiles=new Set(['/mobile-rebuild-v3.css','/mobile-header.css','/desktop-search-fix.css','/lens-camera.css','/visual-search.css','/recommendations.css','/legal.css']);
 const publicPolicyFiles=new Set(['/privacy-policy.html','/terms.html','/shipping-policy.html','/cancellation-policy.html','/refund-policy.html']);
+const publicSeoFiles=new Set(['/robots.txt','/sitemap.xml']);
 function sendPublicFile(res,fileName){res.sendFile(path.join(__dirname,fileName),err=>{if(err&&!res.headersSent)res.status(err.statusCode===404?404:500).end()})}
 app.get(['/', '/index.html'],(req,res)=>sendPublicFile(res,'index.html'));
 app.get('/app.js',(req,res)=>sendPublicFile(res,'app.js'));
 app.get([...publicCssFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
 app.get([...publicPolicyFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
+app.get([...publicSeoFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
 app.get(/^\/[^/]+\.(?:png|jpe?g|webp|gif|svg|ico)$/i,(req,res)=>sendPublicFile(res,req.path.slice(1)));
 
 // Persist rate limits in SQLite so a Render restart cannot clear an attacker's
