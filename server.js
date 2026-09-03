@@ -203,6 +203,7 @@ try{db.exec("ALTER TABLE auth_sessions ADD COLUMN absolute_expires_at INTEGER NO
 try{db.exec(`CREATE TABLE IF NOT EXISTS auth_rate_limits (key_hash TEXT PRIMARY KEY,window_start INTEGER NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,last_request INTEGER NOT NULL DEFAULT 0,verify_failures INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)`);db.prepare('DELETE FROM auth_rate_limits WHERE updated_at<?').run(Date.now()-24*60*60*1000)}catch(e){console.error('[Ashwini auth rate limits]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS public_rate_limits (key_hash TEXT PRIMARY KEY,bucket TEXT NOT NULL,window_start INTEGER NOT NULL,request_count INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)`);db.prepare('DELETE FROM public_rate_limits WHERE updated_at<?').run(Date.now()-2*24*60*60*1000)}catch(e){console.error('[Ashwini public rate limits]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS profile_change_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, old_email TEXT NOT NULL, old_phone TEXT NOT NULL, new_email TEXT NOT NULL, new_phone TEXT NOT NULL, old_email_hash TEXT DEFAULT "", old_email_expires INTEGER DEFAULT 0, new_email_hash TEXT DEFAULT "", new_email_expires INTEGER DEFAULT 0, old_phone_hash TEXT DEFAULT "", old_phone_expires INTEGER DEFAULT 0, new_phone_hash TEXT DEFAULT "", new_phone_expires INTEGER DEFAULT 0, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS pending_registrations (id INTEGER PRIMARY KEY AUTOINCREMENT,token_hash TEXT NOT NULL UNIQUE,name TEXT NOT NULL,email TEXT NOT NULL,password_hash TEXT NOT NULL,phone TEXT NOT NULL,whatsapp_marketing_opt_in INTEGER NOT NULL DEFAULT 0,email_otp_hash TEXT NOT NULL,email_otp_expires_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL)`);db.prepare('DELETE FROM pending_registrations WHERE email_otp_expires_at<?').run(Date.now())}catch(e){console.error('[Pending registrations]',e.message)}
 try{db.exec(`CREATE TABLE IF NOT EXISTS whatsapp_help_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL DEFAULT '', customer_email TEXT NOT NULL DEFAULT '', message TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'NEW', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_threads (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guest_token TEXT NOT NULL DEFAULT '', customer_name TEXT NOT NULL DEFAULT 'Guest customer', customer_email TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'OPEN', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS help_chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER NOT NULL, sender_role TEXT NOT NULL CHECK(sender_role IN ('CUSTOMER','ADMIN')), message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at TEXT, FOREIGN KEY(thread_id) REFERENCES help_chat_threads(id) ON DELETE CASCADE)`)}catch{}
@@ -507,6 +508,7 @@ app.use((req,res,next)=>{
  if(req.method==='POST'&&req.path==='/api/auth/verify-msg91-admin-login'&&!publicWriteAllowed(req,res,'MSG91_ADMIN_VERIFY',10,15*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/auth/request-msg91-registration'&&!publicWriteAllowed(req,res,'REGISTRATION_START',10,60*60*1000))return;
  if(req.method==='POST'&&req.path==='/api/auth/register-msg91'&&!publicWriteAllowed(req,res,'REGISTRATION_VERIFY',10,60*60*1000))return;
+ if(req.method==='POST'&&req.path==='/api/auth/confirm-registration-email'&&!publicWriteAllowed(req,res,'REGISTRATION_EMAIL_VERIFY',10,60*60*1000))return;
  next();
 });
 function publicOtpResponse(otp,channel,message){const dev=process.env.NODE_ENV!=="production" || String(process.env.SHOW_DEV_OTP||"").toLowerCase()==="true";return {ok:true,channel,message,...(dev?{devOtp:otp}:{})};}
@@ -1049,21 +1051,37 @@ app.post("/api/auth/register-msg91",async(req,res)=>{
   const verifiedPhone=msg91VerifiedPhone(verification,accessToken);
   if(verifiedPhone!==normalized){logMsg91Mismatch('registration',verification,accessToken);recordOtpFailure(req,normalized);return res.status(401).json({error:"Mobile verification could not be completed. Please request a new OTP and try again."});}
   msg91Verified=true;
-  const hash=await bcrypt.hash(cleanPassword,12);
-  const createVerifiedAccount=db.transaction(()=>{
-   const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized);
-   const pending=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${normalized}@ashwini.local`;
-   if(existing&&!pending)throw Object.assign(Error('This mobile number is already registered. Please sign in.'),{status:409});
-   const emailOwner=db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(cleanEmail);
-   if(emailOwner&&(!existing||Number(emailOwner.id)!==Number(existing.id)))throw Object.assign(Error('This email is already registered. Please sign in.'),{status:409});
-   const marketingOptIn=body.whatsapp_marketing_opt_in===true||body.whatsapp_marketing_opt_in===1;
-   if(pending){const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,whatsapp_marketing_opt_in=?,whatsapp_marketing_opt_in_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,whatsapp_marketing_prompted=1,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(cleanName,cleanEmail,hash,marketingOptIn?1:0,marketingOptIn?1:0,existing.id,`phone_${normalized}@ashwini.local`);if(changed.changes!==1)throw Object.assign(Error('Account registration state changed. Please sign in or start again.'),{status:409});return Number(existing.id)}
-   return Number(db.prepare("INSERT INTO users(name,email,password_hash,phone,role,whatsapp_marketing_opt_in,whatsapp_marketing_opt_in_at,whatsapp_marketing_prompted) VALUES(?,?,?,?,?,?,CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,1)").run(cleanName,cleanEmail,hash,normalized,'customer',marketingOptIn?1:0,marketingOptIn?1:0).lastInsertRowid);
-  });
-  const userId=createVerifiedAccount(),u=db.prepare("SELECT id,name,email,role,phone FROM users WHERE id=?").get(userId);
+  const existing=db.prepare("SELECT * FROM users WHERE phone=?").get(normalized),pendingBuyer=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${normalized}@ashwini.local`;
+  if(existing&&!pendingBuyer)throw Object.assign(Error('This mobile number is already registered. Please sign in.'),{status:409});
+  const emailOwner=db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(cleanEmail);
+  if(emailOwner&&(!existing||Number(emailOwner.id)!==Number(existing.id)))throw Object.assign(Error('This email is already registered. Please sign in.'),{status:409});
+  const hash=await bcrypt.hash(cleanPassword,12),emailOtp=makeOtp(),registrationToken=crypto.randomBytes(32).toString('base64url'),expiresAt=Date.now()+5*60*1000,marketingOptIn=body.whatsapp_marketing_opt_in===true||body.whatsapp_marketing_opt_in===1;
+  db.transaction(()=>{db.prepare('DELETE FROM pending_registrations WHERE phone=? OR lower(email)=lower(?) OR email_otp_expires_at<?').run(normalized,cleanEmail,Date.now());db.prepare('INSERT INTO pending_registrations(token_hash,name,email,password_hash,phone,whatsapp_marketing_opt_in,email_otp_hash,email_otp_expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(sessionHash(registrationToken),cleanName,cleanEmail,hash,normalized,marketingOptIn?1:0,hashOtp(emailOtp),expiresAt,Date.now())})();
+  try{
+   const delivery=await sendEmail(cleanEmail,'Verify your Ashwini Clothing email',`Your Ashwini Clothing email verification OTP is ${emailOtp}. It expires in 5 minutes. Do not share this OTP.`);
+   if(!delivery.sent&&process.env.NODE_ENV==='production'&&String(process.env.SHOW_DEV_OTP||'').toLowerCase()!=='true'){db.prepare('DELETE FROM pending_registrations WHERE token_hash=?').run(sessionHash(registrationToken));return res.status(503).json({error:'Email OTP service is not configured.'})}
+  }catch(error){db.prepare('DELETE FROM pending_registrations WHERE token_hash=?').run(sessionHash(registrationToken));throw Object.assign(Error('Email verification OTP could not be delivered. Please try again.'),{status:503,cause:error})}
   clearOtpFailures(req,normalized);
-  createSession(req,res,u.id);res.json({user:u});
- }catch(e){if(!msg91Verified&&/^\d{10}$/.test(normalized))recordOtpFailure(req,normalized);console.error("[MSG91 registration verification]",e.message);const conflict=e?.code==='SQLITE_CONSTRAINT'||e?.code==='SQLITE_CONSTRAINT_UNIQUE',status=conflict?409:Number(e.status)||401;res.status(status).json({error:conflict?'This email or mobile number is already registered. Please sign in.':status===409?e.message:"MSG91 registration verification failed. Please try again."});}
+  res.json({...publicOtpResponse(emailOtp,'email','Email verification OTP sent. It expires in 5 minutes.'),emailVerificationRequired:true,registrationToken,email:cleanEmail});
+ }catch(e){if(!msg91Verified&&/^\d{10}$/.test(normalized))recordOtpFailure(req,normalized);console.error("[MSG91 registration verification]",e.message);const conflict=e?.code==='SQLITE_CONSTRAINT'||e?.code==='SQLITE_CONSTRAINT_UNIQUE',status=conflict?409:Number(e.status)||401;res.status(status).json({error:conflict?'This email or mobile number is already registered. Please sign in.':(status===409||status===503)?e.message:"MSG91 registration verification failed. Please try again."});}
+});
+app.post('/api/auth/confirm-registration-email',(req,res)=>{
+ const registrationToken=String(req.body?.registrationToken||''),otp=String(req.body?.otp||'').trim(),tokenHash=sessionHash(registrationToken);
+ if(registrationToken.length<20||registrationToken.length>200||!/^\d{6}$/.test(otp))return res.status(400).json({error:'Enter the valid 6-digit email OTP.'});
+ const pending=db.prepare('SELECT * FROM pending_registrations WHERE token_hash=?').get(tokenHash);
+ if(!pending)return res.status(400).json({error:'Registration session expired. Please start again.'});
+ if(Number(pending.attempts)>=5){db.prepare('DELETE FROM pending_registrations WHERE id=?').run(pending.id);return res.status(429).json({error:'Too many incorrect attempts. Please start registration again.'})}
+ if(Number(pending.email_otp_expires_at)<Date.now()||!otpMatches(otp,pending.email_otp_hash)){db.prepare('UPDATE pending_registrations SET attempts=attempts+1 WHERE id=?').run(pending.id);return res.status(400).json({error:'Invalid or expired email OTP.'})}
+ try{
+  const createVerifiedAccount=db.transaction(()=>{
+   const existing=db.prepare('SELECT * FROM users WHERE phone=?').get(pending.phone),pendingBuyer=existing&&existing.role==='customer'&&existing.name==='Pending Buyer'&&!String(existing.password_hash||'')&&String(existing.email||'')===`phone_${pending.phone}@ashwini.local`;
+   if(existing&&!pendingBuyer)throw Object.assign(Error('This mobile number is already registered. Please sign in.'),{status:409});
+   const emailOwner=db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(pending.email);if(emailOwner&&(!existing||Number(emailOwner.id)!==Number(existing.id)))throw Object.assign(Error('This email is already registered. Please sign in.'),{status:409});
+   let userId;if(pendingBuyer){const changed=db.prepare("UPDATE users SET name=?,email=?,password_hash=?,whatsapp_marketing_opt_in=?,whatsapp_marketing_opt_in_at=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,whatsapp_marketing_prompted=1,otp_hash='',otp_expires_at=0,login_otp_hash='',login_otp_expires_at=0 WHERE id=? AND name='Pending Buyer' AND password_hash='' AND email=?").run(pending.name,pending.email,pending.password_hash,pending.whatsapp_marketing_opt_in,pending.whatsapp_marketing_opt_in,existing.id,`phone_${pending.phone}@ashwini.local`);if(changed.changes!==1)throw Object.assign(Error('Account registration state changed. Please start again.'),{status:409});userId=Number(existing.id)}else userId=Number(db.prepare("INSERT INTO users(name,email,password_hash,phone,role,whatsapp_marketing_opt_in,whatsapp_marketing_opt_in_at,whatsapp_marketing_prompted) VALUES(?,?,?,?,?,?,CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE '' END,1)").run(pending.name,pending.email,pending.password_hash,pending.phone,'customer',pending.whatsapp_marketing_opt_in,pending.whatsapp_marketing_opt_in).lastInsertRowid);
+   db.prepare('DELETE FROM pending_registrations WHERE id=?').run(pending.id);return userId;
+  });
+  const userId=createVerifiedAccount(),u=db.prepare('SELECT id,name,email,role,phone FROM users WHERE id=?').get(userId);createSession(req,res,u.id);res.json({user:u});
+ }catch(e){const conflict=e?.code==='SQLITE_CONSTRAINT'||e?.code==='SQLITE_CONSTRAINT_UNIQUE',status=conflict?409:Number(e.status)||400;res.status(status).json({error:conflict?'This email or mobile number is already registered. Please sign in.':e.message||'Account could not be created.'})}
 });
 app.post("/api/auth/request-login-otp",async(req,res)=>{
  const identifier=String(req.body?.identifier||"").trim();
