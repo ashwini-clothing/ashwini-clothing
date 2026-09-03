@@ -192,3 +192,14 @@ CREATE TABLE IF NOT EXISTS return_refund_access_requests (
  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_return_refund_access_pending ON return_refund_access_requests(order_id,user_id) WHERE status='PENDING';
+CREATE TABLE IF NOT EXISTS saved_delivery_addresses (
+ user_id INTEGER PRIMARY KEY,
+ name TEXT NOT NULL,
+ phone TEXT NOT NULL,
+ address_line TEXT NOT NULL,
+ city TEXT NOT NULL,
+ state TEXT NOT NULL,
+ pincode TEXT NOT NULL,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
