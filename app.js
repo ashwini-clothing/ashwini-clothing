@@ -797,6 +797,37 @@ async function openMsg91Verification(phone){
   try{window.initSendOTP(configuration)}catch(error){finish(reject,error)}
  });
 }
+async function waitForMsg91Method(name,timeout=10000){
+ const started=Date.now();
+ while(typeof window[name]!=='function'){
+  if(Date.now()-started>=timeout)throw new Error('MSG91 mobile OTP service is not ready. Please try again.');
+  await new Promise(resolve=>setTimeout(resolve,100));
+ }
+ return window[name];
+}
+async function openMsg91RegistrationVerification(phone){
+ const [cfg]=await warmMsg91();
+ return new Promise((resolve,reject)=>{
+  let finished=false;
+  const finish=(fn,value)=>{if(finished)return;finished=true;window.__msg91RegistrationVerify=null;fn(value)};
+  const verified=data=>{const token=msg91AccessToken(data);token?finish(resolve,token):finish(reject,new Error('MSG91 verified the OTP but did not return a verification token.'))};
+  const configuration={widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'91'+phone,exposeMethods:true,success:verified,failure:error=>finish(reject,new Error(error?.message||error?.error||'MSG91 verification failed.'))};
+  try{
+   window.initSendOTP(configuration);
+   waitForMsg91Method('sendOtp').then(providerSend=>providerSend('91'+phone,()=>{
+    openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Enter mobile OTP</h2><p class="login-account-id">+91 ${esc(phone)}</p><div class="form"><label class="login-label"><b>6-digit mobile OTP</b></label><input id="registrationMobileOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter mobile OTP" autofocus><small>OTP sent securely to your mobile.</small><button type="button" class="gold amazon-continue-btn" onclick="verifyMsg91RegistrationOtp()">Verify mobile</button><button type="button" class="linkbtn" onclick="showRegisterPanel()">← Start again</button></div></div>`);
+    window.__msg91RegistrationVerify={verified,reject};
+   },error=>finish(reject,new Error(error?.message||error?.error||'Mobile OTP could not be sent.')))).catch(error=>finish(reject,error));
+  }catch(error){finish(reject,error)}
+ });
+}
+async function verifyMsg91RegistrationOtp(){
+ const otp=(document.getElementById('registrationMobileOtp')?.value||'').trim(),flow=window.__msg91RegistrationVerify;
+ if(!/^\d{4,8}$/.test(otp)){alert('Enter the mobile OTP.');document.getElementById('registrationMobileOtp')?.focus();return}
+ if(!flow){alert('Mobile verification session expired. Please start again.');showRegisterPanel();return}
+ const button=[...document.querySelectorAll('.amazon-continue-btn')].find(b=>b.offsetParent!==null);if(button){button.disabled=true;button.textContent='Verifying…'}
+ try{const providerVerify=await waitForMsg91Method('verifyOtp');providerVerify(otp,flow.verified,error=>{if(button){button.disabled=false;button.textContent='Verify mobile'}alert(error?.message||error?.error||'Incorrect or expired mobile OTP.')})}catch(error){if(button){button.disabled=false;button.textContent='Verify mobile'}alert(error.message||'Mobile OTP could not be verified.')}
+}
 function cancelMsg91Flow(){__msg91FlowId++;closeM()}
 function backToSignIn(){__msg91FlowId++;auth()}
 async function continueCustomerLogin(){
@@ -832,7 +863,7 @@ function showRegisterPanel(){
  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Create your Ashwini account</h2><div class="form">
  <input id="rn" placeholder="Full name" autocomplete="name"><input id="re" placeholder="Email" autocomplete="email"><input id="rp" type="password" placeholder="Password (8+ characters)" autocomplete="new-password"><input id="rpConfirm" type="password" placeholder="Confirm password" autocomplete="new-password"><input id="rphone" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel">
  <label><input id="rWhatsappMarketing" type="checkbox"> Send me optional Ashwini offers and coupons on WhatsApp</label><small>You can change this anytime in Login & Security → Your data & account.</small>
- <button type="button" class="gold" onclick="sendOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
+ <button type="button" class="gold" onclick="beginRegistrationOtp()">Verify mobile & create account</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
 }
 function showAdminLoginPanel(){
  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo">ASHWINI</div><h2>Store admin sign in</h2><div class="form"><label class="login-label"><b>Admin mobile number or email</b></label><input id="adminLoginIdentifier" placeholder="Mobile number or email" autocomplete="username"><small>Use the admin email, or a mobile number already verified on the admin account.</small><label class="login-label"><b>Password</b></label><input id="adminLoginPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button type="button" class="gold amazon-continue-btn" onclick="adminBeginLogin()">Continue securely</button><button type="button" class="linkbtn" onclick="auth()">← Back to Customer Sign in</button></div></div>`);
@@ -868,7 +899,7 @@ async function verifyForgotLoginId(){const identifier=(document.getElementById('
 async function forgotPasswordFlow(){window.__passwordRecoveryId='';openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Forgot Password?</h2><p>Enter your registered email or mobile number to receive an OTP.</p><div class="form"><label><b>Registered Email / Mobile Number</b></label><input id="passwordRecoveryId" placeholder="Email or 10-digit mobile number" autocomplete="username"><small id="passwordRecoveryHint"></small><button type="button" class="gold" onclick="sendPasswordRecoveryOtp()">Send OTP</button></div></div>`)}
 async function sendPasswordRecoveryOtp(){const identifier=(document.getElementById('passwordRecoveryId')?.value||window.__passwordRecoveryId||'').trim(),hint=document.getElementById('passwordRecoveryHint');if(!identifier){if(hint)hint.textContent='Enter your registered email or mobile number first.';return}try{const d=await api('/api/auth/request-recovery-otp',{method:'POST',body:{identifier}});window.__passwordRecoveryId=identifier;openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Reset Password</h2><p>Enter the OTP sent to your registered email or mobile number.</p><div class="form"><label><b>Enter 6-digit OTP</b></label><input id="passwordRecoveryOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter OTP here" autofocus><small id="passwordRecoveryHint">${d.devOtp?`Demo OTP: ${esc(d.devOtp)}`:''}</small><label><b>New Password</b></label><input id="newPassword" type="password" minlength="8" placeholder="New password (8+ characters)" autocomplete="new-password"><label><b>Confirm New Password</b></label><input id="newPassword2" type="password" minlength="8" placeholder="Confirm new password" autocomplete="new-password"><button type="button" class="gold" onclick="resetPasswordFlow()">Reset Password</button><button type="button" class="linkbtn" onclick="sendPasswordRecoveryOtp()">Resend OTP</button><button type="button" class="linkbtn" onclick="forgotPasswordFlow()">← Change email or mobile number</button></div></div>`);toast('✓ Recovery OTP sent')}catch(e){if(hint)hint.textContent=e.message;alert(e.message)}}
 async function resetPasswordFlow(){const identifier=String(window.__passwordRecoveryId||'').trim(),otp=(document.getElementById('passwordRecoveryOtp')?.value||'').trim(),password=document.getElementById('newPassword')?.value||'',confirm=document.getElementById('newPassword2')?.value||'';if(!identifier){alert('Enter your registered email or mobile number.');forgotPasswordFlow();return}if(!/^\d{6}$/.test(otp)){alert('Please enter the 6-digit OTP.');document.getElementById('passwordRecoveryOtp')?.focus();return}if(password.length<8){alert('Password must be at least 8 characters.');return}if(password!==confirm){alert('Passwords do not match');return}try{await api('/api/auth/reset-password',{method:'POST',body:{identifier,otp,password}});window.__passwordRecoveryId='';localStorage.removeItem('ashwiniToken');localStorage.removeItem('ashwiniUser');token='';user=null;loadCartForCurrentUser();refreshAccountHeader();openM(`<div class="success"><div class="big">✓</div><h2>Password Reset Successfully</h2><p>All previous devices have been signed out. You can now sign in again.</p><button class="gold" onclick="auth()">Back to Login</button></div>`)}catch(e){alert(e.message)}}
-async function sendOtp(){
+async function beginRegistrationOtp(){
  const phoneEl=document.getElementById('rphone'),hint=document.getElementById('otpHint'),phone=(phoneEl?.value||'').replace(/\D/g,''),name=document.getElementById('rn')?.value||'',email=document.getElementById('re')?.value||'',password=document.getElementById('rp')?.value||'',confirmPassword=document.getElementById('rpConfirm')?.value||'',whatsappMarketingOptIn=!!document.getElementById('rWhatsappMarketing')?.checked;
  if(password!==confirmPassword){alert('Passwords do not match. Please enter the same password in both fields.');document.getElementById('rpConfirm')?.focus();return}
  if(!/^\d{10}$/.test(phone)){if(hint)hint.textContent='Please enter a valid 10-digit mobile number.';phoneEl?.focus();return}
@@ -876,7 +907,7 @@ async function sendOtp(){
  try{
   await api('/api/auth/request-msg91-registration',{method:'POST',body:{phone,email}});
   const flowId=++__msg91FlowId;
-  const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;
+  const accessToken=await openMsg91RegistrationVerification(phone);if(flowId!==__msg91FlowId)return;
   const verified=await api('/api/auth/register-msg91',{method:'POST',body:{name,email,password,phone,accessToken,whatsapp_marketing_opt_in:whatsappMarketingOptIn}});if(flowId!==__msg91FlowId)return;
   window.__pendingRegistrationToken=verified.registrationToken||'';
   openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Verify your email</h2><p class="login-account-id">${esc(verified.email||email)}</p><p class="login-legal">Enter the 6-digit OTP sent to your email. Your account will be created only after this verification.</p><div class="form"><label class="login-label"><b>Email OTP</b></label><input id="registrationEmailOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit email OTP" autofocus><small id="registrationEmailHint">${verified.devOtp?`Demo OTP: ${esc(verified.devOtp)}`:'OTP expires in about 5 minutes.'}</small><button type="button" class="gold amazon-continue-btn" onclick="confirmRegistrationEmail()">Verify email & create account</button><button type="button" class="linkbtn" onclick="showRegisterPanel()">← Start again</button></div></div>`);
@@ -889,7 +920,7 @@ async function confirmRegistrationEmail(){
  try{const verified=await api('/api/auth/confirm-registration-email',{method:'POST',body:{registrationToken,otp}});window.__pendingRegistrationToken='';session(verified);closeM();toast('✓ Email verified and account created')}catch(e){alert(e.message||'Email verification failed');if(button){button.disabled=false;button.textContent='Verify email & create account'}}
 }
 async function resendRegistrationOtp(){alert('For mobile OTP, use Resend OTP inside the secure MSG91 verification screen.')}
-async function register(){return sendOtp()}
+async function register(){return beginRegistrationOtp()}
 async function login(){try{const d=await api('/api/auth/login',{method:'POST',body:{email:email.value,password:pass.value}});session(d);closeM()}catch(e){alert(e.message)}}
 function refreshAccountHeader(){const link=document.getElementById('accountTopLink');if(!link)return;const small=link.querySelector('small'),bold=link.querySelector('b');if(user){const short=String(user.name||'Customer').trim().split(/\s+/)[0]||'Customer',mobileShort=short.slice(0,9);if(small)small.textContent=`Hello, ${short}`;if(bold)bold.textContent='Account & Lists';link.dataset.mobileLabel=`Hi,\n${mobileShort}`;link.setAttribute('aria-label',`Account & Lists for ${short}`)}else{if(small)small.textContent='Hello, sign in';if(bold)bold.textContent='Account & Lists';link.dataset.mobileLabel='Sign in';link.setAttribute('aria-label','Sign in to Ashwini')}}
 function session(d){token='';user=d.user||d;localStorage.removeItem('ashwiniToken');localStorage.setItem('ashwiniUser',JSON.stringify(user));loadCartForCurrentUser();if(user.role==='admin'){const a=document.getElementById('admin');if(a)a.style.display='inline'}refreshAccountHeader();toast('Welcome to Ashwini');if(user.role==='customer'){matchBehaviorSession();setTimeout(detectCustomerDelivery,700);setTimeout(maybePromptWhatsappMarketing,1400)}}
@@ -1521,7 +1552,7 @@ function syncCheckoutAddress(){const address=document.getElementById('address');
 function validateCheckoutAddressFields(showWarning=true){const fields=['checkoutHouse','checkoutVillage','checkoutLandmark'].map(id=>document.getElementById(id)).filter(Boolean),invalid=fields.filter(field=>!field.value.trim()),error=document.getElementById('checkoutAddressError');fields.forEach(field=>{const bad=!field.value.trim();field.classList.toggle('invalid',showWarning&&bad);if(showWarning&&bad)field.setAttribute('aria-invalid','true');else field.removeAttribute('aria-invalid')});if(error)error.classList.toggle('show',showWarning&&invalid.length>0);if(showWarning&&invalid[0])invalid[0].focus();syncCheckoutAddress();return invalid.length===0}
 function validateCheckoutMobile(showWarning=true){const input=document.getElementById('mobile'),warning=document.getElementById('checkoutMobileWarning');if(!input)return true;const value=input.value.replace(/\D/g,'').slice(0,10),valid=/^[6-9]\d{9}$/.test(value);input.value=value;input.classList.toggle('invalid',showWarning&&!valid);if(valid)input.removeAttribute('aria-invalid');else if(showWarning)input.setAttribute('aria-invalid','true');if(warning){warning.textContent=valid?'✓ Valid 10-digit delivery mobile number':showWarning?'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9.':'Enter a 10-digit Indian mobile number for delivery calls and updates.';warning.style.color=valid?'#257942':showWarning?'#b42318':'#6b5260'}if(showWarning&&!valid)input.focus();return valid}
 new MutationObserver(enhanceCheckoutAddressFields).observe(document.getElementById('modal')||document.body,{childList:true,subtree:true});
-window.confirmRegistrationEmail=confirmRegistrationEmail;
+window.confirmRegistrationEmail=confirmRegistrationEmail;window.beginRegistrationOtp=beginRegistrationOtp;window.verifyMsg91RegistrationOtp=verifyMsg91RegistrationOtp;
 window.savedDeliveryAddress=savedDeliveryAddress;window.saveDeliveryAddress=saveDeliveryAddress;window.useSavedDeliveryAddress=useSavedDeliveryAddress;
 document.addEventListener('click',event=>{if(!event.target.closest?.('#placeOrderButton'))return;const mobileValid=validateCheckoutMobile(true),addressValid=validateCheckoutAddressFields(true);if(!mobileValid||!addressValid){event.preventDefault();event.stopImmediatePropagation();toast(!mobileValid?'Please enter a valid 10-digit delivery mobile number':'Please complete all delivery address fields')}},true);
 
