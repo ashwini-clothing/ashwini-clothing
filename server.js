@@ -162,6 +162,7 @@ try{db.exec("ALTER TABLE orders ADD COLUMN replacement_for_return_id INTEGER DEF
 try{db.exec("ALTER TABLE orders ADD COLUMN return_refund_enabled INTEGER NOT NULL DEFAULT 0")}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_questions (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER, question TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS product_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, user_id INTEGER NOT NULL, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5), feedback TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)`)}catch{}
+try{db.exec(`CREATE TABLE IF NOT EXISTS review_media (id INTEGER PRIMARY KEY AUTOINCREMENT, review_id INTEGER NOT NULL, media_type TEXT NOT NULL CHECK(media_type IN ('IMAGE','VIDEO')), mime_type TEXT NOT NULL, media_data BLOB NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(review_id) REFERENCES product_reviews(id) ON DELETE CASCADE);CREATE INDEX IF NOT EXISTS idx_review_media_review ON review_media(review_id,id)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS offers (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, description TEXT DEFAULT '', coupon_code TEXT DEFAULT '', discount_percent REAL DEFAULT 0, banner_url TEXT DEFAULT '', button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', start_at TEXT DEFAULT '', end_at TEXT DEFAULT '', active INTEGER DEFAULT 1, show_popup INTEGER DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec(`CREATE TABLE IF NOT EXISTS homepage_slides (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT DEFAULT '', offer_text TEXT DEFAULT '', image_url TEXT NOT NULL, button_text TEXT DEFAULT 'Shop Now', button_action TEXT DEFAULT '', active INTEGER DEFAULT 1, sort_order INTEGER DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`)}catch{}
 try{db.exec("ALTER TABLE homepage_slides ADD COLUMN offer_text TEXT DEFAULT ''")}catch{}
@@ -423,6 +424,7 @@ const standardJsonParser=express.json({limit:'256kb'});
 const imageJsonParser=express.json({limit:'20mb'});
 function isImagePayloadRoute(pathname=''){
   return pathname==='/api/visual-search'
+    || /^\/api\/products\/\d+\/reviews$/.test(pathname)
     || pathname==='/api/admin/store-profile'
     || pathname==='/api/admin/offers' || pathname.startsWith('/api/admin/offers/')
     || pathname==='/api/admin/slides' || pathname.startsWith('/api/admin/slides/')
@@ -1269,27 +1271,38 @@ app.get("/api/admin/questions",auth,admin,(req,res)=>{
  res.json(rows.map(r=>({...r,asker_name:r.asker_name||'Customer'})));
 });
 
+function decodeReviewMedia(raw){
+ const match=String(raw?.data||'').match(/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/);if(!match)throw Error('A review attachment is invalid');
+ const mime=String(match[1]).toLowerCase(),allowedImages=new Set(['image/jpeg','image/png','image/webp']),allowedVideos=new Set(['video/mp4','video/webm','video/quicktime']),type=allowedImages.has(mime)?'IMAGE':allowedVideos.has(mime)?'VIDEO':'';
+ if(!type)throw Error('Use JPG, PNG or WebP photos and MP4, WebM or MOV video only');
+ const data=Buffer.from(match[2],'base64'),validImage=mime==='image/jpeg'&&data[0]===0xff&&data[1]===0xd8||mime==='image/png'&&data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))||mime==='image/webp'&&data.subarray(0,4).toString()==='RIFF'&&data.subarray(8,12).toString()==='WEBP',validVideo=(mime==='video/mp4'||mime==='video/quicktime')&&data.subarray(4,8).toString()==='ftyp'||mime==='video/webm'&&data.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
+ if(!data.length||(type==='IMAGE'?!validImage:!validVideo))throw Error('The attachment content does not match its file type');
+ if(type==='IMAGE'&&data.length>3*1024*1024)throw Error('Each review photo must be 3 MB or smaller');if(type==='VIDEO'&&data.length>10*1024*1024)throw Error('Review video must be 10 MB or smaller');return{type,mime,data}
+}
+app.get('/api/review-media/:id',(req,res)=>{try{const media=db.prepare('SELECT mime_type,media_data FROM review_media WHERE id=?').get(Number(req.params.id));if(!media)return res.status(404).end();const data=Buffer.from(media.media_data),range=String(req.headers.range||'');res.setHeader('Content-Type',media.mime_type);res.setHeader('Cache-Control','public, max-age=86400');res.setHeader('Content-Disposition','inline');res.setHeader('Accept-Ranges','bytes');if(range){const match=range.match(/bytes=(\d*)-(\d*)/);if(!match)return res.status(416).end();const start=match[1]?Number(match[1]):0,end=match[2]?Math.min(Number(match[2]),data.length-1):data.length-1;if(!Number.isInteger(start)||!Number.isInteger(end)||start<0||end<start||start>=data.length)return res.status(416).setHeader('Content-Range',`bytes */${data.length}`).end();res.status(206);res.setHeader('Content-Range',`bytes ${start}-${end}/${data.length}`);res.setHeader('Content-Length',end-start+1);return res.end(data.subarray(start,end+1))}res.setHeader('Content-Length',data.length);res.end(data)}catch{res.status(404).end()}});
 app.get('/api/products/:id/reviews',(req,res)=>{
  const productId=Number(req.params.id); if(!Number.isInteger(productId))return res.status(400).json({error:'Invalid product'});
  const rows=db.prepare(`SELECT r.id,r.product_id,r.rating,r.feedback,r.created_at,u.name AS customer_name,EXISTS(SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=r.product_id AND o.user_id=r.user_id AND o.status='DELIVERED' AND o.payment_status='PAID') AS verified_purchase FROM product_reviews r JOIN users u ON u.id=r.user_id WHERE r.product_id=? ORDER BY r.created_at DESC`).all(productId);
  const summary=db.prepare('SELECT COUNT(*) count, COALESCE(AVG(rating),0) avg FROM product_reviews WHERE product_id=?').get(productId);
  const viewerId=behaviorUserId(req),canReview=viewerId?!!db.prepare("SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=? AND o.user_id=? AND o.status='DELIVERED' AND o.payment_status='PAID' LIMIT 1").get(productId,viewerId):false;
- res.json({reviews:rows.map(r=>({...r,customer_name:r.customer_name||'Customer',verified_purchase:!!r.verified_purchase})),count:Number(summary.count||0),average:Number(summary.avg||0),can_review:canReview});
+ const media=db.prepare('SELECT id,media_type,mime_type FROM review_media WHERE review_id=? ORDER BY id');
+ res.json({reviews:rows.map(r=>({...r,customer_name:r.customer_name||'Customer',verified_purchase:!!r.verified_purchase,media:media.all(r.id).map(m=>({...m,url:`/api/review-media/${m.id}`}))})),count:Number(summary.count||0),average:Number(summary.avg||0),can_review:canReview});
 });
 app.get('/api/admin/reviews',auth,admin,(req,res)=>{try{const rows=db.prepare(`SELECT r.id,r.product_id,r.rating,r.feedback,r.created_at,p.name AS product_name,u.name AS customer_name,u.email AS customer_email FROM product_reviews r JOIN products p ON p.id=r.product_id JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC,r.id DESC`).all();res.json(rows)}catch(e){res.status(500).json({error:'Reviews could not be loaded'})}});
 app.delete('/api/admin/reviews/:id',auth,admin,(req,res)=>{try{const review=db.prepare(`SELECT r.id,r.product_id,r.rating,p.name AS product_name FROM product_reviews r JOIN products p ON p.id=r.product_id WHERE r.id=?`).get(req.params.id);if(!review)return res.status(404).json({error:'Review not found'});const remove=db.transaction(()=>{db.prepare('DELETE FROM product_reviews WHERE id=?').run(review.id);const avg=db.prepare('SELECT COALESCE(AVG(rating),0) avg FROM product_reviews WHERE product_id=?').get(review.product_id).avg;db.prepare('UPDATE products SET rating=? WHERE id=?').run(Number(Number(avg).toFixed(1)),review.product_id);return Number(Number(avg).toFixed(1))});const rating=remove();logAdminActivity(req,'REVIEW_DELETED','PRODUCT_REVIEW',review.id,{product_id:review.product_id,product_name:review.product_name,rating:review.rating,new_product_rating:rating});publishCatalogUpdate('updated',review.product_id);res.json({ok:true,product_id:review.product_id,rating})}catch(e){res.status(500).json({error:'Review could not be deleted'})}});
 app.post('/api/products/:id/reviews',auth,(req,res)=>{
  if(req.user.role!=='customer')return res.status(403).json({error:'Customer review only'});
- const productId=Number(req.params.id), rating=Number(req.body?.rating), feedback=String(req.body?.feedback||'').trim();
+ const productId=Number(req.params.id), rating=Number(req.body?.rating), feedback=String(req.body?.feedback||'').trim(),rawMedia=Array.isArray(req.body?.media)?req.body.media:[];
  if(!Number.isInteger(rating)||rating<1||rating>5)return res.status(400).json({error:'Please select 1 to 5 stars'});
  if(!feedback)return res.status(400).json({error:'Please write your feedback'});
  if(feedback.length>1000)return res.status(400).json({error:'Feedback is too long'});
+ if(rawMedia.length>4)return res.status(400).json({error:'Upload up to 3 photos and 1 video'});
  if(!db.prepare('SELECT id FROM products WHERE id=?').get(productId))return res.status(404).json({error:'Product not found'});
  const verified=db.prepare("SELECT 1 FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=? AND o.user_id=? AND o.status='DELIVERED' AND o.payment_status='PAID' LIMIT 1").get(productId,req.user.id);
  if(!verified)return res.status(403).json({error:'Only customers with a delivered and paid purchase can review this product'});
+ let decoded;try{decoded=rawMedia.map(decodeReviewMedia)}catch(e){return res.status(400).json({error:e.message})}if(decoded.filter(x=>x.type==='IMAGE').length>3||decoded.filter(x=>x.type==='VIDEO').length>1)return res.status(400).json({error:'Upload up to 3 photos and 1 video'});if(decoded.reduce((n,x)=>n+x.data.length,0)>12*1024*1024)return res.status(400).json({error:'Review attachments must be 12 MB or smaller in total'});
  const existing=db.prepare('SELECT id FROM product_reviews WHERE product_id=? AND user_id=?').get(productId,req.user.id);
- if(existing){db.prepare('UPDATE product_reviews SET rating=?,feedback=?,created_at=CURRENT_TIMESTAMP WHERE id=?').run(rating,feedback,existing.id);}
- else db.prepare('INSERT INTO product_reviews(product_id,user_id,rating,feedback) VALUES(?,?,?,?)').run(productId,req.user.id,rating,feedback);
+ const saveReview=db.transaction(()=>{let reviewId;if(existing){db.prepare('UPDATE product_reviews SET rating=?,feedback=?,created_at=CURRENT_TIMESTAMP WHERE id=?').run(rating,feedback,existing.id);reviewId=existing.id;db.prepare('DELETE FROM review_media WHERE review_id=?').run(reviewId)}else reviewId=Number(db.prepare('INSERT INTO product_reviews(product_id,user_id,rating,feedback) VALUES(?,?,?,?)').run(productId,req.user.id,rating,feedback).lastInsertRowid);const addMedia=db.prepare('INSERT INTO review_media(review_id,media_type,mime_type,media_data) VALUES(?,?,?,?)');decoded.forEach(m=>addMedia.run(reviewId,m.type,m.mime,m.data));return reviewId});saveReview();
  const avg=db.prepare('SELECT COALESCE(AVG(rating),0) avg FROM product_reviews WHERE product_id=?').get(productId).avg;
  db.prepare('UPDATE products SET rating=? WHERE id=?').run(Number(Number(avg).toFixed(1)),productId);
  res.json({ok:true,rating:Number(Number(avg).toFixed(1))});
