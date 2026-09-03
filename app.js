@@ -467,7 +467,7 @@ async function accountMenu(){
  if(!pop){openM(`<h2>👤 My Account</h2>`);return}
  const name=esc(user.name||'Customer');
  const wasOpen=pop.classList.contains('open');
- if(wasOpen){pop.classList.remove('open');return}
+ if(wasOpen){closeAccountMenu();return}
  pop.innerHTML=`<h3>👤 My Account</h3><p class="account-popover-note">Hello, <b>${name}</b> · Choose an account option below.</p><div class="account-menu-grid">
  <button class="account-menu-card" type="button" onclick="closeAccountMenu();buyAgain()"><b>🔄 Buy Again</b><small>Shop products from your previous orders</small><span class="account-chevron" aria-hidden="true">›</span></button>
  <button class="account-menu-card" type="button" onclick="closeAccountMenu();manageProfile()"><b>👤 Manage Profile</b><small>Update your name, email and mobile</small><span class="account-chevron" aria-hidden="true">›</span></button>
@@ -477,9 +477,9 @@ async function accountMenu(){
  <button class="account-menu-card" type="button" onclick="closeAccountMenu();orders()"><b>📦 Your Orders</b><small>View, track and manage orders</small><span class="account-chevron" aria-hidden="true">›</span></button>
  <button class="account-menu-card" type="button" onclick="closeAccountMenu();customerHelp()"><b>❓ Customer Help</b><small>Get help with orders, returns and account</small><span class="account-chevron" aria-hidden="true">›</span></button>
  </div>${user.role==='admin'?`<button class="gold" style="width:100%" onclick="closeAccountMenu();dashboard()">👑 Open Admin Dashboard</button>`:''}`;
- pop.classList.add('open');
+ pop.classList.add('open');document.body.classList.add('account-menu-open');
 }
-function closeAccountMenu(){const pop=document.getElementById('accountPopover');if(pop)pop.classList.remove('open')}
+function closeAccountMenu(){const pop=document.getElementById('accountPopover');if(pop)pop.classList.remove('open');document.body.classList.remove('account-menu-open')}
 document.addEventListener('click',e=>{const wrap=document.querySelector('.account-wrap');if(wrap && !wrap.contains(e.target))closeAccountMenu()});
 async function buyAgain(){
  try{const os=await api('/api/orders');const seen=new Set(),items=[];for(const o of os){for(const i of (o.items||[])){const k=String(i.product_id)+'|'+String(i.size);if(seen.has(k))continue;seen.add(k);items.push(i)}}if(!items.length){openM('<h2>🔄 Buy Again</h2><p>You have no previous purchased products yet.</p>');return}const ps=await api('/api/products');const cards=items.map(i=>{const p=ps.find(x=>Number(x.id)===Number(i.product_id));if(!p)return '';const size=String(i.size||'M');return `<div class="cartrow"><div class="mini">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}">`:esc(p.emoji||'👕')}</div><div><h3>${esc(p.name)}</h3><p>Previous size: <b>${esc(size)}</b></p><b>₹${Number(p.price).toLocaleString('en-IN')}</b></div><button class="gold" type="button" onclick="buyAgainOne(${p.id},'${size.replace(/'/g,"\\'")}')">Add Again</button></div>`}).join('');openM(`<h2>🔄 Buy Again</h2>${cards}`)}catch(e){alert(e.message||'Could not load Buy Again')}
