@@ -780,6 +780,11 @@ function msg91AccessToken(data){
   for(const valuePart of Object.values(value)){const found=walk(valuePart);if(found)return found}return '';
  };return walk(data)
 }
+function friendlyMsg91Error(error){
+ const message=String(error?.message||error?.error||error||'').trim();
+ if(/ip\s*blocked|ipblocked|throttl|too many|rate.?limit/i.test(message))return 'OTP request limit exceeded. For your security, please try again after 24 hours.';
+ return message||'MSG91 verification was cancelled or failed.';
+}
 async function openMsg91Verification(phone){
  const [cfg]=await warmMsg91();
  // MSG91 creates its own secure OTP modal. Remove Ashwini's temporary panel
@@ -792,9 +797,9 @@ async function openMsg91Verification(phone){
   const configuration={
    widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'91'+phone,
    success:data=>{const accessToken=msg91AccessToken(data);if(!accessToken){finish(reject,new Error('MSG91 verified the OTP but did not return a verification token.'));return}finish(resolve,accessToken)},
-   failure:error=>finish(reject,new Error(error?.message||error?.error||'MSG91 verification was cancelled or failed.'))
+   failure:error=>finish(reject,new Error(friendlyMsg91Error(error)))
   };
-  try{window.initSendOTP(configuration)}catch(error){finish(reject,error)}
+  try{window.initSendOTP(configuration)}catch(error){finish(reject,new Error(friendlyMsg91Error(error)))}
  });
 }
 function cancelMsg91Flow(){__msg91FlowId++;closeM()}
