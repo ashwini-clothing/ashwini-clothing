@@ -797,37 +797,6 @@ async function openMsg91Verification(phone){
   try{window.initSendOTP(configuration)}catch(error){finish(reject,error)}
  });
 }
-async function waitForMsg91Method(name,timeout=10000){
- const started=Date.now();
- while(typeof window[name]!=='function'){
-  if(Date.now()-started>=timeout)throw new Error('MSG91 mobile OTP service is not ready. Please try again.');
-  await new Promise(resolve=>setTimeout(resolve,100));
- }
- return window[name];
-}
-async function openMsg91RegistrationVerification(phone){
- const [cfg]=await warmMsg91();
- return new Promise((resolve,reject)=>{
-  let finished=false;
-  const finish=(fn,value)=>{if(finished)return;finished=true;window.__msg91RegistrationVerify=null;fn(value)};
-  const verified=data=>{const token=msg91AccessToken(data);token?finish(resolve,token):finish(reject,new Error('MSG91 verified the OTP but did not return a verification token.'))};
-  const configuration={widgetId:cfg.widgetId,tokenAuth:cfg.tokenAuth,identifier:'91'+phone,exposeMethods:true,success:verified,failure:error=>finish(reject,new Error(error?.message||error?.error||'MSG91 verification failed.'))};
-  try{
-   window.initSendOTP(configuration);
-   waitForMsg91Method('sendOtp').then(providerSend=>providerSend('91'+phone,()=>{
-    openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Enter mobile OTP</h2><p class="login-account-id">+91 ${esc(phone)}</p><div class="form"><label class="login-label"><b>6-digit mobile OTP</b></label><input id="registrationMobileOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Enter mobile OTP" autofocus><small>OTP sent securely to your mobile.</small><button type="button" class="gold amazon-continue-btn" onclick="verifyMsg91RegistrationOtp()">Verify mobile</button><button type="button" class="linkbtn" onclick="showRegisterPanel()">← Start again</button></div></div>`);
-    window.__msg91RegistrationVerify={verified,reject};
-   },error=>finish(reject,new Error(error?.message||error?.error||'Mobile OTP could not be sent.')))).catch(error=>finish(reject,error));
-  }catch(error){finish(reject,error)}
- });
-}
-async function verifyMsg91RegistrationOtp(){
- const otp=(document.getElementById('registrationMobileOtp')?.value||'').trim(),flow=window.__msg91RegistrationVerify;
- if(!/^\d{4,8}$/.test(otp)){alert('Enter the mobile OTP.');document.getElementById('registrationMobileOtp')?.focus();return}
- if(!flow){alert('Mobile verification session expired. Please start again.');showRegisterPanel();return}
- const button=[...document.querySelectorAll('.amazon-continue-btn')].find(b=>b.offsetParent!==null);if(button){button.disabled=true;button.textContent='Verifying…'}
- try{const providerVerify=await waitForMsg91Method('verifyOtp');providerVerify(otp,flow.verified,error=>{if(button){button.disabled=false;button.textContent='Verify mobile'}alert(error?.message||error?.error||'Incorrect or expired mobile OTP.')})}catch(error){if(button){button.disabled=false;button.textContent='Verify mobile'}alert(error.message||'Mobile OTP could not be verified.')}
-}
 function cancelMsg91Flow(){__msg91FlowId++;closeM()}
 function backToSignIn(){__msg91FlowId++;auth()}
 async function continueCustomerLogin(){
@@ -907,7 +876,7 @@ async function beginRegistrationOtp(){
  try{
   await api('/api/auth/request-msg91-registration',{method:'POST',body:{phone,email}});
   const flowId=++__msg91FlowId;
-  const accessToken=await openMsg91RegistrationVerification(phone);if(flowId!==__msg91FlowId)return;
+  const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;
   const verified=await api('/api/auth/register-msg91',{method:'POST',body:{name,email,password,phone,accessToken,whatsapp_marketing_opt_in:whatsappMarketingOptIn}});if(flowId!==__msg91FlowId)return;
   window.__pendingRegistrationToken=verified.registrationToken||'';
   openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Verify your email</h2><p class="login-account-id">${esc(verified.email||email)}</p><p class="login-legal">Enter the 6-digit OTP sent to your email. Your account will be created only after this verification.</p><div class="form"><label class="login-label"><b>Email OTP</b></label><input id="registrationEmailOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit email OTP" autofocus><small id="registrationEmailHint">${verified.devOtp?`Demo OTP: ${esc(verified.devOtp)}`:'OTP expires in about 5 minutes.'}</small><button type="button" class="gold amazon-continue-btn" onclick="confirmRegistrationEmail()">Verify email & create account</button><button type="button" class="linkbtn" onclick="showRegisterPanel()">← Start again</button></div></div>`);
@@ -1552,7 +1521,7 @@ function syncCheckoutAddress(){const address=document.getElementById('address');
 function validateCheckoutAddressFields(showWarning=true){const fields=['checkoutHouse','checkoutVillage','checkoutLandmark'].map(id=>document.getElementById(id)).filter(Boolean),invalid=fields.filter(field=>!field.value.trim()),error=document.getElementById('checkoutAddressError');fields.forEach(field=>{const bad=!field.value.trim();field.classList.toggle('invalid',showWarning&&bad);if(showWarning&&bad)field.setAttribute('aria-invalid','true');else field.removeAttribute('aria-invalid')});if(error)error.classList.toggle('show',showWarning&&invalid.length>0);if(showWarning&&invalid[0])invalid[0].focus();syncCheckoutAddress();return invalid.length===0}
 function validateCheckoutMobile(showWarning=true){const input=document.getElementById('mobile'),warning=document.getElementById('checkoutMobileWarning');if(!input)return true;const value=input.value.replace(/\D/g,'').slice(0,10),valid=/^[6-9]\d{9}$/.test(value);input.value=value;input.classList.toggle('invalid',showWarning&&!valid);if(valid)input.removeAttribute('aria-invalid');else if(showWarning)input.setAttribute('aria-invalid','true');if(warning){warning.textContent=valid?'✓ Valid 10-digit delivery mobile number':showWarning?'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9.':'Enter a 10-digit Indian mobile number for delivery calls and updates.';warning.style.color=valid?'#257942':showWarning?'#b42318':'#6b5260'}if(showWarning&&!valid)input.focus();return valid}
 new MutationObserver(enhanceCheckoutAddressFields).observe(document.getElementById('modal')||document.body,{childList:true,subtree:true});
-window.confirmRegistrationEmail=confirmRegistrationEmail;window.beginRegistrationOtp=beginRegistrationOtp;window.verifyMsg91RegistrationOtp=verifyMsg91RegistrationOtp;
+window.confirmRegistrationEmail=confirmRegistrationEmail;window.beginRegistrationOtp=beginRegistrationOtp;
 window.savedDeliveryAddress=savedDeliveryAddress;window.saveDeliveryAddress=saveDeliveryAddress;window.useSavedDeliveryAddress=useSavedDeliveryAddress;
 document.addEventListener('click',event=>{if(!event.target.closest?.('#placeOrderButton'))return;const mobileValid=validateCheckoutMobile(true),addressValid=validateCheckoutAddressFields(true);if(!mobileValid||!addressValid){event.preventDefault();event.stopImmediatePropagation();toast(!mobileValid?'Please enter a valid 10-digit delivery mobile number':'Please complete all delivery address fields')}},true);
 
