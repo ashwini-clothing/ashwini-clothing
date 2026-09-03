@@ -876,12 +876,11 @@ async function sendOtp(){
  try{
   await api('/api/auth/request-msg91-registration',{method:'POST',body:{phone,email}});
   const flowId=++__msg91FlowId;
-  openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Secure mobile verification</h2><p>MSG91 will send and verify your OTP securely.</p><div class="form"><small id="otpHint">Opening the secure MSG91 OTP screen…</small><button type="button" class="linkbtn" data-auth-action="cancel-msg91">Cancel</button><button type="button" class="linkbtn" data-auth-action="back-signin">← Back to Sign in</button></div></div>`);
   const accessToken=await openMsg91Verification(phone);if(flowId!==__msg91FlowId)return;
   const verified=await api('/api/auth/register-msg91',{method:'POST',body:{name,email,password,phone,accessToken,whatsapp_marketing_opt_in:whatsappMarketingOptIn}});if(flowId!==__msg91FlowId)return;
   window.__pendingRegistrationToken=verified.registrationToken||'';
   openM(`<div class="amazon-login-wrap"><div class="ashwini-login-logo" aria-label="Ashwini">ASHWINI</div><h2>Verify your email</h2><p class="login-account-id">${esc(verified.email||email)}</p><p class="login-legal">Enter the 6-digit OTP sent to your email. Your account will be created only after this verification.</p><div class="form"><label class="login-label"><b>Email OTP</b></label><input id="registrationEmailOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6-digit email OTP" autofocus><small id="registrationEmailHint">${verified.devOtp?`Demo OTP: ${esc(verified.devOtp)}`:'OTP expires in about 5 minutes.'}</small><button type="button" class="gold amazon-continue-btn" onclick="confirmRegistrationEmail()">Verify email & create account</button><button type="button" class="linkbtn" onclick="showRegisterPanel()">← Start again</button></div></div>`);
- }catch(e){if(hint)hint.textContent=e.message||'Could not start mobile verification';alert(e.message||'Could not start mobile verification')}finally{if(btn){btn.disabled=false;btn.textContent='Verify mobile & create account'}}
+ }catch(e){const ownModal=document.getElementById('modal');if(ownModal){ownModal.style.display='flex';ownModal.setAttribute('aria-hidden','false');document.body.style.overflow='hidden'}if(hint)hint.textContent=e.message||'Could not start mobile verification';alert(e.message||'Could not start mobile verification')}finally{if(btn){btn.disabled=false;btn.textContent='Verify mobile & create account'}}
 }
 async function confirmRegistrationEmail(){
  const otp=(document.getElementById('registrationEmailOtp')?.value||'').trim(),registrationToken=String(window.__pendingRegistrationToken||'');
