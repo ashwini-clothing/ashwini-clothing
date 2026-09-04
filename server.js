@@ -1327,12 +1327,14 @@ app.post('/api/products/:id/reviews',auth,(req,res)=>{
  res.json({ok:true,rating:Number(Number(avg).toFixed(1))});
 });
 
+function normalizeProductSize(value){return String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,' ').toUpperCase()}
+function cleanProductSize(value){return String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,' ')}
 function resolveItems(items){
  if(!Array.isArray(items)||!items.length)throw Error("Cart is empty");
  if(items.length>50)throw Error("Cart contains too many item lines");
  const combined=new Map(),productQuantities=new Map();
  for(const item of items){
-  const productId=Number(item?.id),qty=Number(item?.quantity),size=String(item?.size||'').trim();
+  const productId=Number(item?.id),qty=Number(item?.quantity),size=normalizeProductSize(item?.size);
   if(!Number.isInteger(productId)||productId<1)throw Error("Invalid product in cart");
   if(!Number.isInteger(qty)||qty<1||qty>20)throw Error("Each product quantity must be a whole number from 1 to 20");
   if(!size||size.length>20)throw Error("Invalid product size in cart");
@@ -1345,10 +1347,10 @@ function resolveItems(items){
  for(const x of combined.values()){
   const p=db.prepare("SELECT * FROM products WHERE id=?").get(x.productId);
   if(!p)throw Error("Product not found");
-  const availableSizes=String(p.size_options||'').split(',').map(value=>value.trim()).filter(Boolean);
-  if(!availableSizes.includes(x.size))throw Error(`Size unavailable for ${p.name}`);
+  const availableSizes=String(p.size_options||'').split(',').map(value=>({key:normalizeProductSize(value),label:cleanProductSize(value)})).filter(value=>value.key&&value.label),matchedSize=availableSizes.find(value=>value.key===x.size);
+  if(!matchedSize)throw Error(`Size unavailable for ${p.name}`);
   if(!Number.isInteger(Number(p.stock))||Number(p.stock)<Number(productQuantities.get(x.productId)))throw Error(`Only ${Math.max(0,Number(p.stock)||0)} left for ${p.name}`);
-  total+=Number(p.price)*x.qty;out.push({p,qty:x.qty,size:x.size});
+  total+=Number(p.price)*x.qty;out.push({p,qty:x.qty,size:matchedSize.label});
  }
  if(!Number.isSafeInteger(total)||total<0)throw Error("Cart total could not be calculated safely");
  return {total,out};
