@@ -877,6 +877,7 @@ function searchTerms(value){const aliases={kurti:'kurta',kurtis:'kurta',kurtha:'
 function searchDistance(a,b){a=String(a);b=String(b);if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;let previous=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){const current=[i];for(let j=1;j<=b.length;j++)current[j]=Math.min(current[j-1]+1,previous[j]+1,previous[j-1]+(a[i-1]===b[j-1]?0:1));previous=current}return previous[b.length]}
 function smartProductScore(product,query){const terms=searchTerms(query),name=searchText(product.name),category=searchText(product.category),haystack=searchText([product.name,product.category,product.color,product.size_options,product.offer_text,product.description].join(' ')),words=[...new Set(haystack.split(' ').filter(Boolean))];if(!terms.length)return 0;let score=0,matched=0;for(const term of terms){if(name===term){score+=12;matched++;continue}if(name.includes(term)){score+=8;matched++;continue}if(category.includes(term)||haystack.includes(term)){score+=5;matched++;continue}const best=words.reduce((n,word)=>Math.min(n,searchDistance(term,word)),99),allowed=term.length>=7?2:term.length>=4?1:0;if(best<=allowed){score+=Math.max(2,5-best);matched++}}return matched===terms.length?score+terms.length*2:matched?score-3:0}
 app.get("/api/products",(req,res)=>{
+ res.setHeader('Cache-Control','no-store');
  const {q="",category="All",sort="featured",filters=""}=req.query,query=String(q).trim().slice(0,100);
  let rows=db.prepare(`SELECT * FROM products WHERE (?='All' OR lower(trim(category))=lower(trim(?)))`).all(category,category);
  if(query)rows=rows.map(row=>({...row,__search_score:smartProductScore(row,query)})).filter(row=>row.__search_score>0);
@@ -1330,7 +1331,24 @@ function normalizeProductSize(value){return String(value??'').normalize('NFKC').
 function cleanProductSize(value){return String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,' ')}
 function parseSizeStock(product){try{const raw=JSON.parse(product?.size_stock||'');if(raw&&typeof raw==='object'&&!Array.isArray(raw))return Object.fromEntries(Object.entries(raw).map(([key,value])=>[normalizeProductSize(key),Math.max(0,Math.floor(Number(value)||0))]))}catch{}return null}
 function availableProductStock(product,size){const sizes=parseSizeStock(product);return sizes?Number(sizes[normalizeProductSize(size)]||0):Math.max(0,Number(product?.stock)||0)}
-function adjustProductStock(productId,size,delta){const product=db.prepare('SELECT id,stock,size_stock FROM products WHERE id=?').get(productId);if(!product)return false;const sizes=parseSizeStock(product),nextTotal=Number(product.stock)+Number(delta);if(nextTotal<0)return false;if(!sizes)return !!db.prepare('UPDATE products SET stock=? WHERE id=?').run(nextTotal,product.id).changes;const key=normalizeProductSize(size),next=Number(sizes[key]||0)+Number(delta);if(!key||next<0)return false;sizes[key]=next;return !!db.prepare('UPDATE products SET stock=?,size_stock=? WHERE id=?').run(nextTotal,JSON.stringify(sizes),product.id).changes}
+function adjustProductStock(productId,size,delta){
+ const product=db.prepare('SELECT id,stock,size_stock FROM products WHERE id=?').get(productId);
+ if(!product)return false;
+ const sizes=parseSizeStock(product),nextTotal=Number(product.stock)+Number(delta);
+ if(nextTotal<0)return false;
+ let changed=false;
+ if(!sizes)changed=!!db.prepare('UPDATE products SET stock=? WHERE id=?').run(nextTotal,product.id).changes;
+ else{
+  const key=normalizeProductSize(size),next=Number(sizes[key]||0)+Number(delta);
+  if(!key||next<0)return false;
+  sizes[key]=next;
+  changed=!!db.prepare('UPDATE products SET stock=?,size_stock=? WHERE id=?').run(nextTotal,JSON.stringify(sizes),product.id).changes;
+ }
+ // Stock changes run inside checkout transactions. Notify connected storefronts
+ // on the next event-loop turn so their product cards refresh after commit.
+ if(changed)setImmediate(()=>publishCatalogUpdate('stock_updated',product.id));
+ return changed;
+}
 function validatedSizeStock(sizeOptions,sizeStock,fallbackStock=0){const labels=String(sizeOptions||'').split(',').map(cleanProductSize).filter(Boolean),keys=labels.map(normalizeProductSize);if(!labels.length)throw Error('Add at least one product size');if(new Set(keys).size!==keys.length)throw Error('Duplicate sizes are not allowed');let raw;try{raw=typeof sizeStock==='string'?JSON.parse(sizeStock):sizeStock}catch{throw Error('Size-wise stock is invalid')}if(!raw||typeof raw!=='object'||Array.isArray(raw)){const total=Math.max(0,Math.floor(Number(fallbackStock)||0)),base=Math.floor(total/labels.length),extra=total%labels.length;raw=Object.fromEntries(labels.map((label,index)=>[label,base+(index<extra?1:0)]))}const out={};for(const label of labels){const number=Number(raw[label]??raw[normalizeProductSize(label)]);if(!Number.isInteger(number)||number<0)throw Error(`Enter a valid stock quantity for size ${label}`);out[normalizeProductSize(label)]=number}return {json:JSON.stringify(out),total:Object.values(out).reduce((sum,value)=>sum+value,0)}}
 function resolveItems(items){
  if(!Array.isArray(items)||!items.length)throw Error("Cart is empty");
