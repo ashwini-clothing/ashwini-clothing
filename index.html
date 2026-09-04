@@ -169,6 +169,11 @@ button:active{transform:translateY(1px)}
 <style id="ashwini-mobile-real-page-fixes">
 /* Final mobile-only layouts: uses the real cart, order, gallery and Buy Again markup. */
 @media (max-width:600px){
+  #body .order-detail-item{grid-template-columns:92px minmax(0,1fr)!important;gap:12px!important;align-items:start!important}
+  #body .order-detail-item>.order-detail-product-image{grid-column:1!important;width:92px!important;min-width:92px!important;max-width:92px!important;height:112px!important;min-height:112px!important;padding:3px!important;overflow:hidden!important;box-sizing:border-box!important}
+  #body .order-detail-item>.order-detail-product-image img{display:block!important;width:86px!important;min-width:86px!important;max-width:86px!important;height:104px!important;object-fit:cover!important}
+  #body .order-detail-item>div:nth-child(2){grid-column:2!important;min-width:0!important}
+  #body .order-detail-item>b{grid-column:2!important;justify-self:end!important;text-align:right!important}
   .modal{padding:0!important;align-items:stretch!important}
   .modal .box{width:100%!important;max-width:none!important;height:100dvh!important;min-height:100dvh!important;max-height:100dvh!important;box-sizing:border-box!important;border-radius:0!important;padding:18px 20px 88px!important;overflow-y:auto!important}
   #body{width:100%!important;max-width:100%!important;box-sizing:border-box!important}
