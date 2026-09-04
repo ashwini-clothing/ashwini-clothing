@@ -74,6 +74,7 @@ try{db.exec("ALTER TABLE products ADD COLUMN care_instructions TEXT DEFAULT ''")
 try{db.exec("ALTER TABLE products ADD COLUMN badge_text TEXT DEFAULT 'Ashwini Choice'")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN offer_text TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN offer_discount REAL DEFAULT 0")}catch{}
+try{db.exec("ALTER TABLE products ADD COLUMN size_stock TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")}catch{}
 // Enforce one non-empty mobile number per account at the database boundary.
 // Triggers protect upgraded databases even when historical duplicates prevent
@@ -251,9 +252,8 @@ function releaseOrderStock(orderId,nextStatus){
   if(!order||order.payment_status==='PAID'||String(order.stock_released_at||''))return false;
   const claimed=db.prepare("UPDATE orders SET stock_released_at=CURRENT_TIMESTAMP,status=COALESCE(?,status),updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(stock_released_at,'')='' AND payment_status<>'PAID'").run(nextStatus||null,order.id);
   if(!claimed.changes)return false;
-  const items=db.prepare("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id").all(order.id);
-  const restore=db.prepare("UPDATE products SET stock=stock+? WHERE id=?");
-  for(const item of items)restore.run(Number(item.quantity||0),item.product_id);
+  const items=db.prepare("SELECT product_id,size,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id,size").all(order.id);
+  for(const item of items)adjustProductStock(item.product_id,item.size,Number(item.quantity||0));
   return true;
  })();
 }
@@ -263,8 +263,8 @@ function restoreCancelledOrderStock(orderId){
   if(!order||String(order.stock_released_at||''))return false;
   const claimed=db.prepare("UPDATE orders SET stock_released_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND COALESCE(stock_released_at,'')=''").run(order.id);
   if(!claimed.changes)return false;
-  const items=db.prepare("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id").all(order.id),restore=db.prepare("UPDATE products SET stock=stock+? WHERE id=?");
-  for(const item of items)restore.run(Number(item.quantity||0),item.product_id);
+  const items=db.prepare("SELECT product_id,size,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id,size").all(order.id);
+  for(const item of items)adjustProductStock(item.product_id,item.size,Number(item.quantity||0));
   return true;
  })();
 }
@@ -292,10 +292,9 @@ function reserveReleasedOrderStock(orderId){
   const order=db.prepare("SELECT id,stock_released_at FROM orders WHERE id=?").get(orderId);
   if(!order)return false;
   if(!String(order.stock_released_at||''))return true;
-  const items=db.prepare("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id").all(order.id);
-  for(const item of items){const product=db.prepare("SELECT stock FROM products WHERE id=?").get(item.product_id);if(!product||Number(product.stock)<Number(item.quantity))return false}
-  const deduct=db.prepare("UPDATE products SET stock=stock-? WHERE id=? AND stock>=?");
-  for(const item of items){const qty=Number(item.quantity);if(!deduct.run(qty,item.product_id,qty).changes)throw Error('Stock changed while restoring payment reservation')}
+  const items=db.prepare("SELECT product_id,size,SUM(quantity) quantity FROM order_items WHERE order_id=? GROUP BY product_id,size").all(order.id);
+  for(const item of items){const product=db.prepare("SELECT * FROM products WHERE id=?").get(item.product_id);if(!product||availableProductStock(product,item.size)<Number(item.quantity))return false}
+  for(const item of items){if(!adjustProductStock(item.product_id,item.size,-Number(item.quantity)))throw Error('Stock changed while restoring payment reservation')}
   db.prepare("UPDATE orders SET stock_released_at='',stock_reserved_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);
   return true;
  })();
@@ -1329,6 +1328,10 @@ app.post('/api/products/:id/reviews',auth,(req,res)=>{
 
 function normalizeProductSize(value){return String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,' ').toUpperCase()}
 function cleanProductSize(value){return String(value??'').normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,' ')}
+function parseSizeStock(product){try{const raw=JSON.parse(product?.size_stock||'');if(raw&&typeof raw==='object'&&!Array.isArray(raw))return Object.fromEntries(Object.entries(raw).map(([key,value])=>[normalizeProductSize(key),Math.max(0,Math.floor(Number(value)||0))]))}catch{}return null}
+function availableProductStock(product,size){const sizes=parseSizeStock(product);return sizes?Number(sizes[normalizeProductSize(size)]||0):Math.max(0,Number(product?.stock)||0)}
+function adjustProductStock(productId,size,delta){const product=db.prepare('SELECT id,stock,size_stock FROM products WHERE id=?').get(productId);if(!product)return false;const sizes=parseSizeStock(product),nextTotal=Number(product.stock)+Number(delta);if(nextTotal<0)return false;if(!sizes)return !!db.prepare('UPDATE products SET stock=? WHERE id=?').run(nextTotal,product.id).changes;const key=normalizeProductSize(size),next=Number(sizes[key]||0)+Number(delta);if(!key||next<0)return false;sizes[key]=next;return !!db.prepare('UPDATE products SET stock=?,size_stock=? WHERE id=?').run(nextTotal,JSON.stringify(sizes),product.id).changes}
+function validatedSizeStock(sizeOptions,sizeStock,fallbackStock=0){const labels=String(sizeOptions||'').split(',').map(cleanProductSize).filter(Boolean),keys=labels.map(normalizeProductSize);if(!labels.length)throw Error('Add at least one product size');if(new Set(keys).size!==keys.length)throw Error('Duplicate sizes are not allowed');let raw;try{raw=typeof sizeStock==='string'?JSON.parse(sizeStock):sizeStock}catch{throw Error('Size-wise stock is invalid')}if(!raw||typeof raw!=='object'||Array.isArray(raw)){const total=Math.max(0,Math.floor(Number(fallbackStock)||0)),base=Math.floor(total/labels.length),extra=total%labels.length;raw=Object.fromEntries(labels.map((label,index)=>[label,base+(index<extra?1:0)]))}const out={};for(const label of labels){const number=Number(raw[label]??raw[normalizeProductSize(label)]);if(!Number.isInteger(number)||number<0)throw Error(`Enter a valid stock quantity for size ${label}`);out[normalizeProductSize(label)]=number}return {json:JSON.stringify(out),total:Object.values(out).reduce((sum,value)=>sum+value,0)}}
 function resolveItems(items){
  if(!Array.isArray(items)||!items.length)throw Error("Cart is empty");
  if(items.length>50)throw Error("Cart contains too many item lines");
@@ -1349,7 +1352,8 @@ function resolveItems(items){
   if(!p)throw Error("Product not found");
   const availableSizes=String(p.size_options||'').split(',').map(value=>({key:normalizeProductSize(value),label:cleanProductSize(value)})).filter(value=>value.key&&value.label),matchedSize=availableSizes.find(value=>value.key===x.size);
   if(!matchedSize)throw Error(`Size unavailable for ${p.name}`);
-  if(!Number.isInteger(Number(p.stock))||Number(p.stock)<Number(productQuantities.get(x.productId)))throw Error(`Only ${Math.max(0,Number(p.stock)||0)} left for ${p.name}`);
+  const requested=[...combined.values()].filter(item=>item.productId===x.productId&&item.size===x.size).reduce((sum,item)=>sum+item.qty,0),available=availableProductStock(p,x.size);
+  if(available<requested)throw Error(available?`Only ${available} left in size ${matchedSize.label} for ${p.name}`:`Size ${matchedSize.label} is unavailable for ${p.name}`);
   total+=Number(p.price)*x.qty;out.push({p,qty:x.qty,size:matchedSize.label});
  }
  if(!Number.isSafeInteger(total)||total<0)throw Error("Cart total could not be calculated safely");
@@ -1422,10 +1426,9 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
    const r=db.prepare("INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,checkout_key,stock_reserved_at,delivery_name,delivery_address_line,delivery_city,delivery_state,delivery_pincode) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?)")
     .run(parent.id,total,payment_method==="COD"?"PLACED":"PAYMENT_PENDING","PENDING",payment_method,address,customerPhone,checkoutKey,fullName,addressLine,enteredCity,enteredState,pin);
    const add=db.prepare("INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)");
-   const dec=db.prepare("UPDATE products SET stock=stock-? WHERE id=?");
    for(const x of out){
     add.run(r.lastInsertRowid,x.p.id,x.size,x.qty,x.p.price);
-    dec.run(x.qty,x.p.id);
+    if(!adjustProductStock(x.p.id,x.size,-x.qty))throw Error(`Stock changed for ${x.p.name}. Please refresh and try again.`);
    }
    return Number(r.lastInsertRowid);
   });
@@ -1480,22 +1483,18 @@ function createReplacementOrderForReturn(returnRow){
  const originalItems=db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').all(original.id);
  if(!originalItems.length)throw Error('Original order has no items for replacement');
  const tx=db.transaction(()=>{
-   const required=new Map();
-   for(const item of originalItems)required.set(Number(item.product_id),Number(required.get(Number(item.product_id))||0)+Number(item.quantity||0));
-   for(const [productId,quantity] of required){const product=db.prepare('SELECT stock FROM products WHERE id=?').get(productId);if(!product||Number(product.stock)<quantity)throw Error(`Replacement stock is unavailable for product #${productId}`)}
+   const replacementItems=originalItems.map(item=>({...item,size:String(returnRow.replacement_size||'').trim()||item.size}));
+   for(const item of replacementItems){const product=db.prepare('SELECT * FROM products WHERE id=?').get(item.product_id);if(!product||availableProductStock(product,item.size)<Number(item.quantity))throw Error(`Replacement stock is unavailable for size ${item.size}`)}
    const total=0;
    const ins=db.prepare(`INSERT INTO orders(user_id,total,status,payment_status,payment_method,address,customer_phone,stock_reserved_at,created_at,updated_at,replacement_for_order_id,replacement_for_return_id,delivery_name,delivery_address_line,delivery_city,delivery_state,delivery_pincode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
    const now=new Date().toISOString();
    const result=ins.run(original.user_id,total,'PLACED','PAID','REPLACEMENT',original.address,original.customer_phone||'',now,now,now,original.id,returnRow.id,original.delivery_name||'',original.delivery_address_line||'',original.delivery_city||'',original.delivery_state||'',original.delivery_pincode||'');
    const newOrderId=Number(result.lastInsertRowid);
    const add=db.prepare('INSERT INTO order_items(order_id,product_id,size,quantity,unit_price) VALUES(?,?,?,?,?)');
-   for(const item of originalItems){
-     const requestedSize=String(returnRow.replacement_size||'').trim();
-     const size=requestedSize||item.size;
-     add.run(newOrderId,item.product_id,size,item.quantity,item.unit_price);
+   for(const item of replacementItems){
+     add.run(newOrderId,item.product_id,item.size,item.quantity,item.unit_price);
+     if(!adjustProductStock(item.product_id,item.size,-Number(item.quantity)))throw Error(`Replacement stock changed for size ${item.size}. Refresh and try again.`);
    }
-   const deduct=db.prepare('UPDATE products SET stock=stock-? WHERE id=? AND stock>=?');
-   for(const [productId,quantity] of required)if(!deduct.run(quantity,productId,quantity).changes)throw Error(`Replacement stock changed for product #${productId}. Refresh and try again.`);
    return newOrderId;
  });
  return tx();
@@ -1684,17 +1683,20 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  res.json({ok:true,order});
 });
 function packedProductMeasurements(input={},fallback={}){const value=(key,defaultValue,min,max)=>{const n=Number(input[key]??fallback[key]??defaultValue);if(!Number.isFinite(n)||n<min||n>max)throw Error(`Enter a valid ${key.replace('packed_','').replaceAll('_',' ')}`);return Number(n.toFixed(3))};return{packed_weight_kg:value('packed_weight_kg',.5,.05,50),packed_length_cm:value('packed_length_cm',25,1,200),packed_breadth_cm:value('packed_breadth_cm',20,1,200),packed_height_cm:value('packed_height_cm',5,.5,200)}}
+function validateProductInput(product){if(!String(product?.name||'').trim())throw Error('Product name is required');if(!String(product?.category||'').trim())throw Error('Category is required');if(!String(product?.color||'').trim())throw Error('Colour is required');if(!Number.isFinite(Number(product?.price))||Number(product.price)<=0)throw Error('Enter a valid selling price');if(!Number.isFinite(Number(product?.mrp))||Number(product.mrp)<Number(product.price))throw Error('MRP must be equal to or higher than selling price');if(!String(product?.image||'').trim())throw Error('Add at least one product photo')}
 app.post("/api/admin/products",auth,admin,(req,res)=>{try{
  const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,emoji="👕",stock=0,description="",image="",gallery="",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body,rating=0,m=packedProductMeasurements(req.body);
- const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount,packed_weight_kg,packed_length_cm,packed_breadth_cm,packed_height_cm) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,stock,description,validatedImageSource(image),validatedImageGallery(gallery),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm);
- logAdminActivity(req,'PRODUCT_CREATED','PRODUCT',r.lastInsertRowid,{name:String(name||'').slice(0,200),stock:Number(stock)||0,price:Number(price)||0});
+ validateProductInput(req.body);
+ const ss=validatedSizeStock(size_options,req.body?.size_stock,stock);
+ const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount,packed_weight_kg,packed_length_cm,packed_breadth_cm,packed_height_cm,size_stock) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,ss.total,description,validatedImageSource(image),validatedImageGallery(gallery),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,ss.json);
+ logAdminActivity(req,'PRODUCT_CREATED','PRODUCT',r.lastInsertRowid,{name:String(name||'').slice(0,200),stock:ss.total,price:Number(price)||0});
  publishCatalogUpdate('created',r.lastInsertRowid);
  res.json(db.prepare("SELECT * FROM products WHERE id=?").get(r.lastInsertRowid));
  }catch(e){res.status(400).json({error:e.message||'Product could not be created'})}});
 app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{try{
  const p=db.prepare("SELECT * FROM products WHERE id=?").get(req.params.id);if(!p)return res.status(404).json({error:"Not found"});
- const x={...p,...req.body,rating:p.rating},m=packedProductMeasurements(req.body,p);db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=?,packed_weight_kg=?,packed_length_cm=?,packed_breadth_cm=?,packed_height_cm=? WHERE id=?")
- .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,x.stock,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:Number(x.stock)||0,from_price:Number(p.price)||0,to_price:Number(x.price)||0,packed_weight_kg:m.packed_weight_kg,packed_dimensions_cm:[m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm]});publishCatalogUpdate('updated',p.id);res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
+ const x={...p,...req.body,rating:p.rating};validateProductInput(x);const m=packedProductMeasurements(req.body,p),ss=validatedSizeStock(x.size_options,req.body?.size_stock??p.size_stock,x.stock);db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=?,packed_weight_kg=?,packed_length_cm=?,packed_breadth_cm=?,packed_height_cm=?,size_stock=? WHERE id=?")
+ .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,ss.total,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,ss.json,p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:ss.total,from_price:Number(p.price)||0,to_price:Number(x.price)||0,packed_weight_kg:m.packed_weight_kg,packed_dimensions_cm:[m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm]});publishCatalogUpdate('updated',p.id);res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
  }catch(e){res.status(400).json({error:e.message||'Product could not be updated'})}});
 app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});publishCatalogUpdate('deleted',product.id);res.json({ok:true})});
 
