@@ -1,3 +1,4 @@
+import {installWishlistSchema,wishlistState,mutateWishlist} from "./scripts/wishlist-state.js";
 
 import express from "express";
 import cors from "cors";
@@ -54,6 +55,7 @@ const db=new Database(dbPath);
 db.pragma("foreign_keys=ON");
 db.exec(fs.readFileSync(path.join(__dirname,"schema.sql"),"utf8"));
 installCartSchema(db);
+installWishlistSchema(db);
 // Node timers accept at most 2^31-1 ms. Cap the interval to one week so an
 // accidental large value cannot overflow into a rapid backup loop.
 const backupIntervalHours=Math.max(1,Math.min(168,Number(process.env.BACKUP_INTERVAL_HOURS)||24));
@@ -1264,6 +1266,8 @@ app.delete('/api/me/account-deletion-request/:id',auth,(req,res)=>{try{const res
 app.post("/api/auth/logout",auth,(req,res)=>{try{const raw=readCookie(req,"ashwini_session");if(raw)db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));clearSessionCookie(res);res.json({ok:true});}catch(e){clearSessionCookie(res);res.json({ok:true});}});
 app.get('/api/cart',auth,(req,res)=>{try{res.json(cartState(db,req.user.id))}catch(e){res.status(500).json({error:'Cart could not be loaded'})}});
 app.put('/api/cart',auth,(req,res)=>res.status(428).json({error:'Please refresh the website before saving your cart. Your saved items are unchanged.'}));
+app.get('/api/wishlist',auth,(req,res)=>res.json(wishlistState(db,req.user.id)));
+app.post('/api/wishlist/mutate',auth,(req,res)=>{try{res.json(mutateWishlist(db,req.user.id,req.body))}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Wishlist could not be saved'})}});
 app.post('/api/cart/mutate',auth,(req,res)=>{try{res.json(applyCartMutation(db,req.user.id,req.body))}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Cart changes could not be saved'})}});
 app.get("/api/products/:id/questions",(req,res)=>{
  const productId=Number(req.params.id);
