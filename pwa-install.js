@@ -9,14 +9,13 @@
   // A saved flag cannot prove the app is still installed (it may have been removed).
   let installTarget = null;
   const installed = () => installedHere || standalone.matches || navigator.standalone === true;
-  let orderDialog;
-  const shownOrders = new Set();
+  let promptInProgress = false;
   let eligible = false, browsingSeconds = 0, hasViewedProduct = false, snoozedUntil = 0;
   try { snoozedUntil = Number(localStorage.getItem('ashwini-install-snooze')) || 0; } catch {}
   const dismiss = document.createElement('button');
   dismiss.type = 'button'; dismiss.className = 'pwa-bubble-dismiss'; dismiss.textContent = '×';
   dismiss.setAttribute('aria-label', 'Hide install suggestion for 24 hours');
-  button.innerHTML = '<img src="/app-icon-192.png" alt="" width="30" height="30"><span>Install App</span>';
+  button.innerHTML = '<img src="/app-icon-192.png" alt="" width="30" height="30"><span>How to install</span>';
   button.setAttribute('aria-label', 'Install Ashwini App');
   button.removeAttribute('style'); help.removeAttribute('style');
   section.appendChild(dismiss); document.body.appendChild(section);
@@ -31,6 +30,12 @@
     // Only known browsing screens are eligible; all other dialogs stay quiet.
     if (body?.querySelector('#payment,#placeOrderButton,#confirmReviewedOrderButton,.final-order-review,input[type="password"]')) return false;
     return !!body?.querySelector('.detail,.track,.order-detail-item,.success') || body?.querySelector('h2')?.textContent.trim() === 'Shopping Cart';
+  };
+  const updateLabel = () => {
+    const label = button.querySelector('span');
+    const text = pendingPrompt ? 'Install Now' : 'How to install';
+    if (label && label.textContent !== text) label.textContent = text;
+    button.setAttribute('aria-label', pendingPrompt ? 'Install Ashwini App now' : 'How to install Ashwini App');
   };
   const sync = () => {
     const hide = installed() || !eligible || Date.now() < snoozedUntil || !safePage();
@@ -65,6 +70,7 @@
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
     pendingPrompt = event;
+    updateLabel();
     installedHere = false;
     try { localStorage.removeItem('ashwini-app-installed'); } catch {}
     help.hidden = true;
@@ -78,20 +84,18 @@
       installTarget.textContent = 'Your browser confirmed installation. Look for Ashwini in your phone’s apps list or Home Screen. You can add it to the Home Screen from the apps list.';
       installTarget.hidden = false;
     }
-    if (orderDialog?.open) {
-      const action = orderDialog.querySelector('[data-install]');
-      action.textContent = 'Installation confirmed'; action.disabled = true;
-    }
     section.hidden = true;
     if (typeof window.toast === 'function') window.toast('Browser confirmed installation. Find Ashwini in your apps list.');
   });
   standalone.addEventListener('change', sync);
   const install = async (trigger = button, target = help) => {
+    if (promptInProgress) return;
     installTarget = target;
     if (!pendingPrompt) return instructions(target);
     const prompt = pendingPrompt;
     pendingPrompt = null;
     trigger.disabled = true;
+    promptInProgress = true;
     try {
       await prompt.prompt();
       const choice = await prompt.userChoice;
@@ -102,26 +106,19 @@
         target.hidden = false;
       }
     } catch { instructions(target); }
-    finally { trigger.disabled = false; }
+    finally { promptInProgress = false; trigger.disabled = false; updateLabel(); }
   };
   button.addEventListener('click', () => install());
-  window.addEventListener('ashwini:order-success', event => {
-    const id = String(event.detail?.orderId || '');
-    eligible = true; sync();
-    if (!id || installed() || Date.now() < snoozedUntil || !safePage() || shownOrders.has(id) || orderDialog?.open) return;
-    shownOrders.add(id);
-    orderDialog = document.createElement('dialog');
-    orderDialog.setAttribute('aria-labelledby', 'order-install-title');
-    orderDialog.setAttribute('aria-describedby', 'order-install-description');
-    orderDialog.style.cssText = 'width:min(420px,calc(100vw - 48px));max-height:85vh;overflow:auto;box-sizing:border-box;border:0;border-radius:18px;padding:26px;text-align:center;color:#5a2e40;background:#fff;box-shadow:0 18px 65px #0005';
-    orderDialog.innerHTML = `<img src="/app-icon-192.png" alt="Ashwini" width="72" height="72" style="border-radius:15px"><p style="font-weight:bold;color:#267443">✓ Order confirmed</p><h2 id="order-install-title">Track your order easily</h2><p id="order-install-description" style="line-height:1.6">Install the Ashwini App for quick access to My Orders and delivery updates. You can also track your order on the website.</p><button type="button" data-install style="min-height:44px;width:100%;background:#5a2e40;color:white;border:0;border-radius:9px;padding:12px;font-weight:bold;cursor:pointer">Install Ashwini App</button><p data-help role="status" hidden style="line-height:1.6"></p><button type="button" data-later style="min-height:44px;margin-top:10px;background:white;color:#5a2e40;border:0;cursor:pointer">Not now</button>`;
-    const previousFocus = document.activeElement;
-    orderDialog.querySelector('[data-install]').addEventListener('click', event => install(event.currentTarget, orderDialog.querySelector('[data-help]')));
-    orderDialog.querySelector('[data-later]').addEventListener('click', () => orderDialog.close());
-    orderDialog.addEventListener('close', () => { orderDialog.remove(); previousFocus?.focus(); sync(); }, {once:true});
-    document.body.appendChild(orderDialog);
-    orderDialog.showModal(); sync();
+  // The bubble opens the browser prompt directly; no intermediate site dialog.
+  window.addEventListener('ashwini:order-success', () => {
+    eligible = true;
+    sync();
+    if (!section.hidden) {
+      help.textContent = 'Order confirmed. Install Ashwini for quick access to order tracking.';
+      help.hidden = false;
+    }
   });
+  updateLabel();
   sync();
   if ('serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('/sw.js', {scope: '/', updateViaCache: 'none'}).catch(error => console.warn('Ashwini offline support unavailable:', error));
