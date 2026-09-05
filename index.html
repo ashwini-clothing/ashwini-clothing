@@ -482,6 +482,15 @@ button:active{transform:translateY(1px)}
 .pwa-install-popup #pwa-install-help{margin:12px 0 0}
 @media print{.pwa-install-popup{display:none!important}}
 </style>
+
+<style id="checkout-coupon-style">
+#body .checkout-new-buyer-coupon{padding:14px 16px;background:#fffaf4;border:1px solid #c9a86a;border-radius:10px}
+.checkout-new-buyer-coupon label{display:block;margin:0 0 9px;color:#5a2e40;font-size:14px;font-weight:600;cursor:text}
+#body .checkout-new-buyer-coupon #coupon{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 12px;background:#fff;border:1px dashed #c9a86a;border-radius:7px;color:#5a2e40;font-family:inherit;font-size:15px;font-weight:600;line-height:1.4;letter-spacing:1px}
+#body .checkout-new-buyer-coupon #coupon::placeholder{color:#806572;opacity:1}
+#body .checkout-new-buyer-coupon #coupon:focus{outline:2px solid #c9a86a;outline-offset:2px}
+.checkout-new-buyer-coupon #couponMsg:not(:empty){margin-top:9px;font-size:13px}
+</style>
 </head>
 <body>
 <header>
@@ -532,7 +541,7 @@ button:active{transform:translateY(1px)}
 
 <div id="lensCameraOverlay" class="lens-camera-overlay" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Search products using a photo"><div class="lens-camera-shell"><div class="lens-camera-topbar"><strong class="lens-camera-title">Ashwini Lens</strong><button class="lens-camera-close" type="button" onclick="closeLensExperience()" aria-label="Close camera">×</button></div><div class="lens-camera-stage"><video id="lensCameraVideo" class="lens-camera-video" autoplay muted playsinline></video><div id="lensCameraStatus" class="lens-camera-status">Allow camera access or upload a photo.</div></div><div class="lens-camera-controls"><label class="lens-camera-upload" for="photoUploadInput" title="Upload from files" aria-label="Upload from files"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 18 4.5-4.5 3 3 2.5-2.5 4 4M12 3v7M9 6l3-3 3 3"/></svg></label><button class="lens-camera-capture" type="button" onclick="captureLensPhoto()" aria-label="Take photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg></button><span class="lens-camera-spacer" aria-hidden="true"></span></div></div></div>
 
-<script src="/app.js?v=20260905-saved-address-collapse-12" defer></script>
+<script src="/app.js?v=20260905-new-buyer-coupon-13" defer></script>
 <script>
 function openLensCamera(){
   closeLensSourceMenu();
