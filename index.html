@@ -461,13 +461,13 @@ button:active{transform:translateY(1px)}
 <meta name="apple-mobile-web-app-title" content="Ashwini">
 <link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png?v=logo9-20260905">
 <link rel="icon" type="image/png" sizes="192x192" href="/app-icon-192.png?v=logo9-20260905">
-<script src="/pwa-install.js?v=20260905-logo9-7" defer></script>
+<script src="/pwa-install.js?v=20260905-transparent-bubble-8" defer></script>
 <style id="pwa-bubble-style">
 .pwa-install-bubble[hidden]{display:none!important}
-.pwa-install-bubble{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:calc(112px + env(safe-area-inset-bottom));z-index:10001;display:flex;align-items:center;gap:2px;max-width:calc(100vw - 24px);padding:5px;background:#5a2e40;border:1px solid #c9a86a;border-radius:32px;box-shadow:0 6px 20px #321c2938;color:#fff}
-.pwa-install-bubble #pwa-install-button{display:flex;align-items:center;gap:9px;min-height:46px;padding:4px 10px 4px 4px;border:0;border-radius:24px;background:transparent;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
-.pwa-install-bubble img{border-radius:50%;flex-shrink:0;width:34px;height:34px;border:1px solid #c9a86a}
-.pwa-bubble-dismiss{min-width:32px;min-height:44px;border:0;border-radius:20px;background:transparent;color:#fff;font-size:20px;cursor:pointer}
+.pwa-install-bubble{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:calc(112px + env(safe-area-inset-bottom));z-index:10001;display:flex;align-items:center;gap:2px;max-width:calc(100vw - 24px);padding:3px;background:transparent;border:0;border-radius:0;box-shadow:none;color:#5a2e40}
+.pwa-install-bubble #pwa-install-button{display:flex;align-items:center;gap:9px;min-height:46px;padding:4px 10px 4px 4px;border:0;border-radius:24px;background:transparent;color:#5a2e40;text-shadow:0 1px 3px #fff,0 0 5px #fff;font-size:14px;font-weight:700;cursor:pointer}
+.pwa-install-bubble img{border-radius:50%;flex-shrink:0;width:34px;height:34px;border:0;opacity:.85}
+.pwa-bubble-dismiss{display:none;min-width:32px;min-height:44px;border:0;border-radius:20px;background:transparent;color:#fff;font-size:20px;cursor:pointer}
 .pwa-install-bubble button:focus-visible{outline:2px solid #c9a86a;outline-offset:2px}
 .pwa-install-bubble #pwa-install-help{position:absolute;bottom:62px;left:0;width:min(290px,calc(100vw - 48px));max-height:45vh;overflow:auto;box-sizing:border-box;margin:0;padding:16px;border:1px solid #dfcdd3;border-radius:12px;background:#fff;color:#5a2e40;box-shadow:0 4px 18px #321c2930;font-size:13px;line-height:1.6;text-align:left}
 @media(max-height:480px){.pwa-install-bubble{bottom:16px}}
