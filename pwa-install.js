@@ -3,6 +3,9 @@
   const section = document.getElementById('pwa-install-section');
   const help = document.getElementById('pwa-install-help');
   if (!button || !section || !help) return;
+  const footerSection = document.getElementById('pwa-footer-section');
+  const footerButton = document.getElementById('pwa-footer-button');
+  const footerHelp = document.getElementById('pwa-footer-help');
   let pendingPrompt = null;
   const standalone = window.matchMedia('(display-mode: standalone)');
   let installedHere = false;
@@ -52,6 +55,7 @@
   };
   const sync = () => {
     const now = Date.now();
+    if (footerSection) footerSection.hidden = installed() || !safePage();
     if (installed()) {
       popupOpen = false;
       orderPending = false;
@@ -124,6 +128,7 @@
       installTarget.hidden = false;
     }
     section.hidden = true;
+    if (footerSection) footerSection.hidden = true;
     if (typeof window.toast === 'function') window.toast('Installation requested. Check Chrome’s notification for progress.');
   });
   standalone.addEventListener('change', () => {
@@ -154,6 +159,9 @@
     finally { promptInProgress = false; trigger.disabled = false; updateLabel(); }
   };
   button.addEventListener('click', () => install());
+  footerButton?.addEventListener('click', () => {
+    if (footerHelp && !installed()) return install(footerButton, footerHelp);
+  });
   updateLabel();
   sync();
   if ('serviceWorker' in navigator && window.isSecureContext) {

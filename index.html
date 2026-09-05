@@ -461,8 +461,16 @@ button:active{transform:translateY(1px)}
 <meta name="apple-mobile-web-app-title" content="Ashwini">
 <link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png?v=logo9-20260905">
 <link rel="icon" type="image/png" sizes="192x192" href="/app-icon-192.png?v=logo9-20260905">
-<script src="/pwa-install.js?v=20260905-popup-15min-10" defer></script>
+<script src="/pwa-install.js?v=20260905-footer-compact-11" defer></script>
 <style id="pwa-popup-style">
+#pwa-footer-section[hidden]{display:none!important}
+#pwa-footer-section{margin:0 auto 18px;text-align:center}
+#pwa-footer-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;padding:7px 15px;border:1px solid #c9a86a;border-radius:9px;background:linear-gradient(135deg,#5a2e40,#38202c);color:#f8e7c6;box-shadow:0 3px 10px #24151c26;font-family:inherit;font-size:13px;font-weight:600;line-height:1.3;cursor:pointer}
+#pwa-footer-button img{width:24px;height:24px;border-radius:5px}
+#pwa-footer-button:hover{background:linear-gradient(135deg,#6a374b,#472736);border-color:#e3c58e}
+#pwa-footer-button:focus-visible{outline:2px solid #e3c58e;outline-offset:3px}
+#pwa-footer-button:disabled{opacity:.65;cursor:wait}
+#pwa-footer-help{max-width:440px;margin:10px auto 0;font-size:13px;line-height:1.6}
 .pwa-install-popup[hidden]{display:none!important}
 .pwa-install-popup{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:10001;width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;box-sizing:border-box;padding:28px 24px 24px;background:#fff;border:1px solid #dfcdd3;border-radius:16px;box-shadow:0 12px 48px #321c2940;color:#5a2e40;text-align:center}
 .pwa-install-popup h2{margin:0 24px 10px;font-size:21px}
@@ -508,7 +516,10 @@ button:active{transform:translateY(1px)}
 </section>
 </div>
 
-<footer class="footer"><section id="pwa-install-section" hidden aria-labelledby="pwa-install-title">
+<footer class="footer"><section id="pwa-footer-section" hidden aria-label="Get the Ashwini app">
+<button id="pwa-footer-button" type="button"><img src="/app-icon-192.png?v=logo9-20260905" alt="" width="24" height="24"><span>Install App</span></button>
+<p id="pwa-footer-help" role="status" hidden></p>
+</section><section id="pwa-install-section" hidden aria-labelledby="pwa-install-title">
 <h2 id="pwa-install-title">Get the Ashwini app</h2>
 <p>Install Ashwini for quick access to shopping and order tracking.</p>
 <button id="pwa-install-button" type="button">Install Now</button>
