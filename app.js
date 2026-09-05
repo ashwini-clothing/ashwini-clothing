@@ -143,7 +143,7 @@ function markProductHistory(id){if(window.__productHistoryActive){history.replac
 window.addEventListener('popstate',()=>{if(window.__productHistoryActive){window.__productHistoryActive=false;closeM(true)}});
 
 const galleryFallback={1:['/_model_western.jpg'],2:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg'],3:['/_model_purple.jpg'],4:['/_model_purple.jpg'],5:['/_model_blue.jpg'],6:['/_model_blue.jpg'],7:['/_model_purple.jpg'],8:['/_model_western.jpg'],9:['/_model_blue.jpg'],10:['/_model_pink.jpg'],11:['/_model_western.jpg'],12:['/_model_purple.jpg'],13:['/_model_pink.jpg'],14:['/_model_purple.jpg'],100:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg']};
-function getGallery(p){let a=[];try{a=JSON.parse(p.gallery||'[]')}catch{}if(!Array.isArray(a)||!a.length)a=galleryFallback[p.id]||[];if(p.image&&!a.includes(p.image))a.unshift(p.image);return [...new Set(a)].filter(Boolean).slice(0,5)}
+function getGallery(p){let a=[];try{a=JSON.parse(p.gallery||'[]')}catch{}if(!Array.isArray(a)||!a.length)a=galleryFallback[p.id]||[];if(p.image&&!a.includes(p.image))a.unshift(p.image);return [...new Set(a)].filter(Boolean).slice(0,10)}
 function setGalleryImage(id,src,btn){const img=document.getElementById(`gallery-main-${id}`);if(img){img.src=src;resetZoom(id)}btn?.parentElement?.querySelectorAll('.gallery-thumb').forEach(x=>x.classList.remove('active'));btn?.classList.add('active')}
 const zoomState={};
 function applyZoom(id){const st=zoomState[id]||{scale:1,x:0,y:0};const img=document.getElementById(`gallery-main-${id}`);const label=document.getElementById(`zoom-level-${id}`);if(st.scale<=1){st.x=0;st.y=0}if(img){img.style.transform=`translate3d(${st.x||0}px,${st.y||0}px,0) scale(${st.scale})`;img.style.cursor=st.scale>1?'grab':'default'}if(label)label.textContent=`${Math.round(st.scale*100)}%`}
@@ -1008,11 +1008,11 @@ async function productEditor(id=null){
  <div><label>🎁 Extra Product Offer<input id="ap_offer_text" value="${esc(p.offer_text||'')}" placeholder="Extra 10% off"></label></div>
  <div><label>Offer Discount %<input id="ap_offer_discount" type="number" min="0" max="100" step="0.1" value="${Number(p.offer_discount)||0}"></label></div>
  <div class="full"><label><b>📷 Product Photos</b></label>
- <div class="admin-note">Upload up to 5 photos. The first photo becomes the main product photo. Existing photo paths remain supported.</div>
+ <div class="admin-note">Upload up to 10 photos. The first photo becomes the main product photo. Existing photo paths remain supported.</div>
  <input id="ap_photo_files" type="file" accept="image/*" multiple onchange="handleProductPhotoUpload(this)" style="margin-top:8px">
  <div id="ap_photo_preview" class="admin-photo-preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"></div>
  <label style="margin-top:10px">Main Photo<input id="ap_image" value="${esc(p.image||'')}" placeholder="/product-photo.jpg"></label>
- <label style="margin-top:10px">Up to 5 Photo paths<input id="ap_gallery" value="${esc(p.gallery||'')}" placeholder='["/front.jpg","/back.jpg"]'></label>
+ <label style="margin-top:10px">Up to 10 Photo paths<input id="ap_gallery" value="${esc(p.gallery||'')}" placeholder='["/front.jpg","/back.jpg"]'></label>
  </div>
  <div class="full"><label>Product Description<textarea id="ap_desc">${esc(p.description||'')}</textarea></label></div>
  <div class="full"><label>Product History / Details<textarea id="ap_history">${esc(p.product_history||'')}</textarea></label></div>
@@ -1028,17 +1028,17 @@ async function productEditor(id=null){
 }
 async function handleProductPhotoUpload(input){
  try{
-  const files=[...(input.files||[])].slice(0,5);
+  const files=[...(input.files||[])];
   if(!files.length)return;
   const existing=getAdminPhotoList();
-  const remaining=Math.max(0,5-existing.length);
+  const remaining=Math.max(0,10-existing.length);
   const picked=files.slice(0,remaining);
   const encoded=[];
   for(const file of picked) encoded.push(await compressProductPhoto(file));
-  const merged=[...existing,...encoded].filter(Boolean).slice(0,5);
+  const merged=[...existing,...encoded].filter(Boolean).slice(0,10);
   syncAdminPhotoFields(merged);
   renderAdminPhotoPreview(merged);
-  if(files.length>picked.length)toast('Only 5 product photos can be saved. Remove or replace an existing photo first.');
+  if(files.length>picked.length)toast('Only 10 product photos can be saved. Remove or replace an existing photo first.');
  }catch(e){alert('Photo upload failed: '+e.message)}
 }
 function compressBannerImage(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read image'));reader.onload=()=>{const img=new Image();img.onerror=()=>reject(new Error('Invalid image'));img.onload=()=>{const max=1800,scale=Math.min(1,max/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale));const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.drawImage(img,0,0,w,h);resolve(c.toDataURL('image/jpeg',0.78))};img.src=reader.result};reader.readAsDataURL(file)})}
@@ -1070,10 +1070,10 @@ function getAdminPhotoList(){
  let a=[];try{a=JSON.parse(gi?.value||'[]')}catch{}
  const im=document.getElementById('ap_image')?.value?.trim();
  if(im && !a.includes(im)) a.unshift(im);
- return a.filter(Boolean).slice(0,5);
+ return a.filter(Boolean).slice(0,10);
 }
 function syncAdminPhotoFields(list){
- const arr=(list||[]).filter(Boolean).slice(0,5);
+ const arr=(list||[]).filter(Boolean).slice(0,10);
  const gi=document.getElementById('ap_gallery'), im=document.getElementById('ap_image');
  if(gi) gi.value=JSON.stringify(arr);
  if(im) im.value=arr[0]||'';
@@ -1081,7 +1081,7 @@ function syncAdminPhotoFields(list){
 }
 function renderAdminPhotoPreview(list){
  const box=document.getElementById('ap_photo_preview'); if(!box)return;
- const arr=(list||[]).filter(Boolean).slice(0,5);
+ const arr=(list||[]).filter(Boolean).slice(0,10);
  box.innerHTML=arr.map((src,i)=>`<div style="width:115px;text-align:center;border:1px solid #ddd;border-radius:10px;padding:7px;background:#fff">
    <img src="${esc(src)}" alt="Photo ${i+1}" style="width:95px;height:105px;object-fit:cover;border-radius:8px;border:1px solid #ddd">
    <small style="display:block;margin:4px 0">${i===0?'Main Photo':'Photo '+(i+1)}</small>
