@@ -3,6 +3,9 @@
   const section = document.getElementById('pwa-install-section');
   const help = document.getElementById('pwa-install-help');
   if (!button || !section || !help) return;
+  const fixedSection = document.getElementById('pwa-fixed-section');
+  const fixedButton = document.getElementById('pwa-fixed-button');
+  const fixedHelp = document.getElementById('pwa-fixed-help');
   let pendingPrompt = null;
   const standalone = window.matchMedia('(display-mode: standalone)');
   let installedHere = false;
@@ -10,12 +13,12 @@
   let installTarget = null;
   const installed = () => installedHere || standalone.matches || navigator.standalone === true;
   let promptInProgress = false;
-  let eligible = false, browsingSeconds = 0, hasViewedProduct = false, snoozedUntil = 0;
+  let eligible = true, snoozedUntil = 0;
   try { snoozedUntil = Number(localStorage.getItem('ashwini-install-snooze')) || 0; } catch {}
   const dismiss = document.createElement('button');
   dismiss.type = 'button'; dismiss.className = 'pwa-bubble-dismiss'; dismiss.textContent = '×';
   dismiss.setAttribute('aria-label', 'Hide install suggestion for 24 hours');
-  button.innerHTML = '<img src="/app-icon-192.png" alt="" width="30" height="30"><span>How to install</span>';
+  button.innerHTML = '<img src="/app-icon-192.png" alt="" width="30" height="30"><span>Install Ashwini App</span>';
   button.setAttribute('aria-label', 'Install Ashwini App');
   button.removeAttribute('style'); help.removeAttribute('style');
   section.appendChild(dismiss); document.body.appendChild(section);
@@ -33,11 +36,13 @@
   };
   const updateLabel = () => {
     const label = button.querySelector('span');
-    const text = pendingPrompt ? 'Install Now' : 'How to install';
+    const text = 'Install Ashwini App';
     if (label && label.textContent !== text) label.textContent = text;
     button.setAttribute('aria-label', pendingPrompt ? 'Install Ashwini App now' : 'How to install Ashwini App');
   };
   const sync = () => {
+    const hideFixed = installed() || !safePage();
+    if (fixedSection && fixedSection.hidden !== hideFixed) fixedSection.hidden = hideFixed;
     const hide = installed() || !eligible || Date.now() < snoozedUntil || !safePage();
     if (section.hidden !== hide) section.hidden = hide;
     if (hide && !help.hidden) help.hidden = true;
@@ -48,13 +53,8 @@
     sync();
   });
   window.addEventListener('ashwini:cart-added', () => { eligible = true; sync(); });
-  // Count foreground shopping time only, starting at the first product view.
-  setInterval(() => {
-    if (visible(document.querySelector('#body .detail'))) hasViewedProduct = true;
-    if (hasViewedProduct && safePage()) browsingSeconds++;
-    if (browsingSeconds >= 120) eligible = true;
-    sync();
-  }, 1000);
+  // Recheck payment state even when it changes without a DOM update.
+  setInterval(sync, 1000);
   const observer = new MutationObserver(sync);
   observer.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['style','class','open','aria-hidden']});
   document.addEventListener('focusin', sync);
@@ -78,14 +78,16 @@
   });
   window.addEventListener('appinstalled', () => {
     pendingPrompt = null;
+    // On Android this event can precede WebAPK installation; suppress repeat prompts only.
     installedHere = true;
     try { localStorage.setItem('ashwini-app-installed', 'yes'); } catch {}
     if (installTarget) {
-      installTarget.textContent = 'Your browser confirmed installation. Look for Ashwini in your phone’s apps list or Home Screen. You can add it to the Home Screen from the apps list.';
+      installTarget.textContent = 'Installation requested. Android may still be installing Ashwini. Check the Chrome notification and your apps list; this website cannot confirm when Android finishes.';
       installTarget.hidden = false;
     }
     section.hidden = true;
-    if (typeof window.toast === 'function') window.toast('Browser confirmed installation. Find Ashwini in your apps list.');
+    if (fixedSection) fixedSection.hidden = true;
+    if (typeof window.toast === 'function') window.toast('Installation requested. Check Chrome’s notification for progress.');
   });
   standalone.addEventListener('change', sync);
   const install = async (trigger = button, target = help) => {
@@ -109,6 +111,7 @@
     finally { promptInProgress = false; trigger.disabled = false; updateLabel(); }
   };
   button.addEventListener('click', () => install());
+  fixedButton?.addEventListener('click', () => install(fixedButton, fixedHelp));
   // The bubble opens the browser prompt directly; no intermediate site dialog.
   window.addEventListener('ashwini:order-success', () => {
     eligible = true;
