@@ -3,26 +3,36 @@
   const section = document.getElementById('pwa-install-section');
   const help = document.getElementById('pwa-install-help');
   if (!button || !section || !help) return;
-  const fixedSection = document.getElementById('pwa-fixed-section');
-  const fixedButton = document.getElementById('pwa-fixed-button');
-  const fixedHelp = document.getElementById('pwa-fixed-help');
   let pendingPrompt = null;
   const standalone = window.matchMedia('(display-mode: standalone)');
   let installedHere = false;
-  // A saved flag cannot prove the app is still installed (it may have been removed).
+  try { installedHere = localStorage.getItem('ashwini-app-installed') === 'yes'; } catch {}
   let installTarget = null;
   const installed = () => installedHere || standalone.matches || navigator.standalone === true;
   let promptInProgress = false;
-  let eligible = true, snoozedUntil = 0;
-  try { snoozedUntil = Number(localStorage.getItem('ashwini-install-snooze')) || 0; } catch {}
+  const repeatDelay = 15 * 60 * 1000;
+  const scheduleKey = 'ashwini-install-next-popup';
+  let nextPopupAt = Date.now() + repeatDelay;
+  let popupOpen = false, visibleUntil = 0, orderPending = false;
+  const seenOrders = new Set();
+  try {
+    const saved = Number(localStorage.getItem(scheduleKey));
+    if (saved > 0) nextPopupAt = Math.min(saved, nextPopupAt);
+    else localStorage.setItem(scheduleKey, String(nextPopupAt));
+  } catch {}
+  const rememberInstalled = () => {
+    installedHere = true;
+    try { localStorage.setItem('ashwini-app-installed', 'yes'); } catch {}
+  };
+  if (standalone.matches || navigator.standalone === true) rememberInstalled();
   const dismiss = document.createElement('button');
-  dismiss.type = 'button'; dismiss.className = 'pwa-bubble-dismiss'; dismiss.textContent = '×';
-  dismiss.setAttribute('aria-label', 'Hide install suggestion for 24 hours');
+  dismiss.type = 'button'; dismiss.className = 'pwa-popup-dismiss'; dismiss.textContent = '×';
+  dismiss.setAttribute('aria-label', 'Dismiss install suggestion');
   button.innerHTML = '<img src="/app-icon-192.png?v=logo9-20260905" alt="" width="30" height="30"><span>Install Now</span>';
   button.setAttribute('aria-label', 'Install Ashwini App');
   button.removeAttribute('style'); help.removeAttribute('style');
   section.appendChild(dismiss); document.body.appendChild(section);
-  section.className = 'pwa-install-bubble'; section.hidden = true;
+  section.className = 'pwa-install-popup'; section.hidden = true;
   const visible = node => !!node && node.getClientRects().length > 0;
   const safePage = () => {
     if (document.hidden || window.ashwiniPwaBusy?.() || visible(document.getElementById('behavior-consent')) || visible(document.getElementById('shopping-save-notice')) || visible(document.querySelector('.account-popover.open')) || visible(document.querySelector('#product-image-viewer.open')) || visible(document.querySelector('.razorpay-container')) || document.querySelector('dialog[open]')) return false;
@@ -41,18 +51,47 @@
     button.setAttribute('aria-label', pendingPrompt ? 'Install Ashwini App now' : 'How to install Ashwini App');
   };
   const sync = () => {
-    const hideFixed = installed() || !safePage();
-    if (fixedSection && fixedSection.hidden !== hideFixed) fixedSection.hidden = hideFixed;
-    const hide = installed() || !eligible || Date.now() < snoozedUntil || !safePage();
-    if (section.hidden !== hide) section.hidden = hide;
-    if (hide && !help.hidden) help.hidden = true;
+    const now = Date.now();
+    if (installed()) {
+      popupOpen = false;
+      orderPending = false;
+    } else if (!safePage()) {
+      popupOpen = false;
+    } else {
+      if (popupOpen && now >= visibleUntil && help.hidden && !promptInProgress) popupOpen = false;
+      if (!promptInProgress && (orderPending || (!popupOpen && now >= nextPopupAt))) {
+        popupOpen = true;
+        visibleUntil = now + 20000;
+        help.hidden = true;
+        if (orderPending) {
+          help.textContent = 'Order confirmed. Install Ashwini for quick access to shopping and order tracking.';
+          help.hidden = false;
+        }
+        orderPending = false;
+        nextPopupAt = now + repeatDelay;
+        try { localStorage.setItem(scheduleKey, String(nextPopupAt)); } catch {}
+      }
+    }
+    section.hidden = !popupOpen;
+    if (!popupOpen) help.hidden = true;
   };
   dismiss.addEventListener('click', () => {
-    snoozedUntil = Date.now() + 86400000;
-    try { localStorage.setItem('ashwini-install-snooze', String(snoozedUntil)); } catch {}
+    popupOpen = false;
+    help.hidden = true;
     sync();
   });
-  window.addEventListener('ashwini:cart-added', () => { eligible = true; sync(); });
+  window.addEventListener('ashwini:order-success', event => {
+    const id = event.detail?.orderId;
+    if (!id || seenOrders.has(String(id)) || installed()) return;
+    seenOrders.add(String(id));
+    orderPending = true;
+    sync();
+  });
+  window.addEventListener('storage', event => {
+    if (event.key === 'ashwini-app-installed' && event.newValue === 'yes') rememberInstalled();
+    if (event.key === scheduleKey && Number(event.newValue) > 0) nextPopupAt = Number(event.newValue);
+    sync();
+  });
   // Recheck payment state even when it changes without a DOM update.
   setInterval(sync, 1000);
   const observer = new MutationObserver(sync);
@@ -71,25 +110,26 @@
     event.preventDefault();
     pendingPrompt = event;
     updateLabel();
-    installedHere = false;
-    try { localStorage.removeItem('ashwini-app-installed'); } catch {}
     help.hidden = true;
     sync();
   });
   window.addEventListener('appinstalled', () => {
     pendingPrompt = null;
     // On Android this event can precede WebAPK installation; suppress repeat prompts only.
-    installedHere = true;
-    try { localStorage.setItem('ashwini-app-installed', 'yes'); } catch {}
+    rememberInstalled();
+    popupOpen = false;
+    orderPending = false;
     if (installTarget) {
       installTarget.textContent = 'Installation requested. Android may still be installing Ashwini. Check the Chrome notification and your apps list; this website cannot confirm when Android finishes. If installation does not complete: Update your browser and then install again.';
       installTarget.hidden = false;
     }
     section.hidden = true;
-    if (fixedSection) fixedSection.hidden = true;
     if (typeof window.toast === 'function') window.toast('Installation requested. Check Chrome’s notification for progress.');
   });
-  standalone.addEventListener('change', sync);
+  standalone.addEventListener('change', () => {
+    if (standalone.matches) rememberInstalled();
+    sync();
+  });
   const install = async (trigger = button, target = help) => {
     if (promptInProgress) return;
     installTarget = target;
@@ -114,16 +154,6 @@
     finally { promptInProgress = false; trigger.disabled = false; updateLabel(); }
   };
   button.addEventListener('click', () => install());
-  fixedButton?.addEventListener('click', () => install(fixedButton, fixedHelp));
-  // The bubble opens the browser prompt directly; no intermediate site dialog.
-  window.addEventListener('ashwini:order-success', () => {
-    eligible = true;
-    sync();
-    if (!section.hidden) {
-      help.textContent = 'Order confirmed. Install Ashwini for quick access to order tracking.';
-      help.hidden = false;
-    }
-  });
   updateLabel();
   sync();
   if ('serviceWorker' in navigator && window.isSecureContext) {
