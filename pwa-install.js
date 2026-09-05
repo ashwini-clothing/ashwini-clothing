@@ -18,7 +18,7 @@
   const dismiss = document.createElement('button');
   dismiss.type = 'button'; dismiss.className = 'pwa-bubble-dismiss'; dismiss.textContent = '×';
   dismiss.setAttribute('aria-label', 'Hide install suggestion for 24 hours');
-  button.innerHTML = '<img src="/app-icon-192.png" alt="" width="30" height="30"><span>Install Ashwini App</span>';
+  button.innerHTML = '<img src="/app-icon-192.png?v=logo9-20260905" alt="" width="30" height="30"><span>Install Ashwini App</span>';
   button.setAttribute('aria-label', 'Install Ashwini App');
   button.removeAttribute('style'); help.removeAttribute('style');
   section.appendChild(dismiss); document.body.appendChild(section);
