@@ -1,3 +1,4 @@
+import {installGstSchema,saveGstSnapshot,readGstSnapshot} from "./scripts/gst-billing.js";
 import {normalizeAddressParts,readAddressParts} from "./scripts/address-parts.js";
 import {installWishlistSchema,wishlistState,mutateWishlist} from "./scripts/wishlist-state.js";
 
@@ -57,6 +58,7 @@ db.pragma("foreign_keys=ON");
 db.exec(fs.readFileSync(path.join(__dirname,"schema.sql"),"utf8"));
 installCartSchema(db);
 installWishlistSchema(db);
+installGstSchema(db);
 // Node timers accept at most 2^31-1 ms. Cap the interval to one week so an
 // accidental large value cannot overflow into a rapid backup loop.
 const backupIntervalHours=Math.max(1,Math.min(168,Number(process.env.BACKUP_INTERVAL_HOURS)||24));
@@ -1474,6 +1476,7 @@ app.post("/api/checkout/create",auth,async(req,res)=>{
     add.run(r.lastInsertRowid,x.p.id,x.size,x.qty,x.p.price);
     if(payment_method==="COD"&&!adjustProductStock(x.p.id,x.size,-x.qty))throw Error(`Stock changed for ${x.p.name}. Please refresh and try again.`);
    }
+   saveGstSnapshot(db,db.prepare('SELECT * FROM orders WHERE id=?').get(r.lastInsertRowid),out.map(x=>({product_id:x.p.id,name:x.p.name,color:x.p.color||'',size:x.size,quantity:x.qty,unit_price:x.p.price})));
    return Number(r.lastInsertRowid);
   });
 
@@ -1672,7 +1675,8 @@ app.get('/api/admin/orders/:id/print-data',auth,admin,(req,res)=>{try{
  if(!['CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED'].includes(String(order.status))||(order.payment_method!=='COD'&&order.payment_status!=='PAID'))return res.status(409).json({error:'Confirm the order and its payment before printing'});
  const items=db.prepare(`SELECT oi.product_id,oi.size,oi.quantity,oi.unit_price,p.name,p.color FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=? ORDER BY oi.id`).all(order.id);
  const store=db.prepare('SELECT about_title,address,city,state,pincode,email,phone,logo_data FROM store_profile WHERE id=1').get()||{};
- res.json({order,items,store});
+ const gst=readGstSnapshot(db,order.id);
+ res.json({order,items,store,gst});
 }catch(e){res.status(500).json({error:'Print details could not be loaded'})}});
 app.get('/api/admin/returns/:id/print-data',auth,admin,(req,res)=>{try{
  const item=db.prepare(`SELECT r.*,o.address AS original_address,o.customer_phone AS original_phone,o.total AS original_total,o.created_at AS order_date,u.name AS customer_name,u.email AS customer_email,u.phone AS account_phone,ro.address AS replacement_address,ro.customer_phone AS replacement_phone,ro.status AS replacement_order_status FROM returns r JOIN orders o ON o.id=r.order_id LEFT JOIN users u ON u.id=r.user_id LEFT JOIN orders ro ON ro.id=r.replacement_order_id WHERE r.id=?`).get(req.params.id);
