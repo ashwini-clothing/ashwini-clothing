@@ -64,7 +64,7 @@
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     target.textContent = ios
       ? 'On iPhone or iPad: open this website in Safari, tap Share, then Add to Home Screen and Add. Your Ashwini logo will appear on the Home Screen.'
-      : 'Installation has not started from this button. Open this website directly in Chrome or Edge (not inside WhatsApp or Instagram). Open your browser menu and choose Install app, Install this site as an app, or Add to Home screen if available. On desktop, try Chrome or Edge. If already installed, open Ashwini from your apps.';
+      : 'Update your browser and then install again. Installation has not started from this button. Open this website directly in Chrome or Edge (not inside WhatsApp or Instagram). Open your browser menu and choose Install app, Install this site as an app, or Add to Home screen if available. On desktop, try Chrome or Edge. If already installed, open Ashwini from your apps.';
     target.hidden = false;
   };
   window.addEventListener('beforeinstallprompt', event => {
@@ -82,7 +82,7 @@
     installedHere = true;
     try { localStorage.setItem('ashwini-app-installed', 'yes'); } catch {}
     if (installTarget) {
-      installTarget.textContent = 'Installation requested. Android may still be installing Ashwini. Check the Chrome notification and your apps list; this website cannot confirm when Android finishes.';
+      installTarget.textContent = 'Installation requested. Android may still be installing Ashwini. Check the Chrome notification and your apps list; this website cannot confirm when Android finishes. If installation does not complete: Update your browser and then install again.';
       installTarget.hidden = false;
     }
     section.hidden = true;
@@ -103,11 +103,14 @@
       const choice = await prompt.userChoice;
       if (!installedHere) {
         target.textContent = choice.outcome === 'accepted'
-          ? 'Install request accepted. Waiting for your browser to finish. If no Ashwini icon appears, check your apps list or use the browser menu → Install app / Add to Home screen.'
+          ? 'Install request accepted. Waiting for your browser to finish. If no Ashwini icon appears, check your apps list. If installation does not complete: Update your browser and then install again. You can also use the browser menu → Install app / Add to Home screen.'
           : 'Installation was cancelled. The app has not been installed by this request. You can try again from the browser menu.';
         target.hidden = false;
       }
-    } catch { instructions(target); }
+    } catch {
+      target.textContent = 'Installation could not start. Update your browser and then install again. If it still fails, try the browser menu → Install app / Add to Home screen.';
+      target.hidden = false;
+    }
     finally { promptInProgress = false; trigger.disabled = false; updateLabel(); }
   };
   button.addEventListener('click', () => install());
