@@ -151,7 +151,7 @@ async function retryShopping(){
 async function keepServerShopping(){const owner=Number(user?.id)||0;if(shoppingBusy||!owner)return;const p=pendingShopping(owner);if(p){try{localStorage.setItem(p.key.replace('ashwiniPending:','ashwiniDraft:'),JSON.stringify(p.value));localStorage.removeItem(p.key)}catch{return shoppingMessage('Could not retain the draft. Try again.')}}await loadCartForCurrentUser();if(document.getElementById('modal')?.innerHTML?.includes('Shopping Cart'))cartView()}
 window.addEventListener('storage',event=>{if(event.key==='ashwiniUser'){shoppingGeneration++;shoppingReady=false;shoppingOwner=0;cart=[];clearCheckoutState();closeM();updateCartCount();restoreSession()}});
 window.addEventListener('online',()=>{if(user)retryShopping()});
-async function changeCartProduct(id,size,delta){if(!canChangeShopping())return false;const next=cart.map(x=>({...x}));const item=next.find(x=>Number(x.id)===Number(id)&&x.size===size);if(item)item.quantity=Math.max(1,item.quantity+delta);else next.push({id:Number(id),size,quantity:1});return commitShopping(next)}
+async function changeCartProduct(id,size,delta){if(!canChangeShopping())return false;const next=cart.map(x=>({...x}));const item=next.find(x=>Number(x.id)===Number(id)&&x.size===size);if(item)item.quantity=Math.max(1,item.quantity+delta);else next.push({id:Number(id),size,quantity:1});const saved=await commitShopping(next);if(saved&&delta>0)window.dispatchEvent(new CustomEvent('ashwini:cart-added'));return saved}
 
 async function removePurchasedCart(items,owner,orderId){
  if(Number(user?.id)!==owner)return;
@@ -1638,3 +1638,6 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.getElementById('accountTopLink')?.addEventListener('pointerenter',()=>{warmMsg91().catch(()=>{})},{passive:true});
  restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSessionHistory();connectCatalogUpdates();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{warmMsg91().catch(()=>{})},400);});
 });
+
+// Used by install suggestions to stay quiet throughout payment and admin work.
+window.ashwiniPwaBusy = () => checkoutInProgress || user?.role === 'admin';

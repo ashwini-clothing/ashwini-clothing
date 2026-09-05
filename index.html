@@ -462,6 +462,17 @@ button:active{transform:translateY(1px)}
 <link rel="apple-touch-icon" sizes="180x180" href="/app-icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/app-icon-192.png">
 <script src="/pwa-install.js" defer></script>
+<style id="pwa-bubble-style">
+.pwa-install-bubble[hidden]{display:none!important}
+.pwa-install-bubble{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:calc(112px + env(safe-area-inset-bottom));z-index:10001;display:flex;align-items:center;gap:2px;max-width:calc(100vw - 24px);padding:4px;background:#fff;border:1px solid #dfcdd3;border-radius:32px;box-shadow:0 3px 12px #321c2926;color:#5a2e40}
+.pwa-install-bubble #pwa-install-button{display:flex;align-items:center;gap:7px;min-height:44px;padding:3px 8px 3px 3px;border:0;border-radius:24px;background:#fff;color:#5a2e40;font-size:12px;font-weight:700;cursor:pointer}
+.pwa-install-bubble img{border-radius:50%;flex-shrink:0}
+.pwa-bubble-dismiss{min-width:32px;min-height:44px;border:0;border-radius:20px;background:white;color:#725762;font-size:20px;cursor:pointer}
+.pwa-install-bubble button:focus-visible{outline:2px solid #5a2e40;outline-offset:2px}
+.pwa-install-bubble #pwa-install-help{position:absolute;bottom:62px;left:0;width:min(290px,calc(100vw - 48px));max-height:45vh;overflow:auto;box-sizing:border-box;margin:0;padding:16px;border:1px solid #dfcdd3;border-radius:12px;background:#fff;color:#5a2e40;box-shadow:0 4px 18px #321c2930;font-size:13px;line-height:1.6;text-align:left}
+@media(max-height:480px){.pwa-install-bubble{bottom:16px}}
+@media print{.pwa-install-bubble{display:none!important}}
+</style>
 </head>
 <body>
 <header>
@@ -496,7 +507,7 @@ button:active{transform:translateY(1px)}
 </section>
 </div>
 
-<footer class="footer"><section id="pwa-install-section" aria-label="Install Ashwini app">
+<footer class="footer"><section id="pwa-install-section" hidden aria-label="Install Ashwini app">
 <button id="pwa-install-button" type="button" style="min-height:44px;padding:10px 18px;border:1px solid currentColor;border-radius:8px;cursor:pointer">Install Ashwini App</button>
 <p id="pwa-install-help" role="status" hidden style="max-width:520px;margin:12px auto;line-height:1.6"></p>
 </section><h2>Ashwini</h2><p>Premium clothing for everyday life.</p><nav class="footer-policies" aria-label="Store policies"><a href="/privacy-policy.html">Privacy Policy</a><button type="button" onclick="manageBehaviorTracking()">Privacy choices</button><a href="/terms.html">Terms</a><a href="/shipping-policy.html">Shipping</a><a href="/cancellation-policy.html">Cancellation</a><a href="/refund-policy.html">Refunds &amp; Returns</a></nav><small>© 2026 Ashwini Clothing</small></footer>

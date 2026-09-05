@@ -10,7 +10,50 @@
   const installed = () => installedHere || standalone.matches || navigator.standalone === true;
   let orderDialog;
   const shownOrders = new Set();
-  const sync = () => { section.hidden = installed(); };
+  let eligible = false, browsingSeconds = 0, hasViewedProduct = false, snoozedUntil = 0;
+  try { snoozedUntil = Number(localStorage.getItem('ashwini-install-snooze')) || 0; } catch {}
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button'; dismiss.className = 'pwa-bubble-dismiss'; dismiss.textContent = '×';
+  dismiss.setAttribute('aria-label', 'Hide install suggestion for 24 hours');
+  button.innerHTML = '<img src="/app-icon-192.png" alt="" width="30" height="30"><span>Install App</span>';
+  button.setAttribute('aria-label', 'Install Ashwini App');
+  button.removeAttribute('style'); help.removeAttribute('style');
+  section.appendChild(dismiss); document.body.appendChild(section);
+  section.className = 'pwa-install-bubble'; section.hidden = true;
+  const visible = node => !!node && node.getClientRects().length > 0;
+  const safePage = () => {
+    if (document.hidden || window.ashwiniPwaBusy?.() || visible(document.getElementById('behavior-consent')) || visible(document.getElementById('shopping-save-notice')) || visible(document.querySelector('.account-popover.open')) || visible(document.querySelector('#product-image-viewer.open')) || visible(document.querySelector('.razorpay-container')) || document.querySelector('dialog[open]')) return false;
+    if (document.activeElement?.matches('input,textarea,select,[contenteditable="true"]')) return false;
+    const modal = document.getElementById('modal');
+    if (!visible(modal)) return true;
+    const body = document.getElementById('body');
+    // Only known browsing screens are eligible; all other dialogs stay quiet.
+    if (body?.querySelector('#payment,#placeOrderButton,#confirmReviewedOrderButton,.final-order-review,input[type="password"]')) return false;
+    return !!body?.querySelector('.detail,.track,.order-detail-item,.success') || body?.querySelector('h2')?.textContent.trim() === 'Shopping Cart';
+  };
+  const sync = () => {
+    const hide = installed() || !eligible || Date.now() < snoozedUntil || !safePage();
+    if (section.hidden !== hide) section.hidden = hide;
+    if (hide && !help.hidden) help.hidden = true;
+  };
+  dismiss.addEventListener('click', () => {
+    snoozedUntil = Date.now() + 86400000;
+    try { localStorage.setItem('ashwini-install-snooze', String(snoozedUntil)); } catch {}
+    sync();
+  });
+  window.addEventListener('ashwini:cart-added', () => { eligible = true; sync(); });
+  // Count foreground shopping time only, starting at the first product view.
+  setInterval(() => {
+    if (visible(document.querySelector('#body .detail'))) hasViewedProduct = true;
+    if (hasViewedProduct && safePage()) browsingSeconds++;
+    if (browsingSeconds >= 120) eligible = true;
+    sync();
+  }, 1000);
+  const observer = new MutationObserver(sync);
+  observer.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['style','class','open','aria-hidden']});
+  document.addEventListener('focusin', sync);
+  document.addEventListener('focusout', () => setTimeout(sync, 0));
+  document.addEventListener('visibilitychange', sync);
   const instructions = (target = help) => {
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     target.textContent = ios
@@ -21,6 +64,8 @@
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
     pendingPrompt = event;
+    installedHere = false;
+    try { localStorage.removeItem('ashwini-app-installed'); } catch {}
     help.hidden = true;
     sync();
   });
@@ -47,7 +92,8 @@
   button.addEventListener('click', () => install());
   window.addEventListener('ashwini:order-success', event => {
     const id = String(event.detail?.orderId || '');
-    if (!id || installed() || shownOrders.has(id) || orderDialog?.open) return;
+    eligible = true; sync();
+    if (!id || installed() || Date.now() < snoozedUntil || !safePage() || shownOrders.has(id) || orderDialog?.open) return;
     shownOrders.add(id);
     orderDialog = document.createElement('dialog');
     orderDialog.setAttribute('aria-labelledby', 'order-install-title');
@@ -57,9 +103,9 @@
     const previousFocus = document.activeElement;
     orderDialog.querySelector('[data-install]').addEventListener('click', event => install(event.currentTarget, orderDialog.querySelector('[data-help]')));
     orderDialog.querySelector('[data-later]').addEventListener('click', () => orderDialog.close());
-    orderDialog.addEventListener('close', () => { orderDialog.remove(); previousFocus?.focus(); }, {once:true});
+    orderDialog.addEventListener('close', () => { orderDialog.remove(); previousFocus?.focus(); sync(); }, {once:true});
     document.body.appendChild(orderDialog);
-    orderDialog.showModal();
+    orderDialog.showModal(); sync();
   });
   sync();
   if ('serviceWorker' in navigator && window.isSecureContext) {
