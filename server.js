@@ -1,3 +1,4 @@
+import {requestOrderPickup,validatePickupDate} from './scripts/courier-pickup.js';
 import {installGstSchema,saveGstSnapshot,readGstSnapshot} from "./scripts/gst-billing.js";
 import {normalizeAddressParts,readAddressParts} from "./scripts/address-parts.js";
 import {installWishlistSchema,wishlistState,mutateWishlist} from "./scripts/wishlist-state.js";
@@ -633,7 +634,14 @@ async function generateShiprocketLabel(orderId,shipmentId){
  let labelUrl='';try{const parsed=new URL(rawUrl);if(parsed.protocol!=='https:')throw Error();labelUrl=parsed.href.slice(0,1000)}catch{throw Error(generated?.message||'Shiprocket did not return a secure shipping-label PDF')}
  db.prepare("UPDATE orders SET shiprocket_label_url=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(labelUrl,orderId);return labelUrl;
 }
-async function ensureShiprocketShipment(orderId){
+for(const column of ['pickup_requested_date','pickup_confirmed_date','pickup_state','pickup_token'])try{db.exec(`ALTER TABLE orders ADD COLUMN ${column} TEXT DEFAULT ''`)}catch{}
+const courierBookingLocks=new Set();
+async function ensureShiprocketShipment(orderId,pickupDate){
+ if(courierBookingLocks.has(orderId))throw Error('Courier booking is already in progress. Please refresh shortly.');
+ validatePickupDate(pickupDate);courierBookingLocks.add(orderId);
+ try{return await prepareShiprocketShipment(orderId,pickupDate)}finally{courierBookingLocks.delete(orderId)}
+}
+async function prepareShiprocketShipment(orderId,pickupDate){
  let order=db.prepare(`SELECT o.*,u.name AS customer_name,u.email AS customer_email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(orderId);if(!order)throw Error('Order not found');
  if(!order.delivery_address_line||!order.delivery_city||!order.delivery_state||!/^\d{6}$/.test(String(order.delivery_pincode||'')))throw Error('This older order does not have structured delivery details. Add courier details manually.');
  const items=db.prepare(`SELECT oi.product_id,oi.size,oi.quantity,oi.unit_price,p.name,p.packed_weight_kg,p.packed_length_cm,p.packed_breadth_cm,p.packed_height_cm FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=?`).all(order.id);if(!items.length)throw Error('Order has no shipment items');
@@ -650,7 +658,7 @@ async function ensureShiprocketShipment(orderId){
  order=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);let awb=String(order.shiprocket_awb||'');
  if(!awb){const assigned=await shiprocketRequest('/courier/assign/awb',{method:'POST',body:{shipment_id:Number(shipmentId)}}),response=assigned?.response?.data||assigned?.data||assigned;awb=String(response?.awb_code||response?.awb||'');if(!awb)throw Error(assigned.message||'Shiprocket could not assign an AWB');const courier=String(response?.courier_name||'Shiprocket'),courierId=String(response?.courier_company_id||response?.courier_id||'');db.prepare("UPDATE orders SET shiprocket_awb=?,shiprocket_courier_id=?,shiprocket_status='AWB_ASSIGNED',courier_name=?,tracking_number=?,tracking_url=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(awb,courierId,courier,awb,`https://shiprocket.co/tracking/${encodeURIComponent(awb)}`,order.id);}
  order=db.prepare('SELECT * FROM orders WHERE id=?').get(order.id);const labelUrl=String(order.shiprocket_label_url||'')||await generateShiprocketLabel(order.id,shipmentId);
- const pickup=await shiprocketRequest('/courier/generate/pickup',{method:'POST',body:{shipment_id:[Number(shipmentId)]}});db.prepare("UPDATE orders SET shiprocket_status='PICKUP_SCHEDULED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(order.id);return{awb,pickup,labelUrl};
+ const pickup=await requestOrderPickup(db,shiprocketRequest,order,pickupDate);return{awb,pickup,labelUrl};
 }
 async function notifyEmail(to,subject,details){
  const result=await sendEmail(to,subject,`Ashwini Clothing\n\n${details}\n\nFor help, contact ${adminEmail()}.`);
@@ -1720,7 +1728,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  if(!allowedNext[String(before.status)]?.includes(nextStatus))return res.status(409).json({error:`Order must move forward one step at a time. ${before.status} cannot change directly to ${nextStatus}.`});
  if(before.payment_method==='RAZORPAY'&&before.payment_status!=='PAID')return res.status(409).json({error:'Online payment must be securely confirmed by Razorpay before fulfilment can continue.'});
  if(nextStatus==='PACKED'&&shiprocketConfigured()){
-  try{await ensureShiprocketShipment(before.id)}catch(e){createSecurityAlert({key:`SHIPROCKET_BOOKING:${before.id}`,type:'SHIPROCKET_BOOKING_FAILED',title:'Automatic courier booking failed',orderId:before.id,severity:'HIGH',details:{error:String(e.message||e).slice(0,500)}});return res.status(502).json({error:`Order was not marked PACKED because automatic courier booking failed: ${e.message}`})}
+  try{await ensureShiprocketShipment(before.id,req.body.pickup_date)}catch(e){createSecurityAlert({key:`SHIPROCKET_BOOKING:${before.id}`,type:'SHIPROCKET_BOOKING_FAILED',title:'Automatic courier booking failed',orderId:before.id,severity:'HIGH',details:{error:String(e.message||e).slice(0,500)}});return res.status(502).json({error:`Order was not marked PACKED because automatic courier booking failed: ${e.message}`})}
  }
  const result=db.prepare("UPDATE orders SET status=?,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?").run(nextStatus,nextStatus,req.params.id,before.status);
  if(!result.changes)return res.status(409).json({error:"Order changed in another request. Refresh and try again."});
@@ -1759,9 +1767,10 @@ app.post('/api/webhooks/courier-status',async(req,res)=>{
   // inserting an event or changing any order state.
   if(!awb&&!shipmentId&&!srOrderId)return res.json({ok:true,test:true,message:'Shiprocket webhook endpoint is active'});
   const eventHash=crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'),inserted=db.prepare('INSERT OR IGNORE INTO shiprocket_webhook_events(event_hash,awb,shipment_status) VALUES(?,?,?)').run(eventHash,awb,normalized);if(!inserted.changes)return res.json({ok:true,duplicate:true});
-  const order=db.prepare('SELECT * FROM orders WHERE shiprocket_awb=? OR shiprocket_shipment_id=? OR shiprocket_order_id=? ORDER BY id DESC LIMIT 1').get(awb,shipmentId,srOrderId);if(!order){createSecurityAlert({key:`SHIPROCKET_ORDER_NOT_FOUND:${awb||shipmentId||srOrderId}`,type:'SHIPROCKET_ORDER_MISMATCH',title:'Shiprocket update has no matching Ashwini order',severity:'HIGH',details:{awb,shipment_id:shipmentId,shiprocket_order_id:srOrderId,status:normalized}});return res.json({ok:true,matched:false})}
+  const order=db.prepare("SELECT * FROM orders WHERE (shiprocket_awb=? AND shiprocket_awb<>'') OR (shiprocket_shipment_id=? AND shiprocket_shipment_id<>'') OR (shiprocket_order_id=? AND shiprocket_order_id<>'') ORDER BY id DESC LIMIT 1").get(awb,shipmentId,srOrderId);if(!order){createSecurityAlert({key:`SHIPROCKET_ORDER_NOT_FOUND:${awb||shipmentId||srOrderId}`,type:'SHIPROCKET_ORDER_MISMATCH',title:'Shiprocket update has no matching Ashwini order',severity:'HIGH',details:{awb,shipment_id:shipmentId,shiprocket_order_id:srOrderId,status:normalized}});return res.json({ok:true,matched:false})}
   const map={MANIFESTED:'PACKED',READY_TO_SHIP:'PACKED',PICKED_UP:'SHIPPED',PICKED:'SHIPPED',IN_TRANSIT:'SHIPPED',SHIPPED:'SHIPPED',OUT_FOR_DELIVERY:'OUT_FOR_DELIVERY',DELIVERED:'DELIVERED'},target=map[normalized]||'',steps=['PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED'],currentIndex=steps.indexOf(String(order.status)),targetIndex=steps.indexOf(target),canAdvance=currentIndex>=2&&targetIndex>currentIndex;
   db.prepare("UPDATE orders SET shiprocket_status=?,courier_name=COALESCE(NULLIF(?,''),courier_name),tracking_number=COALESCE(NULLIF(?,''),tracking_number),tracking_url=CASE WHEN COALESCE(NULLIF(?,''),tracking_number)<>'' THEN 'https://shiprocket.co/tracking/'||COALESCE(NULLIF(?,''),tracking_number) ELSE tracking_url END,status=CASE WHEN ?=1 THEN ? ELSE status END,dispatched_at=CASE WHEN ?=1 AND COALESCE(dispatched_at,'')='' THEN CURRENT_TIMESTAMP ELSE dispatched_at END,delivered_at=CASE WHEN ?='DELIVERED' AND COALESCE(delivered_at,'')='' THEN CURRENT_TIMESTAMP ELSE delivered_at END,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(normalized,String(payload.courier_name||payload.courier||''),awb,awb,awb,canAdvance?1:0,target,canAdvance&&['SHIPPED','OUT_FOR_DELIVERY','DELIVERED'].includes(target)?1:0,target,order.id);
+  if(payload.pickup_scheduled_date)db.prepare("UPDATE orders SET pickup_state='CONFIRMED',pickup_confirmed_date=? WHERE id=?").run(String(payload.pickup_scheduled_date).slice(0,100),order.id);
   if(canAdvance){const label=target.replaceAll('_',' '),message=`Courier update: Order #${order.id} is now ${label}.`;addOrderEvent(order.id,order.user_id,target,`Order ${label}`,message);const customer=db.prepare('SELECT name,email FROM users WHERE id=?').get(order.user_id);if(customer?.email)await notifyEmail(customer.email,`Ashwini Clothing Order #${order.id} - ${label}`,`Hello ${customer.name||'Customer'},\n\n${message}\n\nTrack your order from My Orders.`)}
   if(/RTO|RETURN_TO_ORIGIN|LOST|DAMAGED|CANCEL/.test(normalized))createSecurityAlert({key:`SHIPROCKET_EXCEPTION:${order.id}:${normalized}`,type:'SHIPROCKET_DELIVERY_EXCEPTION',title:'Courier shipment needs admin review',orderId:order.id,severity:'HIGH',details:{awb,status:normalized}});
   res.json({ok:true,order_id:order.id,status:normalized,advanced:canAdvance});
