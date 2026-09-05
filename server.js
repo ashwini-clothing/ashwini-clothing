@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import Database from "better-sqlite3";
+import {installCartSchema,cartState,applyCartMutation} from "./scripts/cart-state.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Razorpay from "razorpay";
@@ -52,6 +53,7 @@ console.log(`[Ashwini DB] Using ${dbPath}`);
 const db=new Database(dbPath);
 db.pragma("foreign_keys=ON");
 db.exec(fs.readFileSync(path.join(__dirname,"schema.sql"),"utf8"));
+installCartSchema(db);
 // Node timers accept at most 2^31-1 ms. Cap the interval to one week so an
 // accidental large value cannot overflow into a rapid backup loop.
 const backupIntervalHours=Math.max(1,Math.min(168,Number(process.env.BACKUP_INTERVAL_HOURS)||24));
@@ -1260,8 +1262,9 @@ app.post('/api/me/account-deletion-request',auth,async(req,res)=>{try{if(req.use
 app.get('/api/me/account-deletion-request',auth,(req,res)=>{try{res.json({requests:db.prepare('SELECT id,status,reason,created_at,updated_at FROM account_deletion_requests WHERE user_id=? ORDER BY id DESC').all(req.user.id)})}catch{res.status(500).json({error:'Could not load account deletion requests'})}});
 app.delete('/api/me/account-deletion-request/:id',auth,(req,res)=>{try{const result=db.prepare("UPDATE account_deletion_requests SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=? AND status IN ('PENDING','IN_REVIEW')").run(Number(req.params.id),req.user.id);if(!result.changes)return res.status(409).json({error:'This request cannot be cancelled'});res.json({ok:true})}catch{res.status(500).json({error:'Could not cancel account deletion request'})}});
 app.post("/api/auth/logout",auth,(req,res)=>{try{const raw=readCookie(req,"ashwini_session");if(raw)db.prepare("DELETE FROM auth_sessions WHERE session_hash=?").run(sessionHash(raw));clearSessionCookie(res);res.json({ok:true});}catch(e){clearSessionCookie(res);res.json({ok:true});}});
-app.get('/api/cart',auth,(req,res)=>{try{res.json({items:db.prepare('SELECT product_id AS id,quantity,size FROM cart_items WHERE user_id=? ORDER BY updated_at,id').all(req.user.id)})}catch(e){res.status(500).json({error:'Cart could not be loaded'})}});
-app.put('/api/cart',auth,(req,res)=>{try{const items=req.body?.items;if(!Array.isArray(items)||items.length>50)return res.status(400).json({error:'Invalid cart'});const clean=[],seen=new Set(),product=db.prepare('SELECT id FROM products WHERE id=?');for(const item of items){const id=Number(item?.id),quantity=Number(item?.quantity),size=String(item?.size||'').trim();if(!Number.isInteger(id)||!product.get(id)||!Number.isInteger(quantity)||quantity<1||quantity>20||!size||size.length>20)return res.status(400).json({error:'Invalid cart item'});const key=`${id}|${size}`;if(seen.has(key))return res.status(400).json({error:'Duplicate cart item'});seen.add(key);clean.push({id,quantity,size})}const replace=db.transaction(()=>{db.prepare('DELETE FROM cart_items WHERE user_id=?').run(req.user.id);const add=db.prepare('INSERT INTO cart_items(user_id,product_id,size,quantity,updated_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)');for(const item of clean)add.run(req.user.id,item.id,item.size,item.quantity)});replace();res.json({ok:true,items:clean})}catch(e){res.status(500).json({error:'Cart could not be saved'})}});
+app.get('/api/cart',auth,(req,res)=>{try{res.json(cartState(db,req.user.id))}catch(e){res.status(500).json({error:'Cart could not be loaded'})}});
+app.put('/api/cart',auth,(req,res)=>res.status(428).json({error:'Please refresh the website before saving your cart. Your saved items are unchanged.'}));
+app.post('/api/cart/mutate',auth,(req,res)=>{try{res.json(applyCartMutation(db,req.user.id,req.body))}catch(e){res.status(e.status||500).json({error:e.status?e.message:'Cart changes could not be saved'})}});
 app.get("/api/products/:id/questions",(req,res)=>{
  const productId=Number(req.params.id);
  if(!Number.isInteger(productId))return res.status(400).json({error:"Invalid product"});
