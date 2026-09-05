@@ -77,6 +77,8 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}
  .nav{overflow-x:auto;overflow-y:hidden;white-space:nowrap}
 }
 @media(min-width:601px) and (max-width:1100px){
+ #accountTopLink:not([data-tablet-label]) small{display:none!important}
+ #accountTopLink:not([data-tablet-label])::before{content:'Sign in';display:block;font-size:11px;line-height:1.2}
  #accountTopLink[data-tablet-label] small{display:none!important}
  #accountTopLink[data-tablet-label]::before{content:attr(data-tablet-label);display:block;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;line-height:1.2}
 }
