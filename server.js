@@ -455,6 +455,11 @@ const publicSeoFiles=new Set(['/robots.txt','/sitemap.xml']);
 function sendPublicFile(res,fileName){res.sendFile(path.join(__dirname,fileName),err=>{if(err&&!res.headersSent)res.status(err.statusCode===404?404:500).end()})}
 app.get(['/', '/index.html'],(req,res)=>sendPublicFile(res,'index.html'));
 app.get('/app.js',(req,res)=>sendPublicFile(res,'app.js'));
+app.get('/manifest.webmanifest',(req,res)=>{res.type('application/manifest+json');sendPublicFile(res,'manifest.webmanifest')});
+app.get('/pwa-install.js',(req,res)=>sendPublicFile(res,'pwa-install.js'));
+app.get('/sw.js',(req,res)=>{res.setHeader('Cache-Control','no-cache');sendPublicFile(res,'sw.js')});
+app.get('/offline.html',(req,res)=>sendPublicFile(res,'offline.html'));
+
 app.get([...publicCssFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
 app.get([...publicPolicyFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
 app.get([...publicSeoFiles],(req,res)=>sendPublicFile(res,req.path.slice(1)));
