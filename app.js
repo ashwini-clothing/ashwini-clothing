@@ -1639,5 +1639,5 @@ document.addEventListener('DOMContentLoaded',()=>{
  restoreSession().finally(()=>{applyAppearance();loadSiteLogo();load();loadSessionHistory();connectCatalogUpdates();loadSlides();loadShopCategories();loadQuickFilters();updateHelpUnreadBadge();if(window.__helpUnreadTimer)clearInterval(window.__helpUnreadTimer);window.__helpUnreadTimer=setInterval(updateHelpUnreadBadge,2500);setTimeout(showOfferPopup,1200);setTimeout(()=>{warmMsg91().catch(()=>{})},400);});
 });
 
-// Used by install suggestions to stay quiet throughout payment and admin work.
-window.ashwiniPwaBusy = () => checkoutInProgress || user?.role === 'admin';
+// Payment stays quiet for every account. Admin dialogs are filtered by the PWA screen allowlist.
+window.ashwiniPwaBusy = () => checkoutInProgress;
