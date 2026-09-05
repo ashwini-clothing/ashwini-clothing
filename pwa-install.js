@@ -6,7 +6,8 @@
   let pendingPrompt = null;
   const standalone = window.matchMedia('(display-mode: standalone)');
   let installedHere = false;
-  try { installedHere = localStorage.getItem('ashwini-app-installed') === 'yes'; } catch {}
+  // A saved flag cannot prove the app is still installed (it may have been removed).
+  let installTarget = null;
   const installed = () => installedHere || standalone.matches || navigator.standalone === true;
   let orderDialog;
   const shownOrders = new Set();
@@ -58,7 +59,7 @@
     const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     target.textContent = ios
       ? 'On iPhone or iPad: open this website in Safari, tap Share, then Add to Home Screen and Add. Your Ashwini logo will appear on the Home Screen.'
-      : 'Open your browser menu and choose Install app, Install this site as an app, or Add to Home screen if available. On desktop, try Chrome or Edge. If already installed, open Ashwini from your apps.';
+      : 'Installation has not started from this button. Open this website directly in Chrome or Edge (not inside WhatsApp or Instagram). Open your browser menu and choose Install app, Install this site as an app, or Add to Home screen if available. On desktop, try Chrome or Edge. If already installed, open Ashwini from your apps.';
     target.hidden = false;
   };
   window.addEventListener('beforeinstallprompt', event => {
@@ -73,11 +74,20 @@
     pendingPrompt = null;
     installedHere = true;
     try { localStorage.setItem('ashwini-app-installed', 'yes'); } catch {}
+    if (installTarget) {
+      installTarget.textContent = 'Your browser confirmed installation. Look for Ashwini in your phone’s apps list or Home Screen. You can add it to the Home Screen from the apps list.';
+      installTarget.hidden = false;
+    }
+    if (orderDialog?.open) {
+      const action = orderDialog.querySelector('[data-install]');
+      action.textContent = 'Installation confirmed'; action.disabled = true;
+    }
     section.hidden = true;
-    if (orderDialog?.open) orderDialog.close();
+    if (typeof window.toast === 'function') window.toast('Browser confirmed installation. Find Ashwini in your apps list.');
   });
   standalone.addEventListener('change', sync);
   const install = async (trigger = button, target = help) => {
+    installTarget = target;
     if (!pendingPrompt) return instructions(target);
     const prompt = pendingPrompt;
     pendingPrompt = null;
@@ -85,7 +95,12 @@
     try {
       await prompt.prompt();
       const choice = await prompt.userChoice;
-      if (choice.outcome === 'accepted') { section.hidden = true; if (orderDialog?.open) orderDialog.close(); }
+      if (!installedHere) {
+        target.textContent = choice.outcome === 'accepted'
+          ? 'Install request accepted. Waiting for your browser to finish. If no Ashwini icon appears, check your apps list or use the browser menu → Install app / Add to Home screen.'
+          : 'Installation was cancelled. The app has not been installed by this request. You can try again from the browser menu.';
+        target.hidden = false;
+      }
     } catch { instructions(target); }
     finally { trigger.disabled = false; }
   };
