@@ -835,3 +835,10 @@ function handleLensPhoto(input){
   body .product-area #grid .card .pic>img{width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:contain!important;object-position:center!important}
 }
 </style>
+<style id="mobile-adaptive-product-cards">
+@media (max-width:600px){
+  body .product-area #grid .card{height:auto!important;min-height:0!important;align-self:start!important}
+  body .product-area #grid .card .pic{height:auto!important;min-height:0!important;max-height:none!important;aspect-ratio:auto!important;display:block!important}
+  body .product-area #grid .card .pic>img{display:block!important;width:100%!important;height:auto!important;min-height:0!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain!important}
+}
+</style>
