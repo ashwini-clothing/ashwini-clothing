@@ -78,7 +78,6 @@ const backupIntervalTimer=setInterval(runScheduledBackup,backupIntervalHours*60*
 backupStartTimer.unref?.();
 backupIntervalTimer.unref?.();
 try{db.exec("ALTER TABLE products ADD COLUMN gallery TEXT DEFAULT ''")}catch{}
-try{db.exec("ALTER TABLE products ADD COLUMN videos TEXT DEFAULT '[]'")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN product_history TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN size_chart TEXT DEFAULT ''")}catch{}
 try{db.exec("ALTER TABLE products ADD COLUMN care_instructions TEXT DEFAULT ''")}catch{}
@@ -420,7 +419,7 @@ app.use((req,res,next)=>{
     "font-src 'self' data:",
     "connect-src 'self' https://api.bigdatacloud.net https://*.razorpay.com https://*.msg91.com https://*.phone91.com wss://*.razorpay.com wss://*.msg91.com wss://*.phone91.com",
     "frame-src https://*.razorpay.com https://*.msg91.com https://*.phone91.com",
-    "media-src 'self' data: blob:",
+    "media-src 'self' blob:",
     "worker-src 'self' blob:",
     ...(process.env.NODE_ENV==='production'?["upgrade-insecure-requests"]:[])
   ].join('; ');
@@ -441,7 +440,7 @@ app.use((req,res,next)=>{
 });
 app.use(cors({origin:(origin,done)=>done(null,!origin||allowedOrigins.has(String(origin).replace(/\/$/,''))),credentials:true,methods:['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Idempotency-Key']}));
 const standardJsonParser=express.json({limit:'256kb'});
-const imageJsonParser=express.json({limit:'40mb'});
+const imageJsonParser=express.json({limit:'20mb'});
 function isImagePayloadRoute(pathname=''){
   return pathname==='/api/visual-search'
     || /^\/api\/products\/\d+\/reviews$/.test(pathname)
@@ -828,29 +827,14 @@ function validatedImageGallery(value){
  if(!Array.isArray(items)||items.length>12)throw Error('Product gallery must contain no more than 12 images');
  return JSON.stringify(items.map(item=>validatedImageSource(item,{maxDataBytes:12*1024*1024})));
 }
-function validatedProductVideos(value){
- let items=value;
- if(typeof items==='string'){const raw=items.trim();if(!raw)return '[]';try{items=JSON.parse(raw)}catch{items=[raw]}}
- if(!Array.isArray(items)||items.length>2)throw Error('A product can contain no more than 2 videos');
- return JSON.stringify(items.map(item=>{
-  const source=String(item||'').trim();
-  if(/^https:\/\//i.test(source)||/^\/?[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:mp4|webm)(?:\?[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?$/i.test(source))return source;
-  const match=/^data:video\/(mp4|webm);base64,([A-Za-z0-9+/=\s]+)$/i.exec(source);
-  if(!match)throw Error('Use an MP4/WebM video under 4 MB');
-  let bytes;try{bytes=Buffer.from(match[2].replace(/\s/g,''),'base64')}catch{throw Error('Video data is invalid')}
-  if(!bytes.length||bytes.length>4*1024*1024)throw Error('Each product video must be 4 MB or smaller');
-  const type=match[1].toLowerCase(),valid=type==='mp4'?bytes.subarray(4,12).toString('ascii').includes('ftyp'):bytes.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]));
-  if(!valid)throw Error('Uploaded video contents do not match MP4/WebM format');
-  return source;
- }));
-}
 app.get("/api/slides",(req,res)=>{res.json(db.prepare("SELECT * FROM homepage_slides WHERE active=1 ORDER BY sort_order,id").all().map(safePromotionRow))});
 app.get("/api/admin/slides",auth,admin,(req,res)=>res.json(db.prepare("SELECT * FROM homepage_slides ORDER BY sort_order,id").all().map(safePromotionRow)));
+try{db.exec("ALTER TABLE homepage_slides ADD COLUMN brand_line TEXT DEFAULT 'ASHWINI CLOTHING'")}catch{}
 function slideStyle(b,key){const value=String(b[key]||'').trim();if(value&&!/^#[0-9a-fA-F]{6}$/.test(value))throw Error('Choose valid slide colours');return value}
 function slideSize(value){const n=Number(value||0);if(!Number.isFinite(n)||n<0||n>90)throw Error('Slide text size must be between 0 and 90');return Math.round(n)}
-function slideValues(b){return [String(b.title||'').slice(0,120),validatedImageSource(b.image_url,{required:true}),String(b.button_text||'Shop Now').slice(0,60),safePromotionAction(b.button_action),b.active===false?0:1,Math.max(0,Number(b.sort_order||0)),String(b.offer_text||'').slice(0,160),slideStyle(b,'title_color'),slideSize(b.title_size),slideStyle(b,'offer_color'),slideSize(b.offer_size),slideStyle(b,'button_background'),slideStyle(b,'button_color'),slideStyle(b,'button_border')]}
-app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b),r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text,title_color,title_size,offer_color,offer_size,button_background,button_color,button_border) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...v);res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
-app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b);db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=?,title_color=?,title_size=?,offer_color=?,offer_size=?,button_background=?,button_color=?,button_border=? WHERE id=?").run(...v,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
+function slideValues(b){return [String(b.title||'').slice(0,120),validatedImageSource(b.image_url,{required:true}),String(b.button_text||'Shop Now').slice(0,60),safePromotionAction(b.button_action),b.active===false?0:1,Math.max(0,Number(b.sort_order||0)),String(b.offer_text||'').slice(0,160),slideStyle(b,'title_color'),slideSize(b.title_size),slideStyle(b,'offer_color'),slideSize(b.offer_size),slideStyle(b,'button_background'),slideStyle(b,'button_color'),slideStyle(b,'button_border'),String(b.brand_line??'ASHWINI CLOTHING').slice(0,80)]}
+app.post("/api/admin/slides",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b),r=db.prepare("INSERT INTO homepage_slides(title,image_url,button_text,button_action,active,sort_order,offer_text,title_color,title_size,offer_color,offer_size,button_background,button_color,button_border,brand_line) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(...v);res.json(db.prepare("SELECT * FROM homepage_slides WHERE id=?").get(r.lastInsertRowid))}catch(e){res.status(400).json({error:e.message})}});
+app.patch("/api/admin/slides/:id",auth,admin,(req,res)=>{try{const b=req.body||{};if(!String(b.image_url||'').trim())throw Error('Slide image URL is required');const v=slideValues(b);db.prepare("UPDATE homepage_slides SET title=?,image_url=?,button_text=?,button_action=?,active=?,sort_order=?,offer_text=?,title_color=?,title_size=?,offer_color=?,offer_size=?,button_background=?,button_color=?,button_border=?,brand_line=? WHERE id=?").run(...v,req.params.id);res.json({ok:true})}catch(e){res.status(400).json({error:e.message})}});
 app.delete("/api/admin/slides/:id",auth,admin,(req,res)=>{db.prepare("DELETE FROM homepage_slides WHERE id=?").run(req.params.id);res.json({ok:true})});
 app.get("/api/categories",(req,res)=>{res.json(db.prepare("SELECT * FROM shop_categories WHERE active=1 ORDER BY sort_order,id").all())});
 app.get("/api/product-highlights",(req,res)=>res.json(db.prepare("SELECT * FROM product_highlights WHERE active=1 ORDER BY sort_order,id").all()));
@@ -1812,18 +1796,18 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
 function packedProductMeasurements(input={},fallback={}){const value=(key,defaultValue,min,max)=>{const n=Number(input[key]??fallback[key]??defaultValue);if(!Number.isFinite(n)||n<min||n>max)throw Error(`Enter a valid ${key.replace('packed_','').replaceAll('_',' ')}`);return Number(n.toFixed(3))};return{packed_weight_kg:value('packed_weight_kg',.5,.05,50),packed_length_cm:value('packed_length_cm',25,1,200),packed_breadth_cm:value('packed_breadth_cm',20,1,200),packed_height_cm:value('packed_height_cm',5,.5,200)}}
 function validateProductInput(product){if(!String(product?.name||'').trim())throw Error('Product name is required');if(!String(product?.category||'').trim())throw Error('Category is required');if(!String(product?.color||'').trim())throw Error('Colour is required');if(!Number.isFinite(Number(product?.price))||Number(product.price)<=0)throw Error('Enter a valid selling price');if(!Number.isFinite(Number(product?.mrp))||Number(product.mrp)<Number(product.price))throw Error('MRP must be equal to or higher than selling price');if(!String(product?.image||'').trim())throw Error('Add at least one product photo')}
 app.post("/api/admin/products",auth,admin,(req,res)=>{try{
- const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,emoji="👕",stock=0,description="",image="",gallery="",videos="[]",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body,rating=0,m=packedProductMeasurements(req.body);
+ const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,emoji="👕",stock=0,description="",image="",gallery="",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body,rating=0,m=packedProductMeasurements(req.body);
  validateProductInput(req.body);
  const ss=validatedSizeStock(size_options,req.body?.size_stock,stock);
- const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,videos,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount,packed_weight_kg,packed_length_cm,packed_breadth_cm,packed_height_cm,size_stock) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,ss.total,description,validatedImageSource(image),validatedImageGallery(gallery),validatedProductVideos(videos),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,ss.json);
+ const r=db.prepare("INSERT INTO products(name,category,size_options,color,price,mrp,rating,emoji,stock,description,image,gallery,product_history,size_chart,care_instructions,badge_text,offer_text,offer_discount,packed_weight_kg,packed_length_cm,packed_breadth_cm,packed_height_cm,size_stock) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(name,category,size_options,color,price,mrp,rating,emoji,ss.total,description,validatedImageSource(image),validatedImageGallery(gallery),product_history,typeof size_chart==="string"?size_chart:JSON.stringify(size_chart||[]),care_instructions,String(badge_text||''),String(offer_text||''),Number(offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,ss.json);
  logAdminActivity(req,'PRODUCT_CREATED','PRODUCT',r.lastInsertRowid,{name:String(name||'').slice(0,200),stock:ss.total,price:Number(price)||0});
  publishCatalogUpdate('created',r.lastInsertRowid);
  res.json(db.prepare("SELECT * FROM products WHERE id=?").get(r.lastInsertRowid));
  }catch(e){res.status(400).json({error:e.message||'Product could not be created'})}});
 app.patch("/api/admin/products/:id",auth,admin,(req,res)=>{try{
  const p=db.prepare("SELECT * FROM products WHERE id=?").get(req.params.id);if(!p)return res.status(404).json({error:"Not found"});
- const x={...p,...req.body,rating:p.rating};validateProductInput(x);const m=packedProductMeasurements(req.body,p),ss=validatedSizeStock(x.size_options,req.body?.size_stock??p.size_stock,x.stock);db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,videos=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=?,packed_weight_kg=?,packed_length_cm=?,packed_breadth_cm=?,packed_height_cm=?,size_stock=? WHERE id=?")
- .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,ss.total,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),validatedProductVideos(x.videos),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,ss.json,p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:ss.total,from_price:Number(p.price)||0,to_price:Number(x.price)||0,packed_weight_kg:m.packed_weight_kg,packed_dimensions_cm:[m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm]});publishCatalogUpdate('updated',p.id);res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
+ const x={...p,...req.body,rating:p.rating};validateProductInput(x);const m=packedProductMeasurements(req.body,p),ss=validatedSizeStock(x.size_options,req.body?.size_stock??p.size_stock,x.stock);db.prepare("UPDATE products SET name=?,category=?,size_options=?,color=?,price=?,mrp=?,rating=?,emoji=?,stock=?,description=?,image=?,gallery=?,product_history=?,size_chart=?,care_instructions=?,badge_text=?,offer_text=?,offer_discount=?,packed_weight_kg=?,packed_length_cm=?,packed_breadth_cm=?,packed_height_cm=?,size_stock=? WHERE id=?")
+ .run(x.name,x.category,x.size_options,x.color,x.price,x.mrp,x.rating,x.emoji,ss.total,x.description,validatedImageSource(x.image),validatedImageGallery(x.gallery),x.product_history||"",typeof x.size_chart==="string"?x.size_chart:JSON.stringify(x.size_chart||[]),x.care_instructions||"",String(x.badge_text||''),String(x.offer_text||''),Number(x.offer_discount||0),m.packed_weight_kg,m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm,ss.json,p.id);logAdminActivity(req,'PRODUCT_UPDATED','PRODUCT',p.id,{name:String(x.name||'').slice(0,200),from_stock:Number(p.stock)||0,to_stock:ss.total,from_price:Number(p.price)||0,to_price:Number(x.price)||0,packed_weight_kg:m.packed_weight_kg,packed_dimensions_cm:[m.packed_length_cm,m.packed_breadth_cm,m.packed_height_cm]});publishCatalogUpdate('updated',p.id);res.json(db.prepare("SELECT * FROM products WHERE id=?").get(p.id));
  }catch(e){res.status(400).json({error:e.message||'Product could not be updated'})}});
 app.delete("/api/admin/products/:id",auth,admin,(req,res)=>{const product=db.prepare('SELECT id,name,stock,price FROM products WHERE id=?').get(req.params.id);if(!product)return res.status(404).json({error:'Product not found'});if(db.prepare('SELECT id FROM order_items WHERE product_id=? LIMIT 1').get(product.id))return res.status(409).json({error:'This product belongs to order history. Set its stock to zero instead of deleting it.'});db.prepare("DELETE FROM products WHERE id=?").run(product.id);logAdminActivity(req,'PRODUCT_DELETED','PRODUCT',product.id,{name:product.name,stock:product.stock,price:product.price});publishCatalogUpdate('deleted',product.id);res.json({ok:true})});
 
