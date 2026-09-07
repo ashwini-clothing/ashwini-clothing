@@ -420,7 +420,7 @@ app.use((req,res,next)=>{
     "font-src 'self' data:",
     "connect-src 'self' https://api.bigdatacloud.net https://*.razorpay.com https://*.msg91.com https://*.phone91.com wss://*.razorpay.com wss://*.msg91.com wss://*.phone91.com",
     "frame-src https://*.razorpay.com https://*.msg91.com https://*.phone91.com",
-    "media-src 'self' blob:",
+    "media-src 'self' blob: data: https:",
     "worker-src 'self' blob:",
     ...(process.env.NODE_ENV==='production'?["upgrade-insecure-requests"]:[])
   ].join('; ');
