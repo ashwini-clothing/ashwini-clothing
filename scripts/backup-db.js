@@ -7,7 +7,7 @@ import { backupEncryptionKey,decryptBackupFile,encryptBackupFile,sha256File } fr
 const projectDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
 export async function backupDatabase(){
-  const source=path.resolve(process.env.DB_PATH||path.join(projectDir,'ashwini.db'));
+  const source=path.resolve(process.env.ASHWINI_DB_PATH||process.env.DB_PATH||path.join(projectDir,'ashwini.db'));
   if(!fs.existsSync(source))throw new Error(`Database not found: ${source}`);
   const backupDir=path.resolve(process.env.BACKUP_DIR||path.join(path.dirname(source),'backups'));
   fs.mkdirSync(backupDir,{recursive:true});
