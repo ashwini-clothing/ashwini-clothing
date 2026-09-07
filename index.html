@@ -849,3 +849,12 @@ function handleLensPhoto(input){
 .product-media-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
 .product-media-nav button{padding:8px 10px;min-height:36px}
 </style>
+<style id="desktop-tablet-adaptive-gallery-frame">
+@media (min-width:601px){
+  #modal.product-page-mode #body .detail .gallery{align-items:start}
+  #modal.product-page-mode #body .detail .gallery-main{height:auto!important;min-height:0!important;align-self:start}
+  #modal.product-page-mode #body .detail .gallery-main>img{display:block;width:100%!important;height:auto!important;max-height:none!important;object-fit:contain!important}
+  #modal.product-page-mode #body .detail .gallery-main>video{width:100%;height:auto;max-height:none;object-fit:contain}
+  #modal.product-page-mode #body .detail .gallery-main>[hidden]{display:none!important}
+}
+</style>
