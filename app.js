@@ -221,6 +221,7 @@ window.addEventListener('popstate',()=>{if(window.__productHistoryActive){window
 
 const galleryFallback={1:['/_model_western.jpg'],2:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg'],3:['/_model_purple.jpg'],4:['/_model_purple.jpg'],5:['/_model_blue.jpg'],6:['/_model_blue.jpg'],7:['/_model_purple.jpg'],8:['/_model_western.jpg'],9:['/_model_blue.jpg'],10:['/_model_pink.jpg'],11:['/_model_western.jpg'],12:['/_model_purple.jpg'],13:['/_model_pink.jpg'],14:['/_model_purple.jpg'],100:['/dark-pink-lace-maxi-new.jpg','/dark-pink-lace-maxi.jpg']};
 function getGallery(p){let a=[];try{a=JSON.parse(p.gallery||'[]')}catch{}if(!Array.isArray(a)||!a.length)a=galleryFallback[p.id]||[];if(p.image&&!a.includes(p.image))a.unshift(p.image);return [...new Set(a)].filter(Boolean).slice(0,10)}
+function getProductVideos(p){let a=[];try{a=JSON.parse(p.videos||'[]')}catch{}return Array.isArray(a)?a.filter(Boolean).slice(0,2):[]}
 function setGalleryImage(id,src,btn){const img=document.getElementById(`gallery-main-${id}`);if(img){img.src=src;resetZoom(id)}btn?.parentElement?.querySelectorAll('.gallery-thumb').forEach(x=>x.classList.remove('active'));btn?.classList.add('active')}
 const zoomState={};
 function applyZoom(id){const st=zoomState[id]||{scale:1,x:0,y:0};const img=document.getElementById(`gallery-main-${id}`);const label=document.getElementById(`zoom-level-${id}`);if(st.scale<=1){st.x=0;st.y=0}if(img){img.style.transform=`translate3d(${st.x||0}px,${st.y||0}px,0) scale(${st.scale})`;img.style.cursor=st.scale>1?'grab':'default'}if(label)label.textContent=`${Math.round(st.scale*100)}%`}
@@ -386,7 +387,7 @@ async function detail(id){
  const requestId=++productDetailRequestId;
  trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
  const ps=await api('/api/products');const p=ps.find(x=>x.id===id);if(!p)return;
- const gallery=getGallery(p), liked=wishlist.includes(id);
+ const gallery=getGallery(p),videos=getProductVideos(p),liked=wishlist.includes(id);
  const [qaHtml,reviewsHtml,recommendationsHtml,highlights]=await Promise.all([
   qaSection(p.id),
   reviewsSection(p.id),
@@ -397,7 +398,7 @@ async function detail(id){
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
  openM(`<div class="detail">
-  <div><div class="gallery"><div class="gallery-thumbs">${gallery.map((src,i)=>`<button type="button" class="gallery-thumb ${i===0?'active':''}" onclick="stop(event);setGalleryImage(${p.id},${esc(JSON.stringify(src))},this)"><img src="${esc(src)}" alt="${esc(p.name)} view ${i+1}"></button>`).join('')}</div><div><div class="gallery-main" id="gallery-main-wrap-${p.id}"><img id="gallery-main-${p.id}" class="product-photo-open-full" src="${esc(gallery[0]||p.image||'')}" alt="${esc(p.name)}" title="Open full photo" onclick="stop(event);openProductImageViewer(${p.id})"><div class="zoom-controls"><button class="zoom-btn" type="button" title="Zoom out" onclick="stop(event);zoomImage(${p.id},-.2)">−</button><span class="zoom-level" id="zoom-level-${p.id}">100%</span><button class="zoom-btn" type="button" title="Zoom in" onclick="stop(event);zoomImage(${p.id},.2)">+</button><button class="zoom-btn" type="button" title="Reset" onclick="stop(event);resetZoom(${p.id})">↺</button></div></div><div class="gallery-count">${gallery.length} photo${gallery.length===1?'':'s'} · Tap photo for full view · Pinch or use +/− to zoom</div></div></div></div>
+  <div><div class="gallery"><div class="gallery-thumbs">${gallery.map((src,i)=>`<button type="button" class="gallery-thumb ${i===0?'active':''}" onclick="stop(event);setGalleryImage(${p.id},${esc(JSON.stringify(src))},this)"><img src="${esc(src)}" alt="${esc(p.name)} view ${i+1}"></button>`).join('')}</div><div><div class="gallery-main" id="gallery-main-wrap-${p.id}"><img id="gallery-main-${p.id}" class="product-photo-open-full" src="${esc(gallery[0]||p.image||'')}" alt="${esc(p.name)}" title="Open full photo" onclick="stop(event);openProductImageViewer(${p.id})"><div class="zoom-controls"><button class="zoom-btn" type="button" title="Zoom out" onclick="stop(event);zoomImage(${p.id},-.2)">−</button><span class="zoom-level" id="zoom-level-${p.id}">100%</span><button class="zoom-btn" type="button" title="Zoom in" onclick="stop(event);zoomImage(${p.id},.2)">+</button><button class="zoom-btn" type="button" title="Reset" onclick="stop(event);resetZoom(${p.id})">↺</button></div></div><div class="gallery-count">${gallery.length} photo${gallery.length===1?'':'s'} · Tap photo for full view · Pinch or use +/− to zoom</div>${videos.length?`<div style="margin-top:14px"><b>Product Videos</b><div style="display:grid;gap:10px;margin-top:8px">${videos.map((src,i)=>`<video src="${esc(src)}" controls playsinline preload="metadata" aria-label="${esc(p.name)} video ${i+1}" style="display:block;width:100%;max-height:420px;background:#000;border-radius:10px"></video>`).join('')}</div></div>`:''}</div></div></div>
   <div>${p.badge_text?`<div style="margin-bottom:8px"><span class="badge" style="position:static;display:inline-block">${esc(p.badge_text)}</span></div>`:''}<h1>${esc(p.name)}</h1><div class="stars">${p.rating>0?'★★★★★ '+p.rating+' customer rating':'New product'}</div><p style="font-size:27px;font-weight:bold">₹${Number(p.price||0).toLocaleString('en-IN')} <span class="mrp">₹${Number(p.mrp||0).toLocaleString('en-IN')}</span></p><p>Inclusive of all taxes</p>${p.offer_text?`<div class="coupon-box"><b>🎁 ${esc(p.offer_text)}</b>${Number(p.offer_discount||0)>0?`<div style="font-size:18px;font-weight:700;margin-top:4px">${Number(p.offer_discount)}% OFF</div>`:''}</div>`:''}<hr>
   <p><b>Colour:</b> ${esc(p.color)}</p><p><b>Size:</b></p><div class="sizebox" id="sizes-detail-${p.id}">${(p.size_options||'S,M,L,XL').split(',').map(s=>{const label=s.trim(),n=clientSizeStock(p,label);return `<button class="size ${n===0?'unavailable':''}" type="button" data-size-stock="${n}" ${n===0?'aria-disabled="true" title="Out of stock"':''} onclick="stop(event);${n===0?'showSizeOutOfStock(this)':`pick(${p.id},${esc(JSON.stringify(label))},this)`}">${esc(label)}</button>`}).join('')}</div><small class="size-stock-message" aria-live="polite"></small>
   <p><button class="size-chart-link" type="button" onclick="stop(event);sizeChart(${p.id})">📏 View Size Chart</button></p>
@@ -1045,12 +1046,20 @@ function addSizeChartRow(row={size:'',bust:'',waist:'',hip:'',length:''}){
  tr.innerHTML=`<td><input class="ap-sc-size" value="${esc(row.size)}" placeholder="M"></td><td><input class="ap-sc-bust" value="${esc(row.bust)}" placeholder="36"></td><td><input class="ap-sc-waist" value="${esc(row.waist)}" placeholder="30"></td><td><input class="ap-sc-hip" value="${esc(row.hip)}" placeholder="38"></td><td><input class="ap-sc-length" value="${esc(row.length)}" placeholder="40"></td><td><button type="button" class="admin-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
  tbody.appendChild(tr);
 }
+function cmToInches(value,fallback){const n=Number(value)>0?Number(value):fallback;return Number((n/2.54).toFixed(2))}
+function inchesToCm(value){return Number((Number(value)*2.54).toFixed(3))}
+function changePackedWeightUnit(select){
+ const input=document.getElementById('ap_packed_weight');if(!input)return;
+ const previous=select.dataset.previous||'kg',next=select.value,n=Number(input.value);
+ if(Number.isFinite(n)&&previous!==next)input.value=next==='g'?Number((n*1000).toFixed(1)):Number((n/1000).toFixed(3));
+ input.min=next==='g'?'50':'0.05';input.max=next==='g'?'50000':'50';input.step=next==='g'?'1':'0.01';select.dataset.previous=next;
+}
 async function productEditor(id=null){
  if(user?.role!=='admin')return alert('Admin only');
  const [ps,cats]=await Promise.all([api('/api/products'),api('/api/admin/categories')]);
- const p=id?ps.find(x=>x.id===id):{name:'',category:(cats[0]?.name||'Western Dress'),size_options:'S,M,L,XL',color:'',price:0,mrp:0,rating:0,emoji:'👗',stock:0,description:'',image:'',gallery:'',product_history:'',size_chart:'[]',care_instructions:'',badge_text:'Ashwini Choice',offer_text:'',offer_discount:0,packed_weight_kg:.5,packed_length_cm:25,packed_breadth_cm:20,packed_height_cm:5};
+ const p=id?ps.find(x=>x.id===id):{name:'',category:(cats[0]?.name||'Western Dress'),size_options:'S,M,L,XL',color:'',price:0,mrp:0,rating:0,emoji:'👗',stock:0,description:'',image:'',gallery:'',videos:'[]',product_history:'',size_chart:'[]',care_instructions:'',badge_text:'Ashwini Choice',offer_text:'',offer_discount:0,packed_weight_kg:.5,packed_length_cm:25,packed_breadth_cm:20,packed_height_cm:5};
  if(!p)return;
- const rows=normalizeSizeChart(p.size_chart);
+ const rows=normalizeSizeChart(p.size_chart),packedWeightKg=Number(p.packed_weight_kg)||.5,packedWeightUnit=packedWeightKg<1?'g':'kg',packedWeightValue=packedWeightUnit==='g'?Number((packedWeightKg*1000).toFixed(1)):packedWeightKg;
  openM(`<h2>${id?'✎ Edit Product':'＋ Add New Product'}</h2>
  <div class="admin-form">
  <div><label>Product Name<input id="ap_name" value="${esc(p.name)}"></label></div>
@@ -1062,10 +1071,10 @@ async function productEditor(id=null){
  <div><label>Total Stock<input id="ap_stock" type="number" min="0" value="${Number(p.stock)||0}" readonly></label><div class="admin-note">Calculated automatically from all sizes.</div></div>
  <div class="full"><label><b>Size-wise Stock</b></label><div id="ap_size_stock_rows" class="admin-size-stock-grid"></div><div class="admin-note">0 = unavailable, 1–5 = low stock warning, above 5 = available.</div></div>
  <div class="full"><label><b>📦 Packed Shipping Details</b></label><div class="admin-note">Measure one fully packed unit. These values are used automatically for Shiprocket orders.</div></div>
- <div><label>Packed Weight (kg)<input id="ap_packed_weight" type="number" min="0.05" max="50" step="0.01" value="${Number(p.packed_weight_kg)||.5}"></label></div>
- <div><label>Length (cm)<input id="ap_packed_length" type="number" min="1" max="200" step="0.1" value="${Number(p.packed_length_cm)||25}"></label></div>
- <div><label>Breadth (cm)<input id="ap_packed_breadth" type="number" min="1" max="200" step="0.1" value="${Number(p.packed_breadth_cm)||20}"></label></div>
- <div><label>Height (cm)<input id="ap_packed_height" type="number" min="0.5" max="200" step="0.1" value="${Number(p.packed_height_cm)||5}"></label></div>
+ <div><label>Packed Weight (kg/g)<div style="display:grid;grid-template-columns:1fr 90px;gap:8px"><input id="ap_packed_weight" type="number" min="${packedWeightUnit==='g'?50:.05}" max="${packedWeightUnit==='g'?50000:50}" step="${packedWeightUnit==='g'?1:.01}" value="${packedWeightValue}"><select id="ap_packed_weight_unit" data-previous="${packedWeightUnit}" onchange="changePackedWeightUnit(this)"><option value="kg" ${packedWeightUnit==='kg'?'selected':''}>kg</option><option value="g" ${packedWeightUnit==='g'?'selected':''}>g</option></select></div></label></div>
+ <div><label>Length (inch)<input id="ap_packed_length" type="number" min="0.4" max="78.74" step="0.01" value="${cmToInches(p.packed_length_cm,25)}"></label></div>
+ <div><label>Breadth (inch)<input id="ap_packed_breadth" type="number" min="0.4" max="78.74" step="0.01" value="${cmToInches(p.packed_breadth_cm,20)}"></label></div>
+ <div><label>Height (inch)<input id="ap_packed_height" type="number" min="0.2" max="78.74" step="0.01" value="${cmToInches(p.packed_height_cm,5)}"></label></div>
  <div><label>🏷️ Product Sticker / Badge<input id="ap_badge" value="${esc(p.badge_text||'')}" placeholder="Ashwini Choice (leave blank to remove)"></label></div>
  <div><label>🎁 Extra Product Offer<input id="ap_offer_text" value="${esc(p.offer_text||'')}" placeholder="Extra 10% off"></label></div>
  <div><label>Offer Discount %<input id="ap_offer_discount" type="number" min="0" max="100" step="0.1" value="${Number(p.offer_discount)||0}"></label></div>
@@ -1076,6 +1085,7 @@ async function productEditor(id=null){
  <label style="margin-top:10px">Main Photo<input id="ap_image" value="${esc(p.image||'')}" placeholder="/product-photo.jpg"></label>
  <label style="margin-top:10px">Up to 10 Photo paths<input id="ap_gallery" value="${esc(p.gallery||'')}" placeholder='["/front.jpg","/back.jpg"]'></label>
  </div>
+ <div class="full"><label><b>🎬 Product Videos</b></label><div class="admin-note">Upload up to 2 short MP4/WebM videos. Maximum 30 seconds and 4 MB per video.</div><input id="ap_video_files" type="file" accept="video/mp4,video/webm" multiple onchange="handleProductVideoUpload(this)" style="margin-top:8px"><input id="ap_videos" type="hidden" value="${esc(p.videos||'[]')}"><div id="ap_video_preview" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px"></div></div>
  <div class="full"><label>Product Description<textarea id="ap_desc">${esc(p.description||'')}</textarea></label></div>
  <div class="full"><label>Product History / Details<textarea id="ap_history">${esc(p.product_history||'')}</textarea></label></div>
  <div class="full"><label>Care Instructions<textarea id="ap_care">${esc(p.care_instructions||'')}</textarea></label></div>
@@ -1087,6 +1097,7 @@ async function productEditor(id=null){
  </div><div class="admin-actions" style="margin-top:14px"><button class="gold" type="button" onclick="saveProduct(${id||0})">💾 Save Product</button><button type="button" onclick="adminHighlights()">✨ Edit Product Highlights</button><button type="button" onclick="dashboard()">Cancel</button></div>`);
  rows.forEach(r=>addSizeChartRow(r));
  renderAdminSizeStock(existingSizeStock(p));
+ renderAdminVideoPreview(getAdminVideoList());
 }
 async function handleProductPhotoUpload(input){
  try{
@@ -1178,13 +1189,24 @@ function initAdminPhotoPreview(){
  const im=document.getElementById('ap_image')?.value?.trim(); if(im&&!a.includes(im))a.unshift(im);
  renderAdminPhotoPreview(a);
 }
+function getAdminVideoList(){let a=[];try{a=JSON.parse(document.getElementById('ap_videos')?.value||'[]')}catch{}return Array.isArray(a)?a.filter(Boolean).slice(0,2):[]}
+function syncAdminVideos(list){const a=(list||[]).filter(Boolean).slice(0,2),input=document.getElementById('ap_videos');if(input)input.value=JSON.stringify(a);return a}
+function readProductVideo(file){return new Promise((resolve,reject)=>{
+ if(!['video/mp4','video/webm'].includes(file?.type))return reject(Error('Choose an MP4 or WebM video'));
+ if(file.size>4*1024*1024)return reject(Error('Each video must be 4 MB or smaller'));
+ const url=URL.createObjectURL(file),video=document.createElement('video');video.preload='metadata';video.onloadedmetadata=()=>{const duration=Number(video.duration);URL.revokeObjectURL(url);if(!Number.isFinite(duration)||duration<=0||duration>30)return reject(Error('Each video must be 30 seconds or shorter'));const reader=new FileReader();reader.onerror=()=>reject(Error('Video could not be read'));reader.onload=()=>resolve(String(reader.result||''));reader.readAsDataURL(file)};video.onerror=()=>{URL.revokeObjectURL(url);reject(Error('Video could not be opened'))};video.src=url;
+})}
+async function handleProductVideoUpload(input){try{const files=[...(input.files||[])],existing=getAdminVideoList(),picked=files.slice(0,Math.max(0,2-existing.length)),encoded=[];for(const file of picked)encoded.push(await readProductVideo(file));renderAdminVideoPreview(syncAdminVideos([...existing,...encoded]));if(files.length>picked.length)toast('Only 2 product videos can be saved.')}catch(e){alert('Video upload failed: '+e.message);input.value=''}}
+function renderAdminVideoPreview(list){const box=document.getElementById('ap_video_preview');if(!box)return;box.innerHTML=(list||[]).map((src,i)=>`<div style="width:210px;border:1px solid #ddd;border-radius:10px;padding:7px;background:#fff"><video src="${esc(src)}" controls playsinline preload="metadata" style="display:block;width:100%;height:145px;background:#000;border-radius:8px"></video><small style="display:block;margin:5px 0">Video ${i+1}</small><button type="button" onclick="removeAdminVideo(${i})">Remove</button></div>`).join('')}
+function removeAdminVideo(index){const a=getAdminVideoList();if(index<0||index>=a.length)return;a.splice(index,1);renderAdminVideoPreview(syncAdminVideos(a))}
 async function saveProduct(id){
  try{
   clearAdminValidation();const labels=productSizeLabels(ap_sizes.value),sizeStock=sizeStockFromEditor();
-  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:labels.join(','),size_stock:JSON.stringify(sizeStock),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0),packed_weight_kg:Number(ap_packed_weight.value),packed_length_cm:Number(ap_packed_length.value),packed_breadth_cm:Number(ap_packed_breadth.value),packed_height_cm:Number(ap_packed_height.value)};
+  const weightValue=Number(ap_packed_weight.value),weightKg=ap_packed_weight_unit.value==='g'?weightValue/1000:weightValue;
+  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:labels.join(','),size_stock:JSON.stringify(sizeStock),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',videos:ap_videos.value||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0),packed_weight_kg:Number(weightKg.toFixed(3)),packed_length_cm:inchesToCm(ap_packed_length.value),packed_breadth_cm:inchesToCm(ap_packed_breadth.value),packed_height_cm:inchesToCm(ap_packed_height.value)};
   const errors=[];if(!body.name)errors.push([ap_name,'Product name is required']);if(!body.category)errors.push([ap_category,'Category is required']);if(!body.color)errors.push([ap_color,'Colour is required']);if(!labels.length)errors.push([ap_sizes,'Add at least one size']);if(new Set(labels.map(x=>x.toUpperCase())).size!==labels.length)errors.push([ap_sizes,'Duplicate sizes are not allowed']);if(!Number.isFinite(body.price)||body.price<=0)errors.push([ap_price,'Enter a valid selling price']);if(!Number.isFinite(body.mrp)||body.mrp<body.price)errors.push([ap_mrp,'MRP must be equal to or higher than selling price']);if(!body.image)errors.push([ap_image,'Add at least one product photo']);for(const input of document.querySelectorAll('[data-size-stock]'))if(!Number.isInteger(Number(input.value))||Number(input.value)<0)errors.push([input,`Enter valid stock for size ${input.dataset.sizeStock}`]);if(errors.length){errors.forEach(([element,message])=>markAdminInvalid(element,message));errors[0][0].scrollIntoView({behavior:'smooth',block:'center'});errors[0][0].focus();throw Error(`Product not saved: ${errors.length} field${errors.length>1?'s':''} need attention`)}
   if(!Number.isFinite(body.packed_weight_kg)||body.packed_weight_kg<.05||!Number.isFinite(body.packed_length_cm)||body.packed_length_cm<1||!Number.isFinite(body.packed_breadth_cm)||body.packed_breadth_cm<1||!Number.isFinite(body.packed_height_cm)||body.packed_height_cm<.5)throw Error('Please enter valid packed weight and dimensions');
-  JSON.parse(body.gallery);JSON.parse(body.size_chart);
+  JSON.parse(body.gallery);JSON.parse(body.videos);JSON.parse(body.size_chart);
   const d=await api(id?`/api/admin/products/${id}`:'/api/admin/products',{method:id?'PATCH':'POST',body});
   toast('✓ Product saved');dashboard();load();
  }catch(e){alert(e.message)}

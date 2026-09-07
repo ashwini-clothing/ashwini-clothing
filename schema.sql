@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS products (
  emoji TEXT DEFAULT '👕',
  image TEXT DEFAULT '',
  gallery TEXT DEFAULT '',
+ videos TEXT DEFAULT '[]',
  stock INTEGER NOT NULL DEFAULT 0,
  description TEXT DEFAULT '',
  badge_text TEXT DEFAULT 'Ashwini Choice',
