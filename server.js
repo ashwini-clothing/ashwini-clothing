@@ -1700,6 +1700,15 @@ app.get("/api/admin/stats",auth,admin,(req,res)=>{
  const revenue=db.prepare("SELECT COALESCE(SUM(total),0) total FROM orders WHERE payment_status='PAID'").get().total;
  res.json({revenue,orders:db.prepare("SELECT COUNT(*) n FROM orders WHERE payment_method<>'RAZORPAY' OR payment_status NOT IN ('PENDING','FAILED','CANCELLED') OR status='PAYMENT_REVIEW'").get().n,customers:db.prepare("SELECT COUNT(*) n FROM users WHERE role='customer'").get().n,products:db.prepare("SELECT COUNT(*) n FROM products").get().n});
 });
+function courierBookingPreview(id){
+ const order=db.prepare('SELECT o.*,u.name AS customer_name FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?').get(id);
+ if(!order||order.status!=='CONFIRMED')throw Error('Refresh orders. Only a confirmed order can be booked.');
+ const items=db.prepare('SELECT oi.product_id,oi.size,oi.quantity,oi.unit_price,p.name,p.color,p.packed_weight_kg,p.packed_length_cm,p.packed_breadth_cm,p.packed_height_cm FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id=? ORDER BY oi.id').all(id);
+ if(!items.length)throw Error('Order has no products');
+ const reviewKey=crypto.createHash('sha256').update(JSON.stringify({order,items})).digest('hex');
+ return {order,items,reviewKey};
+}
+app.get('/api/admin/orders/:id/courier-preview',auth,admin,(req,res)=>{try{res.json(courierBookingPreview(Number(req.params.id)))}catch(e){res.status(409).json({error:e.message})}});
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.payment_method<>'RAZORPAY' OR o.payment_status NOT IN ('PENDING','FAILED','CANCELLED') OR o.status='PAYMENT_REVIEW' ORDER BY o.id DESC").all()));
 app.patch('/api/admin/orders/:id/return-refund-access',auth,admin,(req,res)=>{try{const order=db.prepare('SELECT * FROM orders WHERE id=?').get(Number(req.params.id));if(!order)return res.status(404).json({error:'Order not found'});if(order.status!=='DELIVERED')return res.status(409).json({error:'Return/refund access can be changed only after the order is delivered'});const enabled=req.body?.enabled===true||req.body?.enabled===1||String(req.body?.enabled).toLowerCase()==='true';db.prepare('UPDATE orders SET return_refund_enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(enabled?1:0,order.id);logAdminActivity(req,enabled?'RETURN_REFUND_ACCESS_ENABLED':'RETURN_REFUND_ACCESS_DISABLED','ORDER',order.id,{customer_id:order.user_id});res.json({ok:true,enabled,order:db.prepare('SELECT * FROM orders WHERE id=?').get(order.id)})}catch(e){res.status(400).json({error:e.message||'Return/refund access could not be updated'})}});
 app.patch('/api/admin/orders/:id/shipping',auth,admin,async(req,res)=>{try{
@@ -1771,6 +1780,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  const allowedNext={PLACED:['CONFIRMED'],CONFIRMED:['PACKED'],PACKED:['SHIPPED'],SHIPPED:['OUT_FOR_DELIVERY'],OUT_FOR_DELIVERY:['DELIVERED']};
  if(!allowedNext[String(before.status)]?.includes(nextStatus))return res.status(409).json({error:`Order must move forward one step at a time. ${before.status} cannot change directly to ${nextStatus}.`});
  if(before.payment_method==='RAZORPAY'&&before.payment_status!=='PAID')return res.status(409).json({error:'Online payment must be securely confirmed by Razorpay before fulfilment can continue.'});
+ if(nextStatus==='PACKED'){try{const preview=courierBookingPreview(before.id);if(req.body.review_key!==preview.reviewKey)return res.status(409).json({error:'Order details changed or booking was not reviewed. Reopen Book Courier and check the final review.'});validatePickupDate(req.body.pickup_date)}catch(e){return res.status(409).json({error:e.message})}}
  if(nextStatus==='PACKED'&&shiprocketConfigured()){
   try{await ensureShiprocketShipment(before.id,req.body.pickup_date)}catch(e){createSecurityAlert({key:`SHIPROCKET_BOOKING:${before.id}`,type:'SHIPROCKET_BOOKING_FAILED',title:'Automatic courier booking failed',orderId:before.id,severity:'HIGH',details:{error:String(e.message||e).slice(0,500)}});return res.status(502).json({error:`Order was not marked PACKED because automatic courier booking failed: ${e.message}`})}
  }
