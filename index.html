@@ -825,3 +825,13 @@ function handleLensPhoto(input){
 @media(max-width:480px){.ad-carousel{--slide-height:320px;--copy-width:185px;--copy-left:14px;--title-size:15px;--offer-size:10px}}
 
 </style>
+<style id="mobile-product-card-badge">
+@media (max-width:600px){
+  .products .card>.badge{position:static!important;display:table!important;max-width:100%;box-sizing:border-box;margin:0 0 8px!important;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+}
+</style>
+<style id="mobile-product-photo-fit">
+@media (max-width:600px){
+  body .product-area #grid .card .pic>img{width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:contain!important;object-position:center!important}
+}
+</style>
