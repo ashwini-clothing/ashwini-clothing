@@ -872,3 +872,10 @@ function handleLensPhoto(input){
   #modal.product-page-mode #body .detail .gallery-main>img:not([hidden]){width:100%!important;height:auto!important;max-height:none!important;object-fit:contain!important;touch-action:pan-y!important}
 }
 </style>
+<style id="mobile-order-detail-title-fix">
+@media (max-width:600px){
+  #modal #body .cartrow.order-detail-item{grid-template-columns:92px minmax(0,1fr)!important;column-gap:12px!important}
+  #modal #body .order-detail-item>div:nth-child(2){min-width:0!important;overflow-wrap:anywhere}
+  #modal #body .order-detail-item .order-product-title{max-width:100%!important;white-space:normal!important;overflow-wrap:anywhere!important}
+}
+</style>
