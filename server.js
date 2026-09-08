@@ -1449,6 +1449,7 @@ function adjustProductStock(productId,size,delta){
  return changed;
 }
 function validatedSizeStock(sizeOptions,sizeStock,fallbackStock=0){const labels=String(sizeOptions||'').split(',').map(cleanProductSize).filter(Boolean),keys=labels.map(normalizeProductSize);if(!labels.length)throw Error('Add at least one product size');if(new Set(keys).size!==keys.length)throw Error('Duplicate sizes are not allowed');let raw;try{raw=typeof sizeStock==='string'?JSON.parse(sizeStock):sizeStock}catch{throw Error('Size-wise stock is invalid')}if(!raw||typeof raw!=='object'||Array.isArray(raw)){const total=Math.max(0,Math.floor(Number(fallbackStock)||0)),base=Math.floor(total/labels.length),extra=total%labels.length;raw=Object.fromEntries(labels.map((label,index)=>[label,base+(index<extra?1:0)]))}const out={};for(const label of labels){const number=Number(raw[label]??raw[normalizeProductSize(label)]);if(!Number.isInteger(number)||number<0)throw Error(`Enter a valid stock quantity for size ${label}`);out[normalizeProductSize(label)]=number}return {json:JSON.stringify(out),total:Object.values(out).reduce((sum,value)=>sum+value,0)}}
+function productOfferPrice(product){const price=Number(product.price||0),discount=Number(product.offer_discount||0);if(!Number.isFinite(price)||price<0||!Number.isFinite(discount)||discount<0||discount>100)throw Error('Offer Discount % must be between 0 and 100');return Math.round(price*(100-discount))/100}
 function resolveItems(items){
  if(!Array.isArray(items)||!items.length)throw Error("Cart is empty");
  if(items.length>50)throw Error("Cart contains too many item lines");
@@ -1471,10 +1472,10 @@ function resolveItems(items){
   if(!matchedSize)throw Error(`Size unavailable for ${p.name}`);
   const requested=[...combined.values()].filter(item=>item.productId===x.productId&&item.size===x.size).reduce((sum,item)=>sum+item.qty,0),available=availableProductStock(p,x.size);
   if(available<requested)throw Error(available?`Only ${available} left in size ${matchedSize.label} for ${p.name}`:`Size ${matchedSize.label} is unavailable for ${p.name}`);
-  total+=Number(p.price)*x.qty;out.push({p,qty:x.qty,size:matchedSize.label});
+  const priced={...p,price:productOfferPrice(p)};total+=Math.round(priced.price*100)*x.qty;out.push({p:priced,qty:x.qty,size:matchedSize.label});
  }
  if(!Number.isSafeInteger(total)||total<0)throw Error("Cart total could not be calculated safely");
- return {total,out};
+ return {total:total/100,out};
 }
 app.get('/api/cod/availability',(req,res)=>{
  try{const global=db.prepare('SELECT enabled FROM cod_settings WHERE id=1').get()?.enabled;const state=String(req.query?.state||'').trim();const row=state?db.prepare('SELECT enabled FROM cod_state_settings WHERE lower(state)=lower(?)').get(state):null;const enabled=Number(global??1)===1 && (!row || Number(row.enabled)===1);res.json({enabled,state,global_enabled:Number(global??1)===1,state_override:row?Number(row.enabled)===1:null});}catch(e){res.status(500).json({error:e.message||'Could not check COD availability'})}
@@ -1863,7 +1864,7 @@ app.patch("/api/admin/orders/:id",auth,admin,async(req,res)=>{
  res.json({ok:true,order});
 });
 function packedProductMeasurements(input={},fallback={}){const value=(key,defaultValue,min,max)=>{const n=Number(input[key]??fallback[key]??defaultValue);if(!Number.isFinite(n)||n<min||n>max)throw Error(`Enter a valid ${key.replace('packed_','').replaceAll('_',' ')}`);return Number(n.toFixed(3))};return{packed_weight_kg:value('packed_weight_kg',.5,.05,50),packed_length_cm:value('packed_length_cm',25,1,200),packed_breadth_cm:value('packed_breadth_cm',20,1,200),packed_height_cm:value('packed_height_cm',5,.5,200)}}
-function validateProductInput(product){if(!String(product?.name||'').trim())throw Error('Product name is required');if(!String(product?.category||'').trim())throw Error('Category is required');if(!String(product?.color||'').trim())throw Error('Colour is required');if(!Number.isFinite(Number(product?.price))||Number(product.price)<=0)throw Error('Enter a valid selling price');if(!Number.isFinite(Number(product?.mrp))||Number(product.mrp)<Number(product.price))throw Error('MRP must be equal to or higher than selling price');if(!String(product?.image||'').trim())throw Error('Add at least one product photo')}
+function validateProductInput(product){productOfferPrice(product);if(!String(product?.name||'').trim())throw Error('Product name is required');if(!String(product?.category||'').trim())throw Error('Category is required');if(!String(product?.color||'').trim())throw Error('Colour is required');if(!Number.isFinite(Number(product?.price))||Number(product.price)<=0)throw Error('Enter a valid selling price');if(!Number.isFinite(Number(product?.mrp))||Number(product.mrp)<Number(product.price))throw Error('MRP must be equal to or higher than selling price');if(!String(product?.image||'').trim())throw Error('Add at least one product photo')}
 app.post("/api/admin/products",auth,admin,(req,res)=>{try{
  const {name,category,size_options="S,M,L,XL",color="Black",price,mrp,emoji="👕",stock=0,description="",image="",gallery="",videos="[]",product_history="",size_chart="",care_instructions="",badge_text="Ashwini Choice",offer_text="",offer_discount=0}=req.body,rating=0,m=packedProductMeasurements(req.body);
  validateProductInput(req.body);
