@@ -1760,6 +1760,25 @@ function courierBookingPreview(id){
  return {order,items,reviewKey};
 }
 app.get('/api/admin/orders/:id/courier-preview',auth,admin,(req,res)=>{try{res.json(courierBookingPreview(Number(req.params.id)))}catch(e){res.status(409).json({error:e.message})}});
+db.exec('CREATE INDEX IF NOT EXISTS idx_orders_status_id ON orders(status,id DESC)');
+function adminOrderPage(query={}){
+ const pageSize=20,requested=Number(query.page||1);
+ if(!Number.isSafeInteger(requested)||requested<1)throw Error('Invalid page');
+ const status=String(query.status||''),search=String(query.search||'').trim().slice(0,100);
+ const allowed=['PAYMENT_PENDING','PAYMENT_EXPIRED','PAYMENT_FAILED','PAYMENT_REVIEW','PLACED','CONFIRMED','PACKED','SHIPPED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED'];
+ if(status&&!allowed.includes(status))throw Error('Invalid order status');
+ const where=["(o.payment_method<>'RAZORPAY' OR o.payment_status NOT IN ('PENDING','FAILED','CANCELLED') OR o.status='PAYMENT_REVIEW')"],params=[];
+ if(status){where.push('o.status=?');params.push(status)}
+ if(search){const literal='%'+search.replace(/[\\%_]/g,'\\$&')+'%';where.push("(CAST(o.id AS TEXT)=? OR u.name LIKE ? ESCAPE '\\' OR u.phone LIKE ? ESCAPE '\\' OR o.customer_phone LIKE ? ESCAPE '\\')");params.push(search.replace(/^#/,''),literal,literal,literal)}
+ const from=' FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE '+where.join(' AND ');
+ const total=db.prepare('SELECT COUNT(*) n'+from).get(...params).n,totalPages=Math.max(1,Math.ceil(total/pageSize)),page=Math.min(requested,totalPages);
+ const items=db.prepare("SELECT o.*,u.name,u.email,COALESCE(NULLIF(o.customer_phone,''),u.phone) AS phone"+from+' ORDER BY o.id DESC LIMIT ? OFFSET ?').all(...params,pageSize,(page-1)*pageSize);
+ const pendingCount=db.prepare("SELECT COUNT(*) n FROM orders o WHERE (o.payment_method<>'RAZORPAY' OR o.payment_status NOT IN ('PENDING','FAILED','CANCELLED') OR o.status='PAYMENT_REVIEW') AND o.status IN ('PAYMENT_PENDING','PLACED','CONFIRMED')").get().n;
+ return {items,total,page,pageSize,totalPages,pendingCount};
+}
+app.get('/api/admin/order-pages',auth,admin,(req,res)=>{try{res.json(adminOrderPage(req.query))}catch(e){res.status(400).json({error:e.message||'Could not load orders'})}});
+app.get('/api/admin/order-record/:id',auth,admin,(req,res)=>{const order=db.prepare('SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.id=?').get(req.params.id);if(!order)return res.status(404).json({error:'Order not found'});res.json(order)});
+
 app.get("/api/admin/orders",auth,admin,(req,res)=>res.json(db.prepare("SELECT o.*,u.name,u.email FROM orders o LEFT JOIN users u ON u.id=o.user_id WHERE o.payment_method<>'RAZORPAY' OR o.payment_status NOT IN ('PENDING','FAILED','CANCELLED') OR o.status='PAYMENT_REVIEW' ORDER BY o.id DESC").all()));
 app.patch('/api/admin/orders/:id/return-refund-access',auth,admin,(req,res)=>{try{const order=db.prepare('SELECT * FROM orders WHERE id=?').get(Number(req.params.id));if(!order)return res.status(404).json({error:'Order not found'});if(order.status!=='DELIVERED')return res.status(409).json({error:'Return/refund access can be changed only after the order is delivered'});const enabled=req.body?.enabled===true||req.body?.enabled===1||String(req.body?.enabled).toLowerCase()==='true';db.prepare('UPDATE orders SET return_refund_enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(enabled?1:0,order.id);logAdminActivity(req,enabled?'RETURN_REFUND_ACCESS_ENABLED':'RETURN_REFUND_ACCESS_DISABLED','ORDER',order.id,{customer_id:order.user_id});res.json({ok:true,enabled,order:db.prepare('SELECT * FROM orders WHERE id=?').get(order.id)})}catch(e){res.status(400).json({error:e.message||'Return/refund access could not be updated'})}});
 app.patch('/api/admin/orders/:id/shipping',auth,admin,async(req,res)=>{try{
