@@ -1059,6 +1059,22 @@ function addSizeChartRow(row={size:'',bust:'',waist:'',hip:'',length:''}){
  tr.innerHTML=`<td><input class="ap-sc-size" value="${esc(row.size)}" placeholder="M"></td><td><input class="ap-sc-bust" value="${esc(row.bust)}" placeholder="36"></td><td><input class="ap-sc-waist" value="${esc(row.waist)}" placeholder="30"></td><td><input class="ap-sc-hip" value="${esc(row.hip)}" placeholder="38"></td><td><input class="ap-sc-length" value="${esc(row.length)}" placeholder="40"></td><td><button type="button" class="admin-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
  tbody.appendChild(tr);
 }
+function packedInches(cm){return Number((Number(cm)/2.54).toFixed(6))}
+function changePackedWeightUnit(select){
+ const input=document.getElementById('ap_packed_weight'),previous=select.dataset.previous||'kg',next=select.value;
+ if(input.value.trim()&&Number.isFinite(Number(input.value))){const kg=Number(input.value)/(previous==='g'?1000:1);input.value=String(Number((kg*(next==='g'?1000:1)).toFixed(6)))}
+ input.min=next==='g'?'50':'0.05';input.max=next==='g'?'50000':'50';select.dataset.previous=next;
+}
+function packedMeasurementsFromEditor(){
+ const value=id=>{const input=document.getElementById(id);if(!input||!input.value.trim())throw Error('Please fill all packed shipping measurements');const n=Number(input.value);if(!Number.isFinite(n)||n<=0)throw Error('Please enter valid packed weight and dimensions');return n};
+ const weight=value('ap_packed_weight')/(document.getElementById('ap_packed_weight_unit').value==='g'?1000:1);
+ const data={packed_weight_kg:Number(weight.toFixed(3))};
+ for(const dimension of ['length','breadth','height'])data['packed_'+dimension+'_cm']=Number((value('ap_packed_'+dimension)*2.54).toFixed(3));
+ if(data.packed_weight_kg<.05||data.packed_weight_kg>50)throw Error('Packed weight must be between 50 g and 50 kg');
+ for(const dimension of ['length','breadth','height']){const n=data['packed_'+dimension+'_cm'];if(n<(dimension==='height'?.5:1)||n>200)throw Error('Please enter valid packed dimensions in inches (maximum 78.740157 inches)')}
+ return data;
+}
+
 async function productEditor(id=null){
  if(user?.role!=='admin')return alert('Admin only');
  const [ps,cats]=await Promise.all([api('/api/products'),api('/api/admin/categories')]);
@@ -1076,10 +1092,10 @@ async function productEditor(id=null){
  <div><label>Total Stock<input id="ap_stock" type="number" min="0" value="${Number(p.stock)||0}" readonly></label><div class="admin-note">Calculated automatically from all sizes.</div></div>
  <div class="full"><label><b>Size-wise Stock</b></label><div id="ap_size_stock_rows" class="admin-size-stock-grid"></div><div class="admin-note">0 = unavailable, 1–5 = low stock warning, above 5 = available.</div></div>
  <div class="full"><label><b>📦 Packed Shipping Details</b></label><div class="admin-note">Measure one fully packed unit. These values are used automatically for Shiprocket orders.</div></div>
- <div><label>Packed Weight (kg)<input id="ap_packed_weight" type="number" min="0.05" max="50" step="0.01" value="${Number(p.packed_weight_kg)||.5}"></label></div>
- <div><label>Length (cm)<input id="ap_packed_length" type="number" min="1" max="200" step="0.1" value="${Number(p.packed_length_cm)||25}"></label></div>
- <div><label>Breadth (cm)<input id="ap_packed_breadth" type="number" min="1" max="200" step="0.1" value="${Number(p.packed_breadth_cm)||20}"></label></div>
- <div><label>Height (cm)<input id="ap_packed_height" type="number" min="0.5" max="200" step="0.1" value="${Number(p.packed_height_cm)||5}"></label></div>
+ <div><label>Packed Weight<input id="ap_packed_weight" type="number" min="0.05" max="50" step="any" value="${Number(p.packed_weight_kg)||.5}"></label><label>Weight Unit<select id="ap_packed_weight_unit" data-previous="kg" onchange="changePackedWeightUnit(this)"><option value="kg">kg</option><option value="g">g</option></select></label></div>
+ <div><label>Length (inch)<input id="ap_packed_length" type="number" min="0" step="any" value="${packedInches(Number(p.packed_length_cm)||25)}"></label></div>
+ <div><label>Breadth (inch)<input id="ap_packed_breadth" type="number" min="0" step="any" value="${packedInches(Number(p.packed_breadth_cm)||20)}"></label></div>
+ <div><label>Height (inch)<input id="ap_packed_height" type="number" min="0" step="any" value="${packedInches(Number(p.packed_height_cm)||5)}"></label></div>
  <div><label>🏷️ Product Sticker / Badge<input id="ap_badge" value="${esc(p.badge_text||'')}" placeholder="Ashwini Choice (leave blank to remove)"></label></div>
  <div><label>🎁 Extra Product Offer<input id="ap_offer_text" value="${esc(p.offer_text||'')}" placeholder="Extra 10% off"></label></div>
  <div><label>Offer Discount %<input id="ap_offer_discount" type="number" min="0" max="100" step="0.1" value="${Number(p.offer_discount)||0}"></label></div>
@@ -1207,7 +1223,7 @@ function removeAdminVideo(index){const a=getAdminVideoList();if(index<0||index>=
 async function saveProduct(id){
  try{
   clearAdminValidation();const labels=productSizeLabels(ap_sizes.value),sizeStock=sizeStockFromEditor();
-  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:labels.join(','),size_stock:JSON.stringify(sizeStock),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',videos:document.getElementById('ap_videos').value||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0),packed_weight_kg:Number(ap_packed_weight.value),packed_length_cm:Number(ap_packed_length.value),packed_breadth_cm:Number(ap_packed_breadth.value),packed_height_cm:Number(ap_packed_height.value)};
+  const body={name:ap_name.value.trim(),category:ap_category.value,size_options:labels.join(','),size_stock:JSON.stringify(sizeStock),color:ap_color.value.trim(),price:Number(ap_price.value),mrp:Number(ap_mrp.value),stock:Number(ap_stock.value),emoji:'👗',image:ap_image.value.trim(),gallery:ap_gallery.value.trim()||'[]',videos:document.getElementById('ap_videos').value||'[]',description:ap_desc.value,product_history:ap_history.value,care_instructions:ap_care.value,size_chart:JSON.stringify(sizeChartRowsFromEditor()),badge_text:ap_badge.value.trim(),offer_text:ap_offer_text.value.trim(),offer_discount:Number(ap_offer_discount.value||0),...packedMeasurementsFromEditor()};
   const errors=[];if(!body.name)errors.push([ap_name,'Product name is required']);if(!body.category)errors.push([ap_category,'Category is required']);if(!body.color)errors.push([ap_color,'Colour is required']);if(!labels.length)errors.push([ap_sizes,'Add at least one size']);if(new Set(labels.map(x=>x.toUpperCase())).size!==labels.length)errors.push([ap_sizes,'Duplicate sizes are not allowed']);if(!Number.isFinite(body.price)||body.price<=0)errors.push([ap_price,'Enter a valid selling price']);if(!Number.isFinite(body.mrp)||body.mrp<body.price)errors.push([ap_mrp,'MRP must be equal to or higher than selling price']);if(!body.image)errors.push([ap_image,'Add at least one product photo']);for(const input of document.querySelectorAll('[data-size-stock]'))if(!Number.isInteger(Number(input.value))||Number(input.value)<0)errors.push([input,`Enter valid stock for size ${input.dataset.sizeStock}`]);if(errors.length){errors.forEach(([element,message])=>markAdminInvalid(element,message));errors[0][0].scrollIntoView({behavior:'smooth',block:'center'});errors[0][0].focus();throw Error(`Product not saved: ${errors.length} field${errors.length>1?'s':''} need attention`)}
   if(!Number.isFinite(body.packed_weight_kg)||body.packed_weight_kg<.05||!Number.isFinite(body.packed_length_cm)||body.packed_length_cm<1||!Number.isFinite(body.packed_breadth_cm)||body.packed_breadth_cm<1||!Number.isFinite(body.packed_height_cm)||body.packed_height_cm<.5)throw Error('Please enter valid packed weight and dimensions');
   JSON.parse(body.gallery);JSON.parse(body.size_chart);
