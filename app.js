@@ -21,12 +21,22 @@ async function rejectBehaviorTracking(){const sessionId=localStorage.getItem('as
 function showBehaviorConsent(){if(behaviorConsent())return;const box=document.createElement('aside');box.id='behavior-consent';box.className='behavior-consent';box.setAttribute('role','dialog');box.setAttribute('aria-label','Personalisation choice');box.innerHTML='<div><b>Your privacy choice</b><p>Allow optional shopping activity to personalise recommendations. Essential account, cart and payment functions work either way. Optional activity is deleted after 90 days.</p><a href="/privacy-policy.html">Privacy Policy</a></div><div class="behavior-consent-actions"><button type="button" onclick="rejectBehaviorTracking()">Only essential shopping</button><button class="gold" type="button" onclick="acceptBehaviorTracking()">Allow personalisation</button></div>';document.body.appendChild(box)}
 function manageBehaviorTracking(){localStorage.removeItem(BEHAVIOR_CONSENT_KEY);showBehaviorConsent()}
 
+// Keep already downloaded catalogue data in memory for immediate product navigation.
+const productPreviewCache=new Map();
+function rememberProducts(items){
+ for(const p of items||[]){if(!p||!Number.isSafeInteger(Number(p.id)))continue;
+  const id=Number(p.id);productPreviewCache.delete(id);productPreviewCache.set(id,{...p});
+  if(productPreviewCache.size>300)productPreviewCache.delete(productPreviewCache.keys().next().value);
+ }
+}
 async function api(url,opts={}){
   opts.credentials='same-origin';
   opts.headers={...(opts.headers||{})};
   if(opts.body && typeof opts.body!=='string'){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(opts.body)}
   const r=await fetch(url,opts);const d=await r.json().catch(()=>({}));
-  if(!r.ok) throw Object.assign(Error(d.error||'Request failed'),{status:r.status}); return d;
+  if(!r.ok) throw Object.assign(Error(d.error||'Request failed'),{status:r.status});
+  if((!opts.method||opts.method==='GET')&&/^\/api\/products(?:\?|$)/.test(url)&&Array.isArray(d))rememberProducts(d);
+  return d;
 }
 function orderDate(value){if(!value)return null;let text=String(value).trim();if(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text))text=text.replace(' ','T')+'Z';const date=new Date(text);return Number.isNaN(date.getTime())?null:date}
 function orderTimeText(value){const date=orderDate(value);return date?date.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST':'—'}
@@ -102,6 +112,7 @@ async function freeVisualSearch(imageData){const uploaded=await visualDescriptor
 window.searchByPhoto=async function(input){const file=input?.files?.[0]||input;if(!file)return;const grid=document.getElementById('grid'),title=document.getElementById('resultTitle'),count=document.getElementById('resultCount');try{closeLensExperience?.();if(title)title.textContent='Photo Search';if(count)count.textContent='(matching photo…)';if(grid)grid.innerHTML='<div class="visual-search-loading"><span></span><b>Matching your photo…</b><small>Finding similar products</small></div>';document.getElementById('products')?.scrollIntoView({behavior:'smooth',block:'start'});const imageData=await visualSearchImageData(file);let products=[],summary='',usedFree=false;try{const data=await api('/api/visual-search',{method:'POST',body:{imageData}});products=Array.isArray(data.results)?data.results:[];summary=String(data.analysis?.summary||data.analysis?.garment_type||'Related products')}catch{usedFree=true;products=await freeVisualSearch(imageData)}if(title)title.textContent=usedFree?'Visual Matches':'Matches: '+summary;if(count)count.textContent=`(${products.length} results)`;if(grid)grid.innerHTML=products.length?products.map(productCard).join(''):'<div class="visual-search-empty"><b>No close product match found.</b></div>';toast('✓ Matching complete')}catch(e){if(grid)grid.innerHTML=`<div class="visual-search-empty"><b>Photo search could not start.</b><small>${esc(e.message||'Please try again.')}</small></div>`;toast(e.message||'Photo search failed')}finally{if(input?.value!==undefined)input.value=''}};
 function clientSizeStock(product,size){try{const raw=JSON.parse(product?.size_stock||'');if(raw&&typeof raw==='object')return Math.max(0,Number(raw[String(size||'').trim().toUpperCase()]||0))}catch{}return Math.max(0,Number(product?.stock)||0)}
 function productCard(p){
+ rememberProducts([p]);
  const img=p.image?`<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">`:esc(p.emoji||'👗');
  const sizesList=(p.size_options||'S,M,L,XL').split(',').map(s=>s.trim()).filter(Boolean);
  return `<article class="card product-card" onclick="detail(${p.id})" tabindex="0" onkeydown="if(event.key==='Enter')detail(${p.id})">
@@ -212,7 +223,7 @@ function enhancePasswordInputs(root=document){
 }
 let __modalPageHistory=[];
 function addModalBackButton(){const b=document.getElementById('body');if(!b||b.querySelector(':scope > .modal-back'))return;const button=document.createElement('button');button.type='button';button.className='modal-back';button.innerHTML='← Back';button.setAttribute('aria-label',__modalPageHistory.length?'Go back to previous page':'Close and go back');button.addEventListener('click',modalBack);b.prepend(button)}
-function openM(html){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;const alreadyOpen=m.style.display==='flex';if(alreadyOpen&&b.childNodes.length){const holder=document.createDocumentFragment();while(b.firstChild)holder.appendChild(b.firstChild);__modalPageHistory.push({holder,modalClass:m.className,bodyScroll:b.scrollTop,modalScroll:m.scrollTop});if(__modalPageHistory.length>30)__modalPageHistory.shift()}else if(!alreadyOpen){__modalPageHistory=[]}m.classList.remove('product-page-mode','product-page-restored');b.innerHTML=html;addModalBackButton();b.scrollTop=0;m.scrollTop=0;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';if(String(html).includes('class="detail"')){m.classList.add('product-page-mode');updateProductPageSizeButton()}if(String(html).includes('Ashwini Admin Dashboard'))requestAnimationFrame(addAppearanceDashboardBox);b.querySelector(':scope > .modal-back')?.focus()}
+function openM(html,replaceCurrent=false){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;const alreadyOpen=m.style.display==='flex';if(alreadyOpen&&b.childNodes.length&&!replaceCurrent){const holder=document.createDocumentFragment();while(b.firstChild)holder.appendChild(b.firstChild);__modalPageHistory.push({holder,modalClass:m.className,bodyScroll:b.scrollTop,modalScroll:m.scrollTop});if(__modalPageHistory.length>30)__modalPageHistory.shift()}else if(!alreadyOpen){__modalPageHistory=[]}m.classList.remove('product-page-mode','product-page-restored');b.innerHTML=html;addModalBackButton();b.scrollTop=0;m.scrollTop=0;enhancePasswordInputs(b);m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';if(String(html).includes('class="detail"')){m.classList.add('product-page-mode');updateProductPageSizeButton()}if(String(html).includes('Ashwini Admin Dashboard'))requestAnimationFrame(addAppearanceDashboardBox);b.querySelector(':scope > .modal-back')?.focus()}
 function modalBack(){const m=document.getElementById('modal'),b=document.getElementById('body');if(!m||!b)return;if(!__modalPageHistory.length){closeM();return}const previous=__modalPageHistory.pop();b.replaceChildren();b.appendChild(previous.holder);m.className=previous.modalClass||'modal';m.style.zIndex='';m.style.display='flex';m.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';requestAnimationFrame(()=>{b.scrollTop=previous.bodyScroll||0;m.scrollTop=previous.modalScroll||0;updateProductPageSizeButton();b.querySelector(':scope > .modal-back')?.focus()})}
 function updateProductPageSizeButton(){const m=document.getElementById('modal'),button=document.getElementById('productPageSizeToggle');if(!m||!button)return;const restored=m.classList.contains('product-page-restored');button.textContent=restored?'□':'❐';button.title=restored?'Open full screen':'Restore window size';button.setAttribute('aria-label',button.title)}
 function toggleProductPageSize(){const m=document.getElementById('modal');if(!m?.classList.contains('product-page-mode'))return;m.classList.toggle('product-page-restored');updateProductPageSizeButton()}
@@ -226,7 +237,7 @@ function getGallery(p){let a=[];try{a=JSON.parse(p.gallery||'[]')}catch{}if(!Arr
 const productMediaItems=new Map();
 function renderProductMedia(p,gallery,videos){
  const items=[...gallery.map(src=>({src,type:'photo'})),...videos.map(src=>({src,type:'video'}))];productMediaItems.set(p.id,items);
- return `<div class="product-gallery-adaptive"><div class="gallery"><div class="gallery-thumbs">${items.map((m,i)=>`<button type="button" class="gallery-thumb ${i===0?'active':''}" onclick="stop(event);selectProductMedia(${p.id},${i})" aria-label="${m.type} ${i+1}">${m.type==='photo'?`<img src="${esc(m.src)}" alt="Photo ${i+1}">`:`<span>▶<br>Video ${i-gallery.length+1}</span>`}</button>`).join('')}</div><div><div class="gallery-main" id="gallery-main-wrap-${p.id}"><img id="gallery-main-${p.id}" class="product-photo-open-full" src="${esc(gallery[0]||'')}" alt="${esc(p.name)}" onclick="stop(event);openProductImageViewer(${p.id})" onload="if(this.naturalWidth)this.closest('.detail').style.setProperty('--product-photo-ratio',this.naturalWidth/this.naturalHeight)"><video id="product-media-video-${p.id}" controls playsinline preload="metadata" hidden onclick="stop(event)" onloadedmetadata="if(this.videoWidth)this.closest('.detail').style.setProperty('--product-photo-ratio',this.videoWidth/this.videoHeight)" onerror="document.getElementById('product-media-status-${p.id}').textContent='Video could not load. Please try an MP4 (H.264) or WebM file.'"></video><div class="zoom-controls"><button class="zoom-btn" type="button" onclick="stop(event);zoomImage(${p.id},-.2)">−</button><span class="zoom-level" id="zoom-level-${p.id}">100%</span><button class="zoom-btn" type="button" onclick="stop(event);zoomImage(${p.id},.2)">+</button><button class="zoom-btn" type="button" onclick="stop(event);resetZoom(${p.id})">↺</button></div></div><div class="product-media-nav"><button type="button" onclick="stop(event);moveProductMedia(${p.id},-1)" aria-label="Previous photo or video">‹ Previous</button><span id="product-media-count-${p.id}" data-index="0">1 / ${items.length}</span><button type="button" onclick="stop(event);moveProductMedia(${p.id},1)" aria-label="Next photo or video">Next ›</button></div><div id="product-media-status-${p.id}" role="status"></div></div></div></div>`;
+ return `<div class="product-gallery-adaptive"><div class="gallery"><div class="gallery-thumbs">${items.map((m,i)=>`<button type="button" class="gallery-thumb ${i===0?'active':''}" onclick="stop(event);selectProductMedia(${p.id},${i})" aria-label="${m.type} ${i+1}">${m.type==='photo'?`<img src="${esc(m.src)}" alt="Photo ${i+1}" loading="lazy" decoding="async">`:`<span>▶<br>Video ${i-gallery.length+1}</span>`}</button>`).join('')}</div><div><div class="gallery-main" id="gallery-main-wrap-${p.id}"><img fetchpriority="high" decoding="async" id="gallery-main-${p.id}" class="product-photo-open-full" src="${esc(gallery[0]||'')}" alt="${esc(p.name)}" onclick="stop(event);openProductImageViewer(${p.id})" onload="if(this.naturalWidth)this.closest('.detail').style.setProperty('--product-photo-ratio',this.naturalWidth/this.naturalHeight)"><video id="product-media-video-${p.id}" controls playsinline preload="metadata" hidden onclick="stop(event)" onloadedmetadata="if(this.videoWidth)this.closest('.detail').style.setProperty('--product-photo-ratio',this.videoWidth/this.videoHeight)" onerror="document.getElementById('product-media-status-${p.id}').textContent='Video could not load. Please try an MP4 (H.264) or WebM file.'"></video><div class="zoom-controls"><button class="zoom-btn" type="button" onclick="stop(event);zoomImage(${p.id},-.2)">−</button><span class="zoom-level" id="zoom-level-${p.id}">100%</span><button class="zoom-btn" type="button" onclick="stop(event);zoomImage(${p.id},.2)">+</button><button class="zoom-btn" type="button" onclick="stop(event);resetZoom(${p.id})">↺</button></div></div><div class="product-media-nav"><button type="button" onclick="stop(event);moveProductMedia(${p.id},-1)" aria-label="Previous photo or video">‹ Previous</button><span id="product-media-count-${p.id}" data-index="0">1 / ${items.length}</span><button type="button" onclick="stop(event);moveProductMedia(${p.id},1)" aria-label="Next photo or video">Next ›</button></div><div id="product-media-status-${p.id}" role="status"></div></div></div></div>`;
 }
 function selectProductMedia(id,index){
  const items=productMediaItems.get(id)||[];if(!items.length)return;index=(index+items.length)%items.length;const item=items[index],wrap=document.getElementById(`gallery-main-wrap-${id}`),img=document.getElementById(`gallery-main-${id}`),video=document.getElementById(`product-media-video-${id}`);if(!wrap||!img||!video)return;
@@ -400,13 +411,23 @@ window.addEventListener('resize',()=>{if(document.getElementById('product-image-
 async function detail(id){
  const requestId=++productDetailRequestId;
  trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
- let p;
- try{p=await api(`/api/products/${encodeURIComponent(id)}`)}catch(e){if(requestId===productDetailRequestId)toast(e.message||'Product could not open');return}
- if(requestId!==productDetailRequestId)return;
+ id=Number(id);
+ let p=productPreviewCache.get(id),loading=null;
+ const cached=Boolean(p);
+ if(!p){
+  openM('<div class="detail" data-product-loading role="status">Loading product…</div>');
+  loading=document.getElementById('body').querySelector('[data-product-loading]');
+  try{p=await api(`/api/products/${encodeURIComponent(id)}`);rememberProducts([p])}catch(e){
+   if(requestId===productDetailRequestId&&loading?.isConnected)loading.textContent=e.message||'Product could not load. Please try again.';
+   return;
+  }
+  if(requestId!==productDetailRequestId||!loading?.isConnected)return;
+ }
  const gallery=getGallery(p), videos=getProductVideos(p), liked=wishlist.includes(id);
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
  openM(`<div class="detail">
+  <div data-product-freshness role="status" style="grid-column:1/-1" hidden></div>
   ${renderProductMedia(p,gallery,videos)}
   <div>${p.badge_text?`<div style="margin-bottom:8px"><span class="badge" style="position:static;display:inline-block">${esc(p.badge_text)}</span></div>`:''}<h1>${esc(p.name)}</h1><div class="stars">${p.rating>0?'★★★★★ '+p.rating+' customer rating':'New product'}</div><p style="font-size:27px;font-weight:bold">₹${Number(productOfferPrice(p)||0).toLocaleString('en-IN')} <span class="mrp">₹${Number(p.mrp||0).toLocaleString('en-IN')}</span></p><p>Inclusive of all taxes</p>${p.offer_text?`<div class="coupon-box"><b>🎁 ${esc(p.offer_text)}</b>${Number(p.offer_discount||0)>0?`<div style="font-size:18px;font-weight:700;margin-top:4px">${Number(p.offer_discount)}% OFF</div>`:''}</div>`:''}<hr>
   <p><b>Colour:</b> ${esc(p.color)}</p><p><b>Size:</b></p><div class="sizebox" id="sizes-detail-${p.id}">${(p.size_options||'S,M,L,XL').split(',').map(s=>{const label=s.trim(),n=clientSizeStock(p,label);return `<button class="size ${n===0?'unavailable':''}" type="button" data-size-stock="${n}" ${n===0?'aria-disabled="true" title="Out of stock"':''} onclick="stop(event);${n===0?'showSizeOutOfStock(this)':`pick(${p.id},${esc(JSON.stringify(label))},this)`}">${esc(label)}</button>`}).join('')}</div><small class="size-stock-message" aria-live="polite"></small>
@@ -419,9 +440,18 @@ async function detail(id){
   <div class="buy"><button class="buy-now" type="button" onclick="stop(event);buyNow(${p.id},this)">Buy Now</button><button class="gold" type="button" onclick="stop(event);addFromDetail(${p.id},this)">Add to Cart</button><button class="wishlist" type="button" onclick="stop(event);wish(${p.id})">${liked?'♥':'♡'} Wishlist</button></div>
   <div class="product-info"><details class="product-info-dropdown"><summary>Product Details / History <span aria-hidden="true">⌄</span></summary><div class="product-info-dropdown-body"><div class="product-history">${esc(history)}</div>${user?.role==='admin'?`<button class="wishlist" type="button" style="margin-top:10px" onclick="stop(event);editProduct(${p.id})">✎ Edit Product</button>`:''}</div></details><details class="product-info-dropdown"><summary>Care Instructions <span aria-hidden="true">⌄</span></summary><div class="product-info-dropdown-body"><div class="product-history">${esc(care)}</div></div></details></div>
   <div data-product-section="recommendations" aria-busy="true"></div>${policySections()}${securitySection()}<div data-product-section="qa" aria-busy="true">Loading questions…</div><div data-product-section="reviews" aria-busy="true">Loading reviews…</div>
-  </div></div>`);
+  </div></div>`,Boolean(loading));
  // Update only this page's own nodes, including when retained in modal history.
  const page=document.getElementById('body');
+ if(cached){
+  const notice=page.querySelector('[data-product-freshness]'),buy=page.querySelector('.buy');
+  // Refresh without interrupting size selection, scrolling, or product media.
+  const changed=message=>{if(!notice)return;notice.hidden=false;notice.textContent=message+' ';const button=document.createElement('button');button.type='button';button.textContent='Refresh product';button.onclick=()=>detail(id);notice.appendChild(button);buy?.querySelectorAll('button').forEach(button=>button.disabled=true)};
+  api(`/api/products/${encodeURIComponent(id)}`).then(fresh=>{
+   rememberProducts([fresh]);
+   if(Object.keys(fresh).some(key=>JSON.stringify(fresh[key])!==JSON.stringify(p[key])))changed('Product information has updated. Refresh to see the latest price and availability.');
+  }).catch(e=>{if(e.status===404){productPreviewCache.delete(id);changed('This product is no longer available.')}else if(notice){notice.hidden=false;notice.textContent='Showing previously loaded details. Latest availability will be checked when you shop.'}});
+ }
  const fill=(name,load)=>{
   const target=page.querySelector(`[data-product-section="${name}"]`);
   Promise.resolve().then(load).then(html=>{if(target)target.innerHTML=html}).catch(()=>{if(target)target.textContent='This section could not load. Reopen the product to retry.'}).finally(()=>target?.removeAttribute('aria-busy'));
@@ -439,6 +469,7 @@ async function itemRecommendationsSection(id){
  try{
   const data=await api(`/api/recommendations/items/${id}?limit=6`),items=Array.isArray(data.results)?data.results:[];
   if(!items.length)return '';
+  rememberProducts(items.map(p=>({...productPreviewCache.get(Number(p.id)),...p})));
   const collaborative=['collaborative','hybrid'].includes(data.strategy);
   setTimeout(()=>items.forEach(p=>trackBehavior('recommendation_impression',p.id,{source:data.strategy},id)),0);
   const heading=data.strategy==='behavior'?'Shoppers also viewed':data.strategy==='attribute'?'Similar styles':'Customers also bought';
