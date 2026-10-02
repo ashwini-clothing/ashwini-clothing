@@ -400,15 +400,10 @@ window.addEventListener('resize',()=>{if(document.getElementById('product-image-
 async function detail(id){
  const requestId=++productDetailRequestId;
  trackBehavior('product_view',id,{source:'product_detail'});setTimeout(loadSessionHistory,450);
- const ps=await api('/api/products');const p=ps.find(x=>x.id===id);if(!p)return;
- const gallery=getGallery(p), videos=getProductVideos(p), liked=wishlist.includes(id);
- const [qaHtml,reviewsHtml,recommendationsHtml,highlights]=await Promise.all([
-  qaSection(p.id),
-  reviewsSection(p.id),
-  itemRecommendationsSection(p.id),
-  api('/api/product-highlights').catch(()=>[])
- ]);
+ let p;
+ try{p=await api(`/api/products/${encodeURIComponent(id)}`)}catch(e){if(requestId===productDetailRequestId)toast(e.message||'Product could not open');return}
  if(requestId!==productDetailRequestId)return;
+ const gallery=getGallery(p), videos=getProductVideos(p), liked=wishlist.includes(id);
  let history=p.product_history||p.history||'Product details / history can be added here later.';
  let care=p.care_instructions||'Wash as per garment label. Use mild detergent, avoid harsh bleach and dry in shade.';
  openM(`<div class="detail">
@@ -418,13 +413,23 @@ async function detail(id){
   <p><button class="size-chart-link" type="button" onclick="stop(event);sizeChart(${p.id})">📏 View Size Chart</button></p>
   <div id="size-chart-inline-${p.id}" class="size-chart-inline" style="display:none"></div>
   <p>${esc(p.description||'Premium clothing designed for comfort and everyday style.')}</p>
-  <div class="stats" style="grid-template-columns:repeat(3,1fr);margin:15px 0">${highlights.map(h=>`<div class="stat"><small>${esc(h.label)}</small><b style="font-size:16px">${esc(h.value)}</b></div>`).join('')}</div>
+  <div data-product-section="highlights" class="stats" style="grid-template-columns:repeat(3,1fr);margin:15px 0" aria-busy="true"></div>
   <p><b class="${Number(p.stock||0)<2?'customer-critical-stock':''}">${Number(p.stock||0)} left in stock.</b> Ships from Ashwini Clothing.</p>
   <div class="delivery-box"><b>📍 Delivery to your location</b><div class="pin-row"><input id="pin-${p.id}" maxlength="6" inputmode="numeric" value="${esc(localStorage.getItem('ashwiniDeliveryPin')||'')}" placeholder="Enter PIN code"><button class="wishlist" type="button" onclick="stop(event);checkDelivery(${p.id})">Check</button></div><div id="delivery-${p.id}" class="delivery-result">${detailDeliveryResultHtml()}</div></div>
   <div class="buy"><button class="buy-now" type="button" onclick="stop(event);buyNow(${p.id},this)">Buy Now</button><button class="gold" type="button" onclick="stop(event);addFromDetail(${p.id},this)">Add to Cart</button><button class="wishlist" type="button" onclick="stop(event);wish(${p.id})">${liked?'♥':'♡'} Wishlist</button></div>
   <div class="product-info"><details class="product-info-dropdown"><summary>Product Details / History <span aria-hidden="true">⌄</span></summary><div class="product-info-dropdown-body"><div class="product-history">${esc(history)}</div>${user?.role==='admin'?`<button class="wishlist" type="button" style="margin-top:10px" onclick="stop(event);editProduct(${p.id})">✎ Edit Product</button>`:''}</div></details><details class="product-info-dropdown"><summary>Care Instructions <span aria-hidden="true">⌄</span></summary><div class="product-info-dropdown-body"><div class="product-history">${esc(care)}</div></div></details></div>
-  ${recommendationsHtml}${policySections()}${securitySection()}${qaHtml}${reviewsHtml}
+  <div data-product-section="recommendations" aria-busy="true"></div>${policySections()}${securitySection()}<div data-product-section="qa" aria-busy="true">Loading questions…</div><div data-product-section="reviews" aria-busy="true">Loading reviews…</div>
   </div></div>`);
+ // Update only this page's own nodes, including when retained in modal history.
+ const page=document.getElementById('body');
+ const fill=(name,load)=>{
+  const target=page.querySelector(`[data-product-section="${name}"]`);
+  Promise.resolve().then(load).then(html=>{if(target)target.innerHTML=html}).catch(()=>{if(target)target.textContent='This section could not load. Reopen the product to retry.'}).finally(()=>target?.removeAttribute('aria-busy'));
+ };
+ fill('qa',()=>qaSection(p.id));
+ fill('reviews',()=>reviewsSection(p.id));
+ fill('recommendations',()=>itemRecommendationsSection(p.id));
+ fill('highlights',async()=>{const highlights=await api('/api/product-highlights');return highlights.map(h=>`<div class="stat"><small>${esc(h.label)}</small><b style="font-size:16px">${esc(h.value)}</b></div>`).join('')});
  markProductHistory(p.id);
  bindImageZoom(p.id);
  if(user?.role==='customer'&&!automaticDeliveryEstimate)detectCustomerDelivery();

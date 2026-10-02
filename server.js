@@ -968,6 +968,14 @@ function searchText(value){return String(value||'').toLowerCase().normalize('NFK
 function searchTerms(value){const aliases={kurti:'kurta',kurtis:'kurta',kurtha:'kurta',kurrti:'kurta',lehnga:'lehenga',lengha:'lehenga',lahenga:'lehenga',saree:'sarara',sari:'sarara',sharaara:'sarara',gaun:'gown',goun:'gown',weding:'wedding',weddingg:'wedding',dres:'dress',dresses:'dress',shrt:'shirt',shirts:'shirt',pant:'pants',cord:'coord',koord:'coord',coordinated:'coord',clothe:'clothes',cloths:'clothes'};return searchText(value).split(' ').filter(Boolean).map(x=>aliases[x]||x)}
 function searchDistance(a,b){a=String(a);b=String(b);if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;let previous=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){const current=[i];for(let j=1;j<=b.length;j++)current[j]=Math.min(current[j-1]+1,previous[j]+1,previous[j-1]+(a[i-1]===b[j-1]?0:1));previous=current}return previous[b.length]}
 function smartProductScore(product,query){const terms=searchTerms(query),name=searchText(product.name),category=searchText(product.category),haystack=searchText([product.name,product.category,product.color,product.size_options,product.offer_text,product.description].join(' ')),words=[...new Set(haystack.split(' ').filter(Boolean))];if(!terms.length)return 0;let score=0,matched=0;for(const term of terms){if(name===term){score+=12;matched++;continue}if(name.includes(term)){score+=8;matched++;continue}if(category.includes(term)||haystack.includes(term)){score+=5;matched++;continue}const best=words.reduce((n,word)=>Math.min(n,searchDistance(term,word)),99),allowed=term.length>=7?2:term.length>=4?1:0;if(best<=allowed){score+=Math.max(2,5-best);matched++}}return matched===terms.length?score+terms.length*2:matched?score-3:0}
+app.get('/api/products/:id',(req,res)=>{
+ res.setHeader('Cache-Control','no-store');
+ const id=Number(req.params.id);
+ if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid product ID'});
+ const product=db.prepare('SELECT * FROM products WHERE id=?').get(id);
+ if(!product)return res.status(404).json({error:'Product not found'});
+ res.json(product);
+});
 app.get("/api/products",(req,res)=>{
  res.setHeader('Cache-Control','no-store');
  const {q="",category="All",sort="featured",filters=""}=req.query,query=String(q).trim().slice(0,100);
